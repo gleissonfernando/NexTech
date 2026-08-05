@@ -2111,6 +2111,160 @@ export type FivemFinanceDashboard = {
   settings: FivemFinanceSettings;
   transactions: FivemFinanceTransaction[];
 };
+export type FivemExpenseConfig = {
+  adminRoleIds: string[];
+  allowAdministrators: boolean;
+  allowNegativeBalance: boolean;
+  authorizedRoleIds: string[];
+  botId: string | null;
+  clientId: string | null;
+  color: string;
+  enabled: boolean;
+  footerText: string | null;
+  guildId: string;
+  id: string;
+  imageUrl: string | null;
+  logsChannelId: string | null;
+  moduleType: "EXPENSES";
+  moduleId: "fivem-expenses";
+  organizationId: string;
+  organizationName: string;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelMessageId: string | null;
+  panelName: string;
+  panelTitle: string;
+  releaseStatus: "active" | "disabled" | "suspended";
+  releasedAt: string | null;
+  releasedBy: string | null;
+  summaryChannelId: string | null;
+  thumbnailUrl: string | null;
+  updatedAt: string | null;
+  updatedBy?: string | null;
+};
+export type FivemExpenseItem = {
+  amountMode: "TOTAL" | "UNIT_PRICE" | "BOTH";
+  botId: string | null;
+  createdAt: string;
+  deductFromCash: boolean;
+  defaultUnitAmountCents: number | null;
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  guildId: string;
+  id: string;
+  maxQuantity: number | null;
+  minQuantity: number | null;
+  name: string;
+  organizationId: string;
+  position: number;
+  requiresAmount: boolean;
+  requiresDescription: boolean;
+  requiresQuantity: boolean;
+  transactionType: "OUTFLOW";
+  updatedAt: string;
+};
+export type FivemExpenseRecord = {
+  archived: boolean;
+  balanceAfterCents: number;
+  balanceBeforeCents: number;
+  botId: string | null;
+  cashOperation: "DEBIT";
+  cashTransactionId: string | null;
+  channelId: string;
+  createdAt: string;
+  description: string | null;
+  errorMessage: string | null;
+  guildId: string;
+  id: string;
+  interactionId: string;
+  itemEmoji: string | null;
+  itemId: string;
+  itemName: string;
+  messageId: string | null;
+  moduleType: "EXPENSES";
+  organizationId: string;
+  organizationName: string;
+  quantity: number | null;
+  resetBatchId: string | null;
+  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  totalAmountCents: number;
+  transactionId: string;
+  transactionType: "OUTFLOW";
+  unitAmountCents: number | null;
+  updatedAt: string;
+  userAvatar: string | null;
+  userDisplayName: string;
+  userId: string;
+};
+export type FivemExpenseDashboard = {
+  config: FivemExpenseConfig;
+  finance: FivemFinanceSettings;
+  items: FivemExpenseItem[];
+  records: FivemExpenseRecord[];
+  report: {
+    balanceCents: number;
+    biggest: FivemExpenseRecord | null;
+    byItem: Array<{ count: number; itemName: string; totalAmountCents: number }>;
+    count: number;
+    last: FivemExpenseRecord | null;
+    totalCents: number;
+  };
+};
+export type AmmunitionPermissionType = "CREATE_ORDER" | "VIEW_CHANNEL" | "COMPLETE_ORDER" | "CANCEL_ORDER" | "VIEW_REPORT" | "MANAGE_CONFIG";
+export type AmmunitionConfig = {
+  botId: string | null;
+  cancelledChannelDeleteDelaySeconds: number;
+  completedChannelDeleteDelaySeconds: number;
+  createdAt: string;
+  currency: "BRL";
+  enabled: boolean;
+  guildId: string;
+  id: string;
+  logChannelId: string | null;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  roles: Record<AmmunitionPermissionType, string[]>;
+  sellerFactionId: string | null;
+  temporaryCategoryId: string | null;
+  timezone: string;
+  unitPriceInCents: number | null;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+export type AmmunitionFaction = { emoji: string | null; id: string; name: string };
+export type AmmunitionType = { active: boolean; aliases: string[]; botId: string | null; createdAt: string; guildId: string; id: string; name: string; normalizedName: string; unitPriceInCents: number | null; updatedAt: string };
+export type AmmunitionOrderItem = { ammunitionTypeId: string; name: string; quantity: number; subtotalInCents: number; unitPriceInCents: number; updatedAt: string };
+export type AmmunitionOrder = {
+  botId: string | null; buyerFactionId: string; buyerFactionName: string; cancelledAt: string | null; cancelledByUserId: string | null; cancelReason: string | null;
+  cashIdempotencyKey: string; cashTransactionId: string | null; completedAt: string | null; completedByUserId: string | null; createdAt: string; guildId: string; id: string;
+  itemEditingLocked: boolean; items: AmmunitionOrderItem[]; openedByUserId: string; orderNumber: number; panelMessageId: string | null; processingStartedAt: string | null; quantity: number; sellerFactionId: string; sellerFactionName: string;
+  sellerUserId: string; status: "PENDING" | "PROCESSING" | "DELIVERED" | "CANCELLED" | "FAILED"; temporaryChannelId: string | null; totalValueInCents: number; unitPriceInCents: number; updatedAt: string;
+};
+export type AmmunitionWeeklySummary = {
+  buyers: Array<{ count: number; id: string; name: string; totalUnits: number; totalValueInCents: number }>;
+  end: string; orderCount: number; sellerFactionId: string | null; sellerFactionName: string | null;
+  sellers: Array<{ count: number; id: string; name: string; totalUnits: number; totalValueInCents: number }>;
+  start: string; totalUnits: number; totalValueInCents: number;
+};
+export type AmmunitionDashboard = { ammunitionTypes: AmmunitionType[]; config: AmmunitionConfig; factions: AmmunitionFaction[]; orders: AmmunitionOrder[]; weeklySummary: AmmunitionWeeklySummary };
+
+export type WeaponSaleConfig = {
+  accentColor: string | null; botId: string | null; buttonText: string; cancelDeleteDelaySeconds: number; completedDeleteDelaySeconds: number; createdAt: string;
+  description: string; enabled: boolean; expirationMinutes: number; footerImageUrl: string | null; guildId: string; id: string; imageUrl: string | null; logChannelId: string | null;
+  managerRoleIds: string[]; managerUserIds: string[]; orientationText: string; panelChannelId: string | null; panelMessageId: string | null; temporaryCategoryId: string | null;
+  temporaryChannelText: string; thumbnailUrl: string | null; title: string; updatedAt: string; updatedBy: string | null;
+};
+export type WeaponSaleWeapon = { active: boolean; botId: string | null; createdAt: string; createdBy: string | null; guildId: string; id: string; name: string; normalizedName: string; unitPriceInCents: number; updatedAt: string };
+export type WeaponSaleItem = { quantity: number; subtotalInCents: number; unitPriceInCents: number; weaponId: string; weaponName: string };
+export type WeaponSaleSession = {
+  botId: string | null; buyerFactionId: string; buyerFactionName: string; channelId: string | null; completedAt: string | null; completedByUserId: string | null; createdAt: string;
+  expiresAt: string | null; guildId: string; id: string; items: WeaponSaleItem[]; lastActivityAt: string; logMessageId: string | null; openedByUserId: string; panelMessageId: string | null;
+  saleCode: string; sellerName: string | null; status: "aguardando_itens" | "em_preenchimento" | "aguardando_confirmacao" | "processando" | "concluida" | "cancelada" | "expirada";
+  totalQuantity: number; totalValueInCents: number; updatedAt: string;
+};
+export type WeaponSaleFaction = { emoji: string | null; id: string; name: string };
+export type WeaponSaleDashboard = { config: WeaponSaleConfig; factions: WeaponSaleFaction[]; report: { completedCount: number; totalQuantity: number; totalValueInCents: number }; sessions: WeaponSaleSession[]; weapons: WeaponSaleWeapon[] };
 export type FivemOrder = {
   botId: string | null; category: string; clientName: string; costTotal: number; createdAt: string; expectedDelivery: string | null; familyId: string; familyName: string; finalValue: number;
   grossValue: number; guildId: string; history: Array<{ actorId: string | null; at: string; from: FivemOrderStatus | null; note: string | null; to: FivemOrderStatus }>;
@@ -2785,142 +2939,6 @@ export type SaveFivemModulePayload = {
 };
 
 export type SaveFivemFacSettingsPayload = Partial<Omit<FivemFacSettings, "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt">>;
-
-export type MissionToolsFeatureId =
-  | "mission"
-  | "clear"
-  | "voice"
-  | "rich-presence"
-  | "username-checker";
-
-export type MissionToolsStatus =
-  | "active"
-  | "inactive"
-  | "deactivated"
-  | "waiting"
-  | "running"
-  | "completed"
-  | "error";
-
-export type MissionToolsClearMode = "bulk" | "userDm";
-export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
-export type MissionToolsRichPresenceStatus = "active" | "inactive";
-export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
-
-export type MissionToolsRichPresenceConfig = {
-  applicationId?: string;
-  activityType?: MissionToolsRichPresenceActivityType;
-  name?: string;
-  description?: string;
-  state?: string;
-  details?: string;
-  buttonLabel?: string;
-  buttonUrl?: string;
-  largeImage?: string;
-  largeText?: string;
-  smallImage?: string;
-  smallText?: string;
-  startTimestamp?: string;
-};
-
-export type MissionToolsUsernameCheckerOptions = {
-  usernameLength?: number;
-  concurrency?: number;
-  requestDelay?: number;
-};
-
-export type MissionToolsUsernameCheckerStats = {
-  hits: number;
-  taken: number;
-  errors: number;
-  activeProxies: number;
-  deadProxies: number;
-  bannedProxies: number;
-  workersRunning: number;
-};
-
-export type MissionToolsSettings = {
-  id: string;
-  botId: string;
-  guildId: string;
-  enabled: boolean;
-  panelChannelId: string | null;
-  panelMessageId: string | null;
-  logChannelId: string | null;
-  managerRoleIds: string[];
-  allowedRoleIds: string[];
-  enabledFeatures: MissionToolsFeatureId[];
-  lastPanelRequestedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type MissionToolsUserPanel = {
-  id: string;
-  botId: string;
-  guildId: string;
-  userId: string;
-  username: string | null;
-  dmChannelId: string | null;
-  clearMessageId: string | null;
-  missionMessageId: string | null;
-  voiceMessageId: string | null;
-  richPresenceMessageId: string | null;
-  usernameCheckerMessageId: string | null;
-  tokenConfigured: boolean;
-  tokenStatus: MissionToolsTokenStatus;
-  tokenLast4: string | null;
-  tokenUpdatedAt: string | null;
-  tokenLastValidatedAt: string | null;
-  tokenInvalidReason: string | null;
-  clearStatus: MissionToolsStatus;
-  clearMode: MissionToolsClearMode;
-  clearTargetUserId: string | null;
-  missionStatus: MissionToolsStatus;
-  voiceStatus: MissionToolsVoiceStatus;
-  richPresenceStatus: MissionToolsRichPresenceStatus;
-  usernameCheckerStatus: MissionToolsStatus;
-  currentMission: string | null;
-  missionDetail: string | null;
-  voiceGuildId: string | null;
-  voiceGuildName: string | null;
-  voiceChannelId: string | null;
-  voiceChannelName: string | null;
-  voiceConnectedAt: string | null;
-  richPresenceConfig: MissionToolsRichPresenceConfig;
-  richPresenceUpdatedAt: string | null;
-  usernameCheckerOptions: MissionToolsUsernameCheckerOptions;
-  usernameCheckerStats: MissionToolsUsernameCheckerStats;
-  usernameCheckerLastEvent: string | null;
-  usernameCheckerUpdatedAt: string | null;
-  completedCount: number;
-  totalMissions: number;
-  progress: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type MissionToolsStats = {
-  configuredUsers: number;
-  usersWithToken: number;
-  runningMissions: number;
-  runningCleanups: number;
-  activeVoiceSessions: number;
-  activeRichPresence: number;
-  usernameHits: number;
-};
-
-export type MissionToolsResponse = {
-  settings: MissionToolsSettings;
-  users: MissionToolsUserPanel[];
-  stats: MissionToolsStats;
-};
-
-export type SaveMissionToolsSettingsPayload = Partial<Omit<
-  MissionToolsSettings,
-  "id" | "botId" | "guildId" | "panelMessageId" | "lastPanelRequestedAt" | "createdAt" | "updatedAt"
->>;
 
 export type SaveXAccountPayload = {
   active: boolean;
@@ -4542,6 +4560,14 @@ export type DevBotStatus =
   | "ready"
   | "degraded"
   | "stopping"
+  | "stopped_manually"
+  | "stopped_by_payment"
+  | "stopped_by_admin"
+  | "crashed"
+  | "database_error"
+  | "discord_connection_error"
+  | "waiting_retry"
+  | "maintenance"
   | "invalid_token"
   | "error";
 

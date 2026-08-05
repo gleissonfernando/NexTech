@@ -101,9 +101,6 @@ import {
     type MessageControlSettings,
     type MessageControlStatus,
     type MessageControlUser,
-    type MissionToolsResponse,
-    type MissionToolsSettings,
-    type MissionToolsUserPanel,
     type NexTechInvite,
     type NexTechInviteDashboard,
     type NexTechProduct,
@@ -143,7 +140,6 @@ import {
     type SaveGiveawayPayload,
     type SaveImageAntiSpamSettingsPayload,
     type SaveManualPaymentSettingsPayload,
-    type SaveMissionToolsSettingsPayload,
     type SaveNexTechInvitePayload,
     type SaveNexTechPaymentProviderPayload,
     type SaveNexTechProductPayload,
@@ -1990,6 +1986,57 @@ export async function updateFivemFinanceTransaction(guildId: string, transaction
   return data.transaction;
 }
 
+export async function getFivemExpenses(guildId: string, botId?: string | null, organizationId?: string | null) {
+  const { data } = await api.get<import("../types").FivemExpenseDashboard>(`/fivem-expenses/${guildId}`, { params: { ...(botId ? { botId } : {}), ...(organizationId ? { organizationId } : {}) } });
+  return data;
+}
+export async function saveFivemExpenseConfig(guildId: string, payload: Partial<import("../types").FivemExpenseConfig>, botId?: string | null) {
+  const { data } = await api.put<{ config: import("../types").FivemExpenseConfig }>(`/fivem-expenses/${guildId}/config`, payload, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+export async function saveFivemExpenseItem(guildId: string, payload: Partial<import("../types").FivemExpenseItem> & { name: string }, botId?: string | null) {
+  const { data } = await api.post<{ item: import("../types").FivemExpenseItem }>(`/fivem-expenses/${guildId}/items`, payload, { params: botId ? { botId } : undefined });
+  return data.item;
+}
+export async function updateFivemExpenseItem(guildId: string, itemId: string, payload: Partial<import("../types").FivemExpenseItem> & { name: string }, botId?: string | null) {
+  const { data } = await api.patch<{ item: import("../types").FivemExpenseItem }>(`/fivem-expenses/${guildId}/items/${encodeURIComponent(itemId)}`, payload, { params: botId ? { botId } : undefined });
+  return data.item;
+}
+export async function publishFivemExpensePanel(guildId: string, organizationId: string, botId?: string | null) {
+  const { data } = await api.post<{ config: import("../types").FivemExpenseConfig }>(`/fivem-expenses/${guildId}/panel`, { organizationId }, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+
+export async function getAmmunition(guildId: string, botId?: string | null) {
+  const { data } = await api.get<import("../types").AmmunitionDashboard>(`/ammunition/${guildId}`, { params: botId ? { botId } : undefined });
+  return data;
+}
+
+export async function saveAmmunitionConfig(guildId: string, payload: Partial<import("../types").AmmunitionConfig> & { ammunitionTypes?: Array<Partial<import("../types").AmmunitionType> & { name: string }> }, botId?: string | null) {
+  const { data } = await api.put<{ config: import("../types").AmmunitionConfig }>(`/ammunition/${guildId}/settings`, payload, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+
+export async function publishAmmunitionPanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ config: import("../types").AmmunitionConfig }>(`/ammunition/${guildId}/panel`, undefined, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+
+export async function getWeaponSales(guildId: string, botId?: string | null) {
+  const { data } = await api.get<import("../types").WeaponSaleDashboard>(`/weapon-sales/${guildId}`, { params: botId ? { botId } : undefined });
+  return data;
+}
+
+export async function saveWeaponSaleConfig(guildId: string, payload: Partial<import("../types").WeaponSaleConfig> & { weapons?: Array<Partial<import("../types").WeaponSaleWeapon> & { name: string; unitPriceInCents: number }> }, botId?: string | null) {
+  const { data } = await api.put<{ config: import("../types").WeaponSaleConfig }>(`/weapon-sales/${guildId}/settings`, payload, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+
+export async function publishWeaponSalePanel(guildId: string, botId?: string | null) {
+  const { data } = await api.post<{ config: import("../types").WeaponSaleConfig }>(`/weapon-sales/${guildId}/panel`, undefined, { params: botId ? { botId } : undefined });
+  return data.config;
+}
+
 export async function saveFivemGoalSettings(guildId: string, payload: Partial<FivemGoalSettings>, botId?: string | null) {
   const { data } = await api.patch<{ settings: FivemGoalSettings }>(`/fivem/${guildId}/goals`, payload, {
     params: botId ? { botId } : undefined
@@ -2097,6 +2144,27 @@ export async function deleteDevFivemModule(moduleId: string) {
   await api.delete(`/dev/fivem/modules/${encodeURIComponent(moduleId)}`);
 }
 
+export async function getDevFivemExpenseReleases(botId?: string | null) {
+  const { data } = await api.get<{ releases: import("../types").FivemExpenseConfig[] }>("/dev/fivem-expenses/releases", {
+    params: botId ? { botId } : undefined
+  });
+  return data.releases;
+}
+
+export async function saveDevFivemExpenseRelease(payload: {
+  botId: string;
+  clientId?: string | null;
+  guildId: string;
+  imageUrl?: string | null;
+  organizationId: string;
+  organizationName?: string | null;
+  panelName?: string | null;
+  releaseStatus?: "active" | "disabled" | "suspended";
+}) {
+  const { data } = await api.put<{ config: import("../types").FivemExpenseConfig }>("/dev/fivem-expenses/releases", payload);
+  return data.config;
+}
+
 export async function getFivemFacOptions(guildId: string, botId: string) {
   const { data } = await api.get<{ options: GuildLiveOptions }>(`/fivem/${guildId}/fac/options`, {
     params: botParams(botId)
@@ -2157,92 +2225,6 @@ export async function removeFivemFacAbsencePhoto(guildId: string, botId: string,
     }
   );
   return data.absence;
-}
-
-export async function getMissionTools(guildId: string, botId: string) {
-  const { data } = await api.get<MissionToolsResponse>(`/mission-tools/${guildId}`, {
-    params: botParams(botId)
-  });
-  return data;
-}
-
-export async function getMissionToolsOptions(guildId: string, botId: string) {
-  const { data } = await api.get<{ options: GuildLiveOptions }>(`/mission-tools/${guildId}/options`, {
-    params: botParams(botId)
-  });
-  return data.options;
-}
-
-export async function saveMissionToolsSettings(guildId: string, botId: string, payload: SaveMissionToolsSettingsPayload) {
-  const { data } = await api.patch<{ settings: MissionToolsSettings }>(`/mission-tools/${guildId}/settings`, payload, {
-    params: botParams(botId)
-  });
-  return data.settings;
-}
-
-export async function publishMissionToolsPanel(guildId: string, botId: string) {
-  const { data } = await api.post<{ settings: MissionToolsSettings }>(`/mission-tools/${guildId}/panel`, undefined, {
-    params: botParams(botId),
-    timeout: 15000
-  });
-  return data.settings;
-}
-
-export async function saveMissionToolsUserToken(
-  guildId: string,
-  botId: string,
-  userId: string,
-  payload: {
-    token: string;
-    username?: string | null;
-  }
-) {
-  const { data } = await api.post<{
-    accepted: false;
-    fake: true;
-    tokenConfigured: boolean;
-    tokenLast4: string | null;
-    tokenStatus: MissionToolsUserPanel["tokenStatus"];
-    user: MissionToolsUserPanel;
-  }>(`/mission-tools/${guildId}/users/${encodeURIComponent(userId)}/token`, payload, {
-    params: botParams(botId),
-    timeout: 15000
-  });
-  return data;
-}
-
-export async function saveMissionToolsMyToken(
-  guildId: string,
-  botId: string,
-  payload: {
-    token: string;
-  }
-) {
-  const { data } = await api.post<{
-    accepted: false;
-    fake: true;
-    tokenConfigured: boolean;
-    tokenLast4: string | null;
-    tokenStatus: MissionToolsUserPanel["tokenStatus"];
-    user: MissionToolsUserPanel;
-  }>(`/mission-tools/${guildId}/me/token`, payload, {
-    params: botParams(botId),
-    timeout: 15000
-  });
-  return data;
-}
-
-export async function deleteMissionToolsMyToken(guildId: string, botId: string) {
-  const { data } = await api.delete<{
-    tokenConfigured: boolean;
-    tokenLast4: string | null;
-    tokenStatus: MissionToolsUserPanel["tokenStatus"];
-    user: MissionToolsUserPanel;
-  }>(`/mission-tools/${guildId}/me/token`, {
-    params: botParams(botId),
-    timeout: 15000
-  });
-  return data;
 }
 
 export async function getDevModules() {

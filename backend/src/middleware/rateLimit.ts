@@ -146,8 +146,6 @@ function isBotRuntimePath(path: string) {
     || path.startsWith("/x-monitor/bot/")
     || path.startsWith("/api/fivem/bot/")
     || path.startsWith("/fivem/bot/")
-    || path.startsWith("/api/mission-tools/bot/")
-    || path.startsWith("/mission-tools/bot/")
     || path.startsWith("/api/voice-recorder/bot/")
     || path.startsWith("/voice-recorder/bot/");
 }

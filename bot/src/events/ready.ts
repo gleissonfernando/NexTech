@@ -13,6 +13,9 @@ import { startFivemFacService } from "../services/fivemFacService";
 import { startFivemGoalService } from "../services/fivemGoalService";
 import { startFooterRuntimeService } from "../services/footerRuntimeService";
 import { startFivemFinanceService } from "../services/fivemFinanceService";
+import { startFivemExpenseService } from "../services/fivemExpenseService";
+import { startAmmunitionService } from "../services/ammunitionService";
+import { startWeaponSaleService } from "../services/weaponSaleService";
 import { startFivemOrderService } from "../services/fivemOrderService";
 import { startFivemHierarchyService } from "../services/fivemHierarchyService";
 import { startFivemActionService } from "../services/fivemActionService";
@@ -34,7 +37,6 @@ import { startImageAntiSpamService } from "../services/imageAntiSpamService";
 import { startKickNotificationMonitor } from "../services/kickNotificationMonitor";
 import { startLiveDetectionService } from "../services/liveService";
 import { isMaintenanceModeActive, onMaintenanceStateChanged, refreshMaintenanceState, startMaintenanceService } from "../services/maintenanceService";
-import { startMissionToolsService } from "../services/missionToolsService";
 import { startNexTechSalesDeliveryService } from "../services/nexTechSalesDeliveryService";
 import { startNexTechInviteService } from "../services/nexTechInviteService";
 import { startSalesTicketService } from "../services/salesTicketService";
@@ -360,11 +362,13 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("x-monitor", isBotModuleEnabled("x-monitor"), () => startXMonitor(client, context.api, context.socket));
   startRuntimeService("clips", isBotModuleEnabled("clips") || isBotModuleEnabled("kick-clips"), () => startClipsMonitor(client, context.api));
   startRuntimeService("giveaway", isBotModuleEnabled("giveaway"), () => startGiveawayService(client, context.api, context.socket));
-  startRuntimeService("mission-tools", isBotModuleEnabled("mission-tools"), () => startMissionToolsService(client, context));
-  startRuntimeService("fivem-fac", isBotModuleEnabled("fivem-fac"), () => startFivemFacService(client, context));
+  startRuntimeService("fivem-absences", isBotModuleEnabled("fivem-absences"), () => startFivemFacService(client, context));
   startRuntimeService("fivem-goals", isBotModuleEnabled("fivem-goals"), () => startFivemGoalService(client, context));
   startRuntimeService("ztk-webhook", isBotModuleEnabled("ztk-webhook"), () => startZtkWebhookService(client, context));
   startRuntimeService("fivem-finance", isBotModuleEnabled("fivem-finance"), () => startFivemFinanceService(client, context));
+  startRuntimeService("fivem-expenses", isBotModuleEnabled("fivem-expenses"), () => startFivemExpenseService(client, context));
+  startRuntimeService("fivem-ammunition", isBotModuleEnabled("fivem-ammunition"), () => startAmmunitionService(client, context));
+  startRuntimeService("fivem-weapons", isBotModuleEnabled("fivem-weapons"), () => startWeaponSaleService(client, context));
   startRuntimeService("fivem-orders", isBotModuleEnabled("fivem-drugs") || isBotModuleEnabled("fivem-washing"), () => startFivemOrderService(client, context));
   startRuntimeService("manual-payments", isBotModuleEnabled("manual-payments"), () => startManualPaymentService(client, context));
   startRuntimeService("custom-bot-orders", isBotModuleEnabled("custom-bot-orders"), () => startCustomBotOrderService(client, context));
@@ -453,7 +457,6 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
   }
 
   const wasSelfBotEnabled = isSelfBotModuleEnabled();
-  const wasMissionToolsEnabled = isBotModuleEnabled("mission-tools");
   const wasTemporaryVoiceEnabled = isBotModuleEnabled("temporary-voice");
   const wasFivemHierarchyEnabled = isBotModuleEnabled("fivem-hierarchy");
   const wasTagVerificationEnabled = isBotModuleEnabled("tag-verification");

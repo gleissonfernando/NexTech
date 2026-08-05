@@ -9,11 +9,10 @@ export type DatabaseMaintenanceModule =
   | "fivem-goals"
   | "fivem-orders"
   | "fivem-finance"
-  | "fivem-fac"
+  | "fivem-absences"
   | "fivem-hierarchy"
   | "tickets"
   | "temporary-voice"
-  | "mission-tools"
   | "socials"
   | "security"
   | "logs";
@@ -60,12 +59,10 @@ const USER_LINK_DEFINITIONS: UserLinkDefinition[] = [
   { collection: "fivem_order_logs", module: "fivem-orders", userFields: ["actorId", "userId", "targetUserId"] },
   { collection: "fivem_finance_transactions", module: "fivem-finance", userFields: ["userId", "discordId", "memberId"], channelFields: ["tempChannelId", "channelId"] },
   { collection: "fivem_finance_logs", module: "fivem-finance", userFields: ["actorId", "userId", "targetUserId"] },
-  { collection: "fivem_fac_absences", module: "fivem-fac", userFields: ["userId", "discordId", "memberId"] },
+  { collection: "fivem_fac_absences", module: "fivem-absences", userFields: ["userId", "discordId", "memberId"] },
   { collection: "fivem_hierarchy_logs", module: "fivem-hierarchy", userFields: ["userId", "targetUserId"] },
   { collection: "Ticket", module: "tickets", userFields: ["openerId", "userId", "discordId", "memberId"], channelFields: ["channelId"] },
   { collection: "temporary_calls", module: "temporary-voice", userFields: ["ownerId", "userId", "memberId"], channelFields: ["channelId"] },
-  { collection: "mission_tools_users", module: "mission-tools", userFields: ["userId", "discordId", "memberId"] },
-  { collection: "mission_tools_tokens", module: "mission-tools", userFields: ["userId", "discordId", "memberId"] },
   { collection: "social_members", module: "socials", userFields: ["userId", "discordId", "memberId"] },
   { collection: "global_blacklist_entries", module: "security", userFields: ["userId", "discordId", "memberId"] },
   { collection: "global_blacklist_history", module: "security", userFields: ["userId", "targetUserId", "discordId", "memberId"] },
@@ -87,7 +84,7 @@ const RESET_DEFINITIONS: ResetDefinition[] = [
   { collection: "fivem_order_settings", module: "fivem-orders" },
   { collection: "fivem_order_products", module: "fivem-orders" },
   { collection: "fivem_finance_settings", module: "fivem-finance" },
-  { collection: "fivem_fac_settings", module: "fivem-fac" },
+  { collection: "fivem_fac_settings", module: "fivem-absences" },
   { collection: "fivem_hierarchy_panels", module: "fivem-hierarchy" }
 ];
 
@@ -96,11 +93,10 @@ const MODULE_LABELS: Record<DatabaseMaintenanceModule, string> = {
   "fivem-goals": "Sistema de Metas / Canal de Meta",
   "fivem-orders": "Encomendas / Lavagem / Drogas / Munição / Armas / Famílias",
   "fivem-finance": "Sistema Financeiro",
-  "fivem-fac": "Ausência / FAC",
+  "fivem-absences": "Ausência / FAC",
   "fivem-hierarchy": "Hierarquia",
   tickets: "Tickets",
   "temporary-voice": "Canais temporários",
-  "mission-tools": "Mission Tools",
   socials: "Redes sociais",
   security: "Segurança",
   logs: "Logs internos"

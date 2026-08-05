@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { env } from "../config/env";
+import type { MongoDevBotStatus } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import { resolveDevBotUnexpectedExitLog, sendDevBotUnexpectedExitLog } from "./devBotDiscordLogService";
@@ -31,6 +32,7 @@ type DiscordApplicationCommand = {
 };
 
 type StopDevBotOptions = {
+  finalStatus?: MongoDevBotStatus;
   message?: string;
   notifyBot?: boolean;
 };
@@ -40,7 +42,7 @@ const GATEWAY_GUILD_MEMBERS = 1 << 14;
 const GATEWAY_GUILD_MEMBERS_LIMITED = 1 << 15;
 const GATEWAY_MESSAGE_CONTENT = 1 << 18;
 const GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19;
-const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-fac", "account-age-security", "safe-bot", "moderation"];
+const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "fivem-absences", "account-age-security", "safe-bot", "moderation"];
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
 const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
 const DEV_BOT_START_CONCURRENCY = 1;
@@ -53,6 +55,7 @@ const DEV_BOT_SUPERVISOR_START_ATTEMPTS = 7;
 const DEV_BOT_SUPERVISOR_INSTANCE_ID = `dev-bot-supervisor:${process.pid}:${randomUUID()}`;
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
+const restartAttempts = new Map<string, { attempts: number; firstFailureAt: number }>();
 const moduleRestartTimers = new Map<string, NodeJS.Timeout>();
 let supervisorLeaseTimer: NodeJS.Timeout | null = null;
 let supervisorLeaseHeld = false;
@@ -219,8 +222,9 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
     moduleRestartTimers.delete(botId);
   }
 
-  const runtime = runningBots.get(botId);
-  const status = await updateDevBotRuntimeStatus(botId, runtime ? "stopping" : "offline", statusMessage);
+const runtime = runningBots.get(botId);
+  const finalStatus = options.finalStatus ?? "offline";
+  const status = await updateDevBotRuntimeStatus(botId, runtime ? "stopping" : finalStatus, statusMessage);
 
   if (notifyBot) {
     emitRealtimeToRoom(devBotRealtimeRoom(botId), "bot:shutdown", {
@@ -249,7 +253,7 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
     }
   });
 
-  return await updateDevBotRuntimeStatus(botId, "offline", statusMessage);
+  return await updateDevBotRuntimeStatus(botId, finalStatus, statusMessage);
 }
 
 export async function stopAllDevBotProcesses() {
@@ -460,6 +464,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     if (message.includes("[bot] conectado como")) {
       void updateDevBotRuntimeStatus(bot.id, "syncing_config", "Bot conectado ao Discord; sincronizando comandos e configurações.");
     } else if (/comandos sincronizados/i.test(message)) {
+      restartAttempts.delete(bot.id);
       void updateDevBotRuntimeStatus(bot.id, "ready", "Bot pronto; comandos sincronizados no Discord.");
       void resolveDevBotUnexpectedExitLog({
         botId: bot.id,
@@ -498,7 +503,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
     const detail = signal ? `sinal ${signal}` : `codigo ${code ?? 0}`;
     const exitMessage = runtime.lastError ?? `Processo encerrado com ${detail}.`;
     const invalidToken = /token inv.lido|discord recusou o token/i.test(exitMessage);
-    const status = invalidToken ? "invalid_token" : code === 0 ? "offline" : "error";
+    const status: MongoDevBotStatus = invalidToken ? "invalid_token" : code === 0 ? "offline" : "crashed";
     void updateDevBotRuntimeStatus(bot.id, status, exitMessage);
     void sendDevBotUnexpectedExitLog({
       botId: bot.id,
@@ -506,17 +511,24 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       clientId: bot.clientId,
       detail,
       message: exitMessage,
-      status
+      status: status === "crashed" ? "error" : status
     });
 
     if (invalidToken) {
       return;
     }
 
+    const delayMs = restartDelayMs(bot.id);
+    void updateDevBotRuntimeStatus(
+      bot.id,
+      "waiting_retry",
+      `Processo caiu com ${detail}; nova tentativa automática em ${Math.round(delayMs / 1000)}s.`
+    );
+
     const timer = setTimeout(() => {
       restartTimers.delete(bot.id);
       void startDevBotProcess(bot.id);
-    }, restartDelayMs(bot.id));
+    }, delayMs);
 
     timer.unref();
     restartTimers.set(bot.id, timer);
@@ -524,8 +536,16 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
 }
 
 function restartDelayMs(botId: string) {
+  const now = Date.now();
+  const current = restartAttempts.get(botId);
+  const windowMs = 30 * 60_000;
+  const next = current && now - current.firstFailureAt <= windowMs
+    ? { attempts: current.attempts + 1, firstFailureAt: current.firstFailureAt }
+    : { attempts: 1, firstFailureAt: now };
+  restartAttempts.set(botId, next);
   const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
-  return DEV_BOT_RESTART_DELAY_MS + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+  const backoff = Math.min(10 * 60_000, DEV_BOT_RESTART_DELAY_MS * 2 ** Math.max(0, next.attempts - 1));
+  return backoff + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
 }
 
 async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[]) {

@@ -21,7 +21,7 @@ const needsTagVerification = isBotModuleEnabled("tag-verification") || managedRu
 const needsLivePresence = isBotModuleEnabled("live") || isBotModuleEnabled("auto-activity-clock") || managedRuntimeBot;
 const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
 const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeBot;
-const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-fac", "fivem-hierarchy", "account-age-security", "anti-ban", "tag-verification"].some(isBotModuleEnabled)
+const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-hierarchy", "account-age-security", "anti-ban", "tag-verification"].some(isBotModuleEnabled)
   || isSelfBotModuleEnabled()
   || managedRuntimeBot;
 const selfBotModuleEnabled = isSelfBotModuleEnabled();
@@ -32,6 +32,8 @@ const needsMessageEvents = needsLegacyMessageModeration
   || managedRuntimeBot
   || needsMusic
   || isBotModuleEnabled("manual-payments")
+  || isBotModuleEnabled("fivem-ammunition")
+  || isBotModuleEnabled("fivem-weapons")
   || isBotModuleEnabled("temporary-voice")
   || needsMessageLogs;
 

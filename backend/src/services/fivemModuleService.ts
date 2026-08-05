@@ -60,6 +60,20 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Venda de munição com encomendas, canais temporários, logs e integração idempotente com o Caixa da FAC.",
+    id: "fivem-ammunition",
+    permissions: "Admin FiveM, Gerência da FAC",
+    title: "Sistema de Venda de Munição"
+  },
+  {
+    builtIn: true,
+    description: "Venda de armas virtuais com cadastro próprio, canais temporários, captura por chat, confirmação e logs.",
+    id: "fivem-weapons",
+    permissions: "Admin FiveM, Gerência da FAC",
+    title: "Sistema de Venda de Armas"
+  },
+  {
+    builtIn: true,
     description: "Metas por membro com canais individuais, fotos e registros via Components V2.",
     id: "fivem-goals",
     permissions: "Admin FiveM, Liderança",

@@ -44,7 +44,6 @@ const PANELS: PanelDefinition[] = [
   { id: "live", label: "Live" },
   { id: "giveaway", label: "Sorteio" },
   { id: "safe-bot", label: "Self Bot" },
-  { id: "mission-tools", label: "Mission Tools" },
   { id: "social-network", label: "Redes sociais" },
   { id: "logs", label: "Avisos e logs" },
   { id: "auto-activity-clock", label: "Ponto automático" },

@@ -118,7 +118,7 @@ export type ModerateFivemFacAbsenceInput = {
   reason?: string | null;
 };
 
-const FAC_MODULE_ID = "fivem-fac";
+const FAC_MODULE_ID = "fivem-absences";
 const ACTIVE_ABSENCE_STATUSES: MongoFivemFacAbsenceStatus[] = ["pending", "approved", "active"];
 const FAC_ABSENCE_UPLOAD_DIR = path.resolve(__dirname, "../../uploads/fivem-fac");
 const FAC_PHOTO_MIME_EXTENSIONS: Record<string, string> = {

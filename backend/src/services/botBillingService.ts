@@ -19,6 +19,25 @@ const DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS = 1200;
 const DUE_DAY = 8;
 const BILLING_JOB_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const BOT_BILLING_PAID_STATUSES: MongoBotBillingInvoiceStatus[] = ["paid", "manually_released"];
+const OVERDUE_SHUTDOWN_GRACE_MS = 12 * 60 * 60 * 1000;
+
+type MarkOverdueBotInvoicesOptions = {
+  botId?: string;
+  stopBots?: boolean;
+};
+
+export type BotBillingShutdownDecision = {
+  allowed: boolean;
+  reason: string;
+  reasonCode:
+    | "invoice_not_overdue"
+    | "bot_not_found"
+    | "lifetime_plan"
+    | "administrative_override"
+    | "covered_by_paid_invoice"
+    | "within_grace_period"
+    | "confirmed_overdue";
+};
 
 export type BotBillingAccessDto = {
   blocked: boolean;
@@ -214,25 +233,32 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
   }
 }
 
-export async function markOverdueBotInvoices(source = "overdue_job") {
+export async function markOverdueBotInvoices(source = "overdue_job", options: MarkOverdueBotInvoicesOptions = {}) {
   const { botBillingInvoices, devBots } = await getMongoCollections();
   const now = new Date();
   const overdueCutoff = new Date(now);
   overdueCutoff.setHours(0, 0, 0, 0);
   const invoices = await botBillingInvoices.find({
+    ...(options.botId ? { botId: options.botId } : {}),
     dueDate: { $lt: overdueCutoff },
     status: "pending"
   }).toArray();
   let updated = 0;
+  let stopped = 0;
 
   for (const invoice of invoices) {
-    const bot = await devBots.findOne({ _id: invoice.botId });
-    const forceBotActive = bot ? hasValidBotOverride(bot, "bot") : false;
+    const [bot, latestPaid] = await Promise.all([
+      devBots.findOne({ _id: invoice.botId }),
+      findLatestPaidBotBillingInvoice(invoice.botId)
+    ]);
+    const decision = evaluateBotBillingShutdown(bot, invoice, latestPaid, now);
     const next = await botBillingInvoices.findOneAndUpdate(
       { _id: invoice._id, status: "pending" },
       {
         $set: {
-          notes: "Fatura vencida sem pagamento confirmado.",
+          notes: decision.allowed
+            ? "Fatura vencida sem pagamento confirmado."
+            : `Fatura vencida registrada sem desligamento automático: ${decision.reason}`,
           status: "overdue",
           statusHistory: appendInvoiceHistory(invoice, "overdue", source),
           updatedAt: new Date()
@@ -242,20 +268,23 @@ export async function markOverdueBotInvoices(source = "overdue_job") {
     );
     if (!next) continue;
     updated += 1;
-    if (bot && !forceBotActive) {
+
+    if (bot && options.stopBots !== false && decision.allowed) {
       const { stopDevBotProcess } = await import("./devBotRuntimeService.js");
       await devBots.updateOne({ _id: bot._id }, { $set: { desiredOnline: false, updatedAt: new Date() } });
       await stopDevBotProcess(bot._id, {
-        message: "Bot desligado automaticamente por fatura vencida.",
+        finalStatus: "stopped_by_payment",
+        message: `Bot desligado automaticamente por fatura vencida confirmada (${next._id}, vencimento ${next.dueDate.toISOString()}).`,
         notifyBot: true
       });
+      stopped += 1;
     }
     await ensureContractForBotInvoice(next, source).catch(logBillingError);
     await emitContractInvoiceDm(next._id, "overdue", null).catch(logBillingError);
     emitRealtime("bot:billing_updated", { botId: invoice.botId, invoice: toBotBillingInvoiceDto(next) });
   }
 
-  return { updated };
+  return { stopped, updated };
 }
 
 export async function getBotBillingAccess(botId: string, user?: AuthSessionUser | null) {
@@ -264,7 +293,7 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
   if (!bot) return null;
 
   await ensureInvoiceWhenDashboardOpens(bot);
-  await markOverdueBotInvoices("access_check");
+  await markOverdueBotInvoices("access_check", { botId, stopBots: false });
 
   const now = new Date();
   const [currentInvoice, blockingInvoice, nextInvoice, latestInvoice] = await Promise.all([
@@ -296,10 +325,75 @@ export async function canStartBotByBilling(botId: string) {
   const { devBots } = await getMongoCollections();
   const bot = await devBots.findOne({ _id: botId });
   if (!bot) return { allowed: false, reason: "Bot não encontrado." };
-  await markOverdueBotInvoices("bot_start_check");
+  if ((bot.billingModel ?? "monthly") === "lifetime" || hasValidBotOverride(bot, "bot")) {
+    return { allowed: true, reason: null };
+  }
+  await markOverdueBotInvoices("bot_start_check", { botId, stopBots: false });
   const overdue = await findBlockingBotBillingInvoice(botId);
   if (!overdue || hasValidBotOverride(bot, "bot")) return { allowed: true, reason: null };
   return { allowed: false, reason: "Bot bloqueado por fatura vencida." };
+}
+
+export function evaluateBotBillingShutdown(
+  bot: MongoDevBot | null,
+  invoice: MongoBotBillingInvoice,
+  latestPaid: MongoBotBillingInvoice | null,
+  now = new Date()
+): BotBillingShutdownDecision {
+  if (!bot) {
+    return {
+      allowed: false,
+      reason: "Bot da fatura não foi encontrado; desligamento automático bloqueado para evitar falso positivo.",
+      reasonCode: "bot_not_found"
+    };
+  }
+
+  if ((bot.billingModel ?? invoice.billingModel) === "lifetime" || invoice.planPeriod === "lifetime") {
+    return {
+      allowed: false,
+      reason: "Bot possui plano vitalício.",
+      reasonCode: "lifetime_plan"
+    };
+  }
+
+  if (hasValidBotOverride(bot, "bot")) {
+    return {
+      allowed: false,
+      reason: "Bot possui liberação administrativa ativa.",
+      reasonCode: "administrative_override"
+    };
+  }
+
+  if (latestPaid && latestPaid.dueDate.getTime() >= invoice.dueDate.getTime()) {
+    return {
+      allowed: false,
+      reason: "Existe pagamento/liberação mais recente cobrindo esta competência.",
+      reasonCode: "covered_by_paid_invoice"
+    };
+  }
+
+  const dueAt = invoice.dueDate.getTime();
+  if (!Number.isFinite(dueAt) || dueAt >= now.getTime()) {
+    return {
+      allowed: false,
+      reason: "Fatura ainda não venceu de forma confirmada.",
+      reasonCode: "invoice_not_overdue"
+    };
+  }
+
+  if (now.getTime() - dueAt < OVERDUE_SHUTDOWN_GRACE_MS) {
+    return {
+      allowed: false,
+      reason: "Fatura está dentro do período de tolerância para confirmação segura.",
+      reasonCode: "within_grace_period"
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: "Fatura vencida confirmada sem pagamento posterior, plano vitalício ou liberação administrativa.",
+    reasonCode: "confirmed_overdue"
+  };
 }
 
 export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, actor: AuthSessionUser) {
@@ -508,10 +602,7 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
 
 async function findBlockingBotBillingInvoice(botId: string) {
   const { botBillingInvoices } = await getMongoCollections();
-  const latestPaid = await botBillingInvoices.findOne(
-    { botId, status: { $in: BOT_BILLING_PAID_STATUSES } },
-    { sort: { dueDate: -1 } }
-  );
+  const latestPaid = await findLatestPaidBotBillingInvoice(botId);
   return botBillingInvoices.findOne(
     {
       botId,
@@ -519,6 +610,14 @@ async function findBlockingBotBillingInvoice(botId: string) {
       ...(latestPaid ? { dueDate: { $gt: latestPaid.dueDate } } : {})
     },
     { sort: { dueDate: 1 } }
+  );
+}
+
+async function findLatestPaidBotBillingInvoice(botId: string) {
+  const { botBillingInvoices } = await getMongoCollections();
+  return botBillingInvoices.findOne(
+    { botId, status: { $in: BOT_BILLING_PAID_STATUSES } },
+    { sort: { dueDate: -1 } }
   );
 }
 

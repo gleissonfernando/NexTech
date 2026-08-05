@@ -164,14 +164,24 @@ async function createFivemFinanceTransactionLocked(input: {
     const duplicate = await fivemFinanceTransactions.findOne({ ...scope, "metadata.laundryOrderId": laundryOrderId, status: { $ne: "cancelled" } });
     if (duplicate) return toTransactionDto(duplicate);
   }
+  const expenseOperationId = typeof input.metadata?.expenseOperationId === "string" ? input.metadata.expenseOperationId : null;
+  if (expenseOperationId) {
+    const duplicate = await fivemFinanceTransactions.findOne({ ...scope, "metadata.expenseOperationId": expenseOperationId, status: { $ne: "cancelled" } });
+    if (duplicate) return toTransactionDto(duplicate);
+  }
+  const ammunitionOrderId = typeof input.metadata?.ammunitionOrderId === "string" ? input.metadata.ammunitionOrderId : null;
+  if (ammunitionOrderId) {
+    const duplicate = await fivemFinanceTransactions.findOne({ ...scope, "metadata.ammunitionOrderId": ammunitionOrderId, status: { $ne: "cancelled" } });
+    if (duplicate) return toTransactionDto(duplicate);
+  }
   const currentBalanceCents = typeof settings.balanceCents === "number" ? settings.balanceCents : reaisToCents(await getBalance(input.guildId, normalizedBotId, factionId));
   const multiplier = input.type === "add" ? 1 : -1;
   const newBalanceCents = currentBalanceCents + (multiplier * amountCents);
-  if (input.type !== "add" && newBalanceCents < 0) throw financeError("Saldo insuficiente.", 409);
+  if (input.type !== "add" && !settings.allowNegativeBalance && newBalanceCents < 0) throw financeError("Saldo insuficiente.", 409);
   const now = new Date();
   await ensureGuild(input.guildId);
   const updatedCash = await fivemFinanceSettings.findOneAndUpdate(
-    input.type === "add" ? scope : { ...scope, balanceCents: { $gte: amountCents } },
+    input.type === "add" || settings.allowNegativeBalance ? scope : { ...scope, balanceCents: { $gte: amountCents } },
     {
       $inc: {
         balanceCents: multiplier * amountCents,

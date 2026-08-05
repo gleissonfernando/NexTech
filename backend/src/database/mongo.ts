@@ -1572,6 +1572,309 @@ export type MongoFivemFinanceLog = {
   transactionId: string | null;
 };
 
+export type MongoAmmunitionPermissionType =
+  | "CREATE_ORDER"
+  | "VIEW_CHANNEL"
+  | "COMPLETE_ORDER"
+  | "CANCEL_ORDER"
+  | "VIEW_REPORT"
+  | "MANAGE_CONFIG";
+
+export type MongoAmmunitionOrderStatus = "PENDING" | "PROCESSING" | "DELIVERED" | "CANCELLED" | "FAILED";
+
+export type MongoAmmunitionConfig = {
+  _id: string;
+  botId: string | null;
+  cancelledChannelDeleteDelaySeconds: number;
+  completedChannelDeleteDelaySeconds: number;
+  createdAt: Date;
+  currency: "BRL";
+  enabled: boolean;
+  guildId: string;
+  logChannelId: string | null;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  sellerFactionId: string | null;
+  temporaryCategoryId: string | null;
+  timezone: string;
+  unitPriceInCents: number | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoAmmunitionRole = {
+  _id: string;
+  botId: string | null;
+  createdAt: Date;
+  guildId: string;
+  permissionType: MongoAmmunitionPermissionType;
+  roleId: string;
+};
+
+export type MongoAmmunitionType = {
+  _id: string;
+  active: boolean;
+  aliases: string[];
+  botId: string | null;
+  createdAt: Date;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  updatedAt: Date;
+  unitPriceInCents: number | null;
+};
+
+export type MongoAmmunitionOrderItem = {
+  ammunitionTypeId: string;
+  name: string;
+  quantity: number;
+  subtotalInCents: number;
+  unitPriceInCents: number;
+  updatedAt: Date;
+};
+
+export type MongoAmmunitionOrder = {
+  _id: string;
+  botId: string | null;
+  buyerFactionId: string;
+  buyerFactionName: string;
+  cancelledAt: Date | null;
+  cancelledByUserId: string | null;
+  cancelReason: string | null;
+  cashIdempotencyKey: string;
+  cashTransactionId: string | null;
+  completedAt: Date | null;
+  completedByUserId: string | null;
+  createdAt: Date;
+  guildId: string;
+  openedByUserId: string;
+  orderNumber: number;
+  panelMessageId: string | null;
+  itemEditingLocked: boolean;
+  items: MongoAmmunitionOrderItem[];
+  processingStartedAt: Date | null;
+  quantity: number;
+  sellerFactionId: string;
+  sellerFactionName: string;
+  sellerUserId: string;
+  status: MongoAmmunitionOrderStatus;
+  temporaryChannelId: string | null;
+  totalValueInCents: number;
+  unitPriceInCents: number;
+  updatedAt: Date;
+};
+
+export type MongoAmmunitionMessageLog = {
+  _id: string;
+  action: "ADD_ITEMS" | "REMOVE_ITEM" | "CLEAR_ITEMS" | "LIST_ITEMS" | "FINALIZE_ORDER" | "REOPEN_ORDER" | "REJECTED";
+  authorId: string;
+  botId: string | null;
+  channelId: string;
+  content: string;
+  createdAt: Date;
+  guildId: string;
+  metadata: Record<string, unknown>;
+  messageId: string;
+  orderId: string;
+};
+
+export type MongoAmmunitionAuditLog = {
+  _id: string;
+  action: string;
+  actorId: string | null;
+  botId: string | null;
+  createdAt: Date;
+  guildId: string;
+  metadata: Record<string, unknown>;
+  orderId: string | null;
+  origin: "DASHBOARD" | "DISCORD" | "SYSTEM";
+};
+
+export type MongoWeaponSaleSessionStatus = "aguardando_itens" | "em_preenchimento" | "aguardando_confirmacao" | "processando" | "concluida" | "cancelada" | "expirada";
+
+export type MongoWeaponSaleConfig = {
+  _id: string;
+  accentColor: string | null;
+  botId: string | null;
+  buttonText: string;
+  cancelDeleteDelaySeconds: number;
+  completedDeleteDelaySeconds: number;
+  createdAt: Date;
+  description: string;
+  enabled: boolean;
+  expirationMinutes: number;
+  footerImageUrl: string | null;
+  guildId: string;
+  imageUrl: string | null;
+  logChannelId: string | null;
+  managerRoleIds: string[];
+  managerUserIds: string[];
+  orientationText: string;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  temporaryCategoryId: string | null;
+  temporaryChannelText: string;
+  thumbnailUrl: string | null;
+  title: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoWeaponSaleWeapon = {
+  _id: string;
+  active: boolean;
+  botId: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  guildId: string;
+  name: string;
+  normalizedName: string;
+  unitPriceInCents: number;
+  updatedAt: Date;
+};
+
+export type MongoWeaponSaleItem = {
+  subtotalInCents: number;
+  quantity: number;
+  unitPriceInCents: number;
+  weaponId: string;
+  weaponName: string;
+};
+
+export type MongoWeaponSaleSession = {
+  _id: string;
+  botId: string | null;
+  buyerFactionId: string;
+  buyerFactionName: string;
+  channelId: string | null;
+  completedAt: Date | null;
+  completedByUserId: string | null;
+  createdAt: Date;
+  expiresAt: Date | null;
+  guildId: string;
+  items: MongoWeaponSaleItem[];
+  lastActivityAt: Date;
+  logMessageId: string | null;
+  openedByUserId: string;
+  panelMessageId: string | null;
+  saleCode: string;
+  sellerName: string | null;
+  status: MongoWeaponSaleSessionStatus;
+  totalQuantity: number;
+  totalValueInCents: number;
+  updatedAt: Date;
+};
+
+export type MongoWeaponSaleMessageLog = {
+  _id: string;
+  action: string;
+  authorId: string;
+  botId: string | null;
+  channelId: string | null;
+  content: string;
+  createdAt: Date;
+  guildId: string;
+  messageId: string | null;
+  metadata: Record<string, unknown>;
+  sessionId: string;
+};
+
+export type MongoFivemExpenseAmountMode = "TOTAL" | "UNIT_PRICE" | "BOTH";
+export type MongoFivemExpenseReleaseStatus = "active" | "disabled" | "suspended";
+export type MongoFivemExpenseRecordStatus = "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type MongoFivemExpenseCashOperation = "DEBIT";
+export type MongoFivemExpenseModuleType = "EXPENSES";
+export type MongoFivemExpenseTransactionType = "OUTFLOW";
+
+export type MongoFivemExpenseConfig = {
+  _id: string;
+  adminRoleIds: string[];
+  allowAdministrators: boolean;
+  allowNegativeBalance: boolean;
+  authorizedRoleIds: string[];
+  botId: string | null;
+  clientId: string | null;
+  color: string;
+  enabled: boolean;
+  footerText: string | null;
+  guildId: string;
+  imageUrl: string | null;
+  logsChannelId: string | null;
+  moduleType: MongoFivemExpenseModuleType;
+  moduleId: "fivem-expenses";
+  organizationId: string;
+  organizationName: string;
+  panelChannelId: string | null;
+  panelDescription: string;
+  panelMessageId: string | null;
+  panelName: string;
+  panelTitle: string;
+  releaseStatus: MongoFivemExpenseReleaseStatus;
+  releasedAt: Date | null;
+  releasedBy: string | null;
+  summaryChannelId: string | null;
+  thumbnailUrl: string | null;
+  updatedAt: Date;
+  updatedBy?: string | null;
+};
+
+export type MongoFivemExpenseItem = {
+  _id: string;
+  amountMode: MongoFivemExpenseAmountMode;
+  botId: string | null;
+  createdAt: Date;
+  deductFromCash: boolean;
+  defaultUnitAmountCents: number | null;
+  description: string | null;
+  emoji: string | null;
+  enabled: boolean;
+  guildId: string;
+  maxQuantity: number | null;
+  minQuantity: number | null;
+  name: string;
+  organizationId: string;
+  position: number;
+  requiresAmount: boolean;
+  requiresDescription: boolean;
+  requiresQuantity: boolean;
+  transactionType: MongoFivemExpenseTransactionType;
+  updatedAt: Date;
+};
+
+export type MongoFivemExpenseRecord = {
+  _id: string;
+  archived: boolean;
+  balanceAfterCents: number;
+  balanceBeforeCents: number;
+  botId: string | null;
+  cashOperation: MongoFivemExpenseCashOperation;
+  cashTransactionId: string | null;
+  channelId: string;
+  createdAt: Date;
+  description: string | null;
+  errorMessage: string | null;
+  guildId: string;
+  interactionId: string;
+  itemEmoji: string | null;
+  itemId: string;
+  itemName: string;
+  moduleType: MongoFivemExpenseModuleType;
+  messageId: string | null;
+  organizationId: string;
+  organizationName: string;
+  quantity: number | null;
+  resetBatchId: string | null;
+  status: MongoFivemExpenseRecordStatus;
+  totalAmountCents: number;
+  transactionId: string;
+  transactionType: MongoFivemExpenseTransactionType;
+  unitAmountCents: number | null;
+  updatedAt: Date;
+  userAvatar: string | null;
+  userDisplayName: string;
+  userId: string;
+};
+
 export type MongoWashingRuleType = "exact" | "range" | "minimum" | "progressive" | "default";
 export type MongoWashingSessionStatus = "open" | "quoted" | "confirmed" | "cancelled" | "expired";
 export type MongoWashingTransactionStatus = "confirmed" | "cancelled" | "cash_pending" | "cash_integrated" | "cash_failed";
@@ -4525,144 +4828,6 @@ export type MongoBoosterLog = {
   createdAt: Date;
 };
 
-export type MongoMissionToolsFeatureId =
-  | "mission"
-  | "clear"
-  | "voice"
-  | "rich-presence"
-  | "username-checker";
-
-export type MongoMissionToolsStatus =
-  | "active"
-  | "inactive"
-  | "deactivated"
-  | "waiting"
-  | "running"
-  | "completed"
-  | "error";
-
-export type MongoMissionToolsVoiceStatus =
-  | "connected"
-  | "disconnected"
-  | "reconnecting";
-
-export type MongoMissionToolsClearMode = "bulk" | "userDm";
-
-export type MongoMissionToolsRichPresenceStatus = "active" | "inactive";
-
-export type MongoMissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MongoMissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
-
-export type MongoMissionToolsRichPresenceConfig = {
-  applicationId?: string;
-  activityType?: MongoMissionToolsRichPresenceActivityType;
-  name?: string;
-  description?: string;
-  state?: string;
-  details?: string;
-  buttonLabel?: string;
-  buttonUrl?: string;
-  largeImage?: string;
-  largeText?: string;
-  smallImage?: string;
-  smallText?: string;
-  startTimestamp?: string;
-};
-
-export type MongoMissionToolsUsernameCheckerStats = {
-  hits: number;
-  taken: number;
-  errors: number;
-  activeProxies: number;
-  deadProxies: number;
-  bannedProxies: number;
-  workersRunning: number;
-};
-
-export type MongoMissionToolsUsernameCheckerOptions = {
-  usernameLength?: number;
-  concurrency?: number;
-  requestDelay?: number;
-};
-
-export type MongoMissionToolsSettings = {
-  _id: string;
-  botId: string;
-  guildId: string;
-  enabled: boolean;
-  panelChannelId: string | null;
-  panelMessageId: string | null;
-  logChannelId: string | null;
-  managerRoleIds: string[];
-  allowedRoleIds: string[];
-  enabledFeatures: MongoMissionToolsFeatureId[];
-  lastPanelRequestedAt?: Date | null;
-  createdBy: string | null;
-  updatedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type MongoMissionToolsUserPanel = {
-  _id: string;
-  botId: string;
-  guildId: string;
-  userId: string;
-  username: string | null;
-  dmChannelId: string | null;
-  clearMessageId: string | null;
-  missionMessageId: string | null;
-  voiceMessageId: string | null;
-  richPresenceMessageId: string | null;
-  usernameCheckerMessageId: string | null;
-  tokenConfigured: boolean;
-  clearStatus: MongoMissionToolsStatus;
-  clearMode: MongoMissionToolsClearMode;
-  clearTargetUserId: string | null;
-  missionStatus: MongoMissionToolsStatus;
-  voiceStatus: MongoMissionToolsVoiceStatus;
-  richPresenceStatus: MongoMissionToolsRichPresenceStatus;
-  usernameCheckerStatus: MongoMissionToolsStatus;
-  currentMission: string | null;
-  missionDetail: string | null;
-  voiceGuildId: string | null;
-  voiceGuildName: string | null;
-  voiceChannelId: string | null;
-  voiceChannelName: string | null;
-  voiceConnectedAt: string | null;
-  richPresenceConfig: MongoMissionToolsRichPresenceConfig;
-  richPresenceUpdatedAt: string | null;
-  usernameCheckerOptions: MongoMissionToolsUsernameCheckerOptions;
-  usernameCheckerStats: MongoMissionToolsUsernameCheckerStats;
-  usernameCheckerLastEvent: string | null;
-  usernameCheckerUpdatedAt: string | null;
-  completedCount: number;
-  totalMissions: number;
-  progress: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type MongoMissionToolsToken = {
-  _id: string;
-  botId: string;
-  guildId: string;
-  userId: string;
-  tokenEncrypted: string;
-  tokenHash?: string | null;
-  tokenLast4: string | null;
-  tokenStatus?: MongoMissionToolsTokenStatus;
-  tokenUserId?: string | null;
-  tokenUsername?: string | null;
-  invalidReason?: string | null;
-  lastValidatedAt?: Date | null;
-  lastAuthFailureAt?: Date | null;
-  authFailureCount?: number;
-  statusUpdatedAt?: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 export type MongoSelfBotProtectionModuleId =
   | "anti-spam"
   | "anti-flood"
@@ -4998,6 +5163,14 @@ export type MongoDevBotStatus =
   | "ready"
   | "degraded"
   | "stopping"
+  | "stopped_manually"
+  | "stopped_by_payment"
+  | "stopped_by_admin"
+  | "crashed"
+  | "database_error"
+  | "discord_connection_error"
+  | "waiting_retry"
+  | "maintenance"
   | "invalid_token"
   | "error";
 
@@ -5793,6 +5966,19 @@ export async function getMongoCollections() {
     fivemFinanceSettings: db.collection<MongoFivemFinanceSettings>("fivem_finance_settings"),
     fivemFinanceTransactions: db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions"),
     fivemFinanceLogs: db.collection<MongoFivemFinanceLog>("fivem_finance_logs"),
+    ammunitionConfigs: db.collection<MongoAmmunitionConfig>("ammunition_configs"),
+    ammunitionRoles: db.collection<MongoAmmunitionRole>("ammunition_roles"),
+    ammunitionTypes: db.collection<MongoAmmunitionType>("ammunition_types"),
+    ammunitionOrders: db.collection<MongoAmmunitionOrder>("ammunition_orders"),
+    ammunitionMessageLogs: db.collection<MongoAmmunitionMessageLog>("ammunition_message_logs"),
+    ammunitionAuditLogs: db.collection<MongoAmmunitionAuditLog>("ammunition_audit_logs"),
+    weaponSaleConfigs: db.collection<MongoWeaponSaleConfig>("weapon_sale_configs"),
+    weaponSaleWeapons: db.collection<MongoWeaponSaleWeapon>("weapon_sale_weapons"),
+    weaponSaleSessions: db.collection<MongoWeaponSaleSession>("weapon_sale_sessions"),
+    weaponSaleMessageLogs: db.collection<MongoWeaponSaleMessageLog>("weapon_sale_message_logs"),
+    fivemExpenseConfigs: db.collection<MongoFivemExpenseConfig>("fivem_expense_configs"),
+    fivemExpenseItems: db.collection<MongoFivemExpenseItem>("fivem_expense_items"),
+    fivemExpenseRecords: db.collection<MongoFivemExpenseRecord>("fivem_expense_records"),
     washingSettings: db.collection<MongoWashingSettings>("washing_settings"),
     washingPercentageRules: db.collection<MongoWashingPercentageRule>("washing_percentage_rules"),
     washingSessions: db.collection<MongoWashingSession>("washing_sessions"),
@@ -5918,9 +6104,6 @@ export async function getMongoCollections() {
     customBotOrders: db.collection<MongoCustomBotOrder>("custom_bot_orders"),
     customBotOrderLogs: db.collection<MongoCustomBotOrderLog>("custom_bot_order_logs"),
     customBotOrderNotes: db.collection<MongoCustomBotOrderNote>("custom_bot_order_notes"),
-    missionToolsSettings: db.collection<MongoMissionToolsSettings>("mission_tools_settings"),
-    missionToolsUsers: db.collection<MongoMissionToolsUserPanel>("mission_tools_users"),
-    missionToolsTokens: db.collection<MongoMissionToolsToken>("mission_tools_tokens"),
     selfBotProtectionSettings: db.collection<MongoSelfBotProtectionSettings>("self_bot_protection_settings"),
     selfBotPunishmentStates: db.collection<MongoSelfBotPunishmentState>("self_bot_punishment_states"),
     selfBotProtectionIncidents: db.collection<MongoSelfBotProtectionIncident>("self_bot_protection_incidents"),
@@ -6163,8 +6346,53 @@ async function createMongoIndexes(db: Db) {
       { botId: 1, guildId: 1, factionId: 1, "metadata.laundryOrderId": 1 },
       { partialFilterExpression: { "metadata.laundryOrderId": { $type: "string" } }, unique: true }
     ),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex(
+      { botId: 1, guildId: 1, factionId: 1, "metadata.expenseOperationId": 1 },
+      { partialFilterExpression: { "metadata.expenseOperationId": { $type: "string" } }, unique: true }
+    ),
+    db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex(
+      { botId: 1, guildId: 1, factionId: 1, "metadata.ammunitionOrderId": 1 },
+      { partialFilterExpression: { "metadata.ammunitionOrderId": { $type: "string" } }, unique: true }
+    ),
     db.collection<MongoFivemFinanceTransaction>("fivem_finance_transactions").createIndex({ botId: 1, guildId: 1, factionId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoFivemFinanceLog>("fivem_finance_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoAmmunitionConfig>("ammunition_configs").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoAmmunitionConfig>("ammunition_configs").createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
+    db.collection<MongoAmmunitionRole>("ammunition_roles").createIndex({ botId: 1, guildId: 1, permissionType: 1, roleId: 1 }, { unique: true }),
+    db.collection<MongoAmmunitionRole>("ammunition_roles").createIndex({ botId: 1, guildId: 1, roleId: 1 }),
+    db.collection<MongoAmmunitionType>("ammunition_types").createIndex({ botId: 1, guildId: 1, normalizedName: 1 }, { unique: true }),
+    db.collection<MongoAmmunitionType>("ammunition_types").createIndex({ botId: 1, guildId: 1, active: 1, updatedAt: -1 }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, orderNumber: -1 }, { unique: true }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, temporaryChannelId: 1, status: 1 }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, sellerFactionId: 1, status: 1, completedAt: -1 }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, buyerFactionId: 1, status: 1, completedAt: -1 }),
+    db.collection<MongoAmmunitionOrder>("ammunition_orders").createIndex({ botId: 1, guildId: 1, cashIdempotencyKey: 1 }, { unique: true }),
+    db.collection<MongoAmmunitionMessageLog>("ammunition_message_logs").createIndex({ botId: 1, guildId: 1, orderId: 1, createdAt: -1 }),
+    db.collection<MongoAmmunitionMessageLog>("ammunition_message_logs").createIndex({ botId: 1, guildId: 1, messageId: 1 }, { unique: true }),
+    db.collection<MongoAmmunitionAuditLog>("ammunition_audit_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoAmmunitionAuditLog>("ammunition_audit_logs").createIndex({ botId: 1, guildId: 1, orderId: 1, createdAt: -1 }),
+    db.collection<MongoWeaponSaleConfig>("weapon_sale_configs").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoWeaponSaleWeapon>("weapon_sale_weapons").createIndex({ botId: 1, guildId: 1, normalizedName: 1 }, { unique: true }),
+    db.collection<MongoWeaponSaleWeapon>("weapon_sale_weapons").createIndex({ botId: 1, guildId: 1, active: 1, updatedAt: -1 }),
+    db.collection<MongoWeaponSaleSession>("weapon_sale_sessions").createIndex({ botId: 1, guildId: 1, channelId: 1, status: 1 }),
+    db.collection<MongoWeaponSaleSession>("weapon_sale_sessions").createIndex({ botId: 1, guildId: 1, openedByUserId: 1, status: 1 }),
+    db.collection<MongoWeaponSaleSession>("weapon_sale_sessions").createIndex({ botId: 1, guildId: 1, buyerFactionId: 1, completedAt: -1 }),
+    db.collection<MongoWeaponSaleSession>("weapon_sale_sessions").createIndex({ botId: 1, guildId: 1, saleCode: 1 }, { unique: true }),
+    db.collection<MongoWeaponSaleMessageLog>("weapon_sale_message_logs").createIndex({ botId: 1, guildId: 1, sessionId: 1, createdAt: -1 }),
+    db.collection<MongoWeaponSaleMessageLog>("weapon_sale_message_logs").createIndex({ botId: 1, guildId: 1, messageId: 1 }, { partialFilterExpression: { messageId: { $type: "string" } }, unique: true }),
+    db.collection<MongoFivemExpenseConfig>("fivem_expense_configs").createIndex({ botId: 1, guildId: 1, organizationId: 1 }, { unique: true }),
+    db.collection<MongoFivemExpenseConfig>("fivem_expense_configs").createIndex({ botId: 1, releaseStatus: 1, updatedAt: -1 }),
+    db.collection<MongoFivemExpenseConfig>("fivem_expense_configs").createIndex({ clientId: 1, guildId: 1, organizationId: 1 }),
+    db.collection<MongoFivemExpenseItem>("fivem_expense_items").createIndex({ botId: 1, guildId: 1, organizationId: 1, position: 1 }),
+    db.collection<MongoFivemExpenseItem>("fivem_expense_items").createIndex(
+      { botId: 1, guildId: 1, organizationId: 1, name: 1 },
+      { partialFilterExpression: { enabled: true }, unique: true }
+    ),
+    db.collection<MongoFivemExpenseRecord>("fivem_expense_records").createIndex({ botId: 1, guildId: 1, organizationId: 1, createdAt: -1 }),
+    db.collection<MongoFivemExpenseRecord>("fivem_expense_records").createIndex({ botId: 1, guildId: 1, organizationId: 1, interactionId: 1 }, { unique: true }),
+    db.collection<MongoFivemExpenseRecord>("fivem_expense_records").createIndex({ botId: 1, guildId: 1, organizationId: 1, transactionId: 1 }, { unique: true }),
+    db.collection<MongoFivemExpenseRecord>("fivem_expense_records").createIndex({ botId: 1, guildId: 1, organizationId: 1, userId: 1, createdAt: -1 }),
     db.collection<MongoWashingSettings>("washing_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoWashingPercentageRule>("washing_percentage_rules").createIndex({ botId: 1, guildId: 1, active: 1, priority: -1 }),
     db.collection<MongoWashingPercentageRule>("washing_percentage_rules").createIndex({ botId: 1, guildId: 1, type: 1, minValueCents: 1, maxValueCents: 1 }),
@@ -6279,7 +6507,6 @@ async function createMongoIndexes(db: Db) {
     ensurePriceTableIndexes(db),
     ensureManualPaymentIndexes(db),
     ensureCustomBotOrderIndexes(db),
-    ensureMissionToolsIndexes(db),
     ensureSelfBotProtectionIndexes(db),
     ensureSafeBotWarningIndexes(db),
     ensureTemporaryCallIndexes(db),
@@ -6902,21 +7129,6 @@ async function ensureCustomBotOrderIndexes(db: Db) {
     logs.createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     logs.createIndex({ botId: 1, orderId: 1, createdAt: -1 }),
     notes.createIndex({ botId: 1, orderId: 1, createdAt: -1 })
-  ]);
-}
-
-async function ensureMissionToolsIndexes(db: Db) {
-  const settings = db.collection<MongoMissionToolsSettings>("mission_tools_settings");
-  const users = db.collection<MongoMissionToolsUserPanel>("mission_tools_users");
-  const tokens = db.collection<MongoMissionToolsToken>("mission_tools_tokens");
-
-  await Promise.all([
-    settings.createIndex({ botId: 1, guildId: 1 }, { unique: true }),
-    settings.createIndex({ botId: 1, enabled: 1, updatedAt: -1 }),
-    users.createIndex({ botId: 1, guildId: 1, updatedAt: -1 }),
-    users.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
-    tokens.createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
-    tokens.createIndex({ botId: 1, guildId: 1, tokenHash: 1 })
   ]);
 }
 

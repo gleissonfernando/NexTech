@@ -14,6 +14,7 @@ import {
   Loader2,
   MessageCircle,
   PackagePlus,
+  PackageCheck,
   Pencil,
   Plus,
   Power,
@@ -26,6 +27,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  WalletCards,
   Wrench,
   UserCog,
   Bell,
@@ -61,6 +63,7 @@ import {
   getDiscloudBotLogs,
   getDiscloudMonitoring,
   getDevFivemModules,
+  getDevFivemExpenseReleases,
   getNexTechInviteDashboard,
   getMaintenanceState,
   getLogs,
@@ -75,11 +78,12 @@ import {
   runDiscloudBotAction,
   updateDevBotModules,
   updateDevFivemModule,
+  saveDevFivemExpenseRelease,
   updateNexTechInvite
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -87,7 +91,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "monitoring" | "discloud" | "fivem" | "police" | "logs" | "access" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "monitoring" | "discloud" | "fivem" | "expenses" | "police" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -122,6 +126,7 @@ const DEV_NAV_GROUPS: Array<{ items: DevNavItem[]; label: string }> = [
       { icon: Activity, id: "monitoring", label: "Monitoramento" },
       { icon: HardDrive, id: "discloud", label: "DisCloud" },
       { icon: Building2, id: "fivem", label: "FiveM" },
+      { icon: WalletCards, id: "expenses", label: "Gastos FAC" },
       { icon: ShieldCheck, id: "police", label: "Polícia" },
       { icon: ScrollText, id: "logs", label: "Logs" },
       { icon: UserCog, id: "access", label: "Acessos DEV" },
@@ -318,6 +323,15 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
             selectedBotId={selectedBotId}
             onSelectBot={setSelectedBotId}
             scope="fivem"
+          />
+        ) : null}
+
+        {activeView === "expenses" ? (
+          <DevFivemExpensesReleaseManager
+            bots={profile.bots}
+            onBotUpdated={handleBotUpdated}
+            selectedBotId={selectedBotId}
+            onSelectBot={setSelectedBotId}
           />
         ) : null}
 
@@ -2622,7 +2636,15 @@ function maintenanceBotStatusLabel(status: string | null) {
     online: "Online",
     ready: "Pronto",
     starting: "Iniciando",
-    stopping: "Desligando"
+    stopping: "Desligando",
+    stopped_manually: "Desligado manualmente",
+    stopped_by_payment: "Bloqueado por pagamento",
+    stopped_by_admin: "Desligado pelo DEV",
+    crashed: "Caiu",
+    database_error: "Erro no banco",
+    discord_connection_error: "Erro no Discord",
+    waiting_retry: "Aguardando retry",
+    maintenance: "Manutenção"
   };
 
   return status ? labels[status] ?? status : "Cadastrado";
@@ -2647,6 +2669,14 @@ function devBotStatusLabel(status: DevBotStatus) {
     ready: "Pronto",
     degraded: "Degradado",
     stopping: "Desligando",
+    stopped_manually: "Desligado manualmente",
+    stopped_by_payment: "Bloqueado por pagamento",
+    stopped_by_admin: "Desligado pelo DEV",
+    crashed: "Caiu",
+    database_error: "Erro no banco",
+    discord_connection_error: "Erro no Discord",
+    waiting_retry: "Aguardando retry",
+    maintenance: "Manutenção",
     invalid_token: "Token inválido",
     error: "Erro"
   };
@@ -2860,7 +2890,7 @@ function DevFiveMManager({
   const viewModules = modules
     .filter((module) => scope === "police" ? isPoliceModule(module.id) : isFiveMManagerModule(module.id))
     .map(toFiveMModuleView);
-  const enabled = new Set((selectedBot?.enabledModules ?? []).map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
+  const enabled = new Set(selectedBot?.enabledModules ?? []);
   const activeModuleCount = viewModules.filter((module) => enabled.has(normalizeFiveMModuleId(module.id))).length;
   const stats = {
     active: activeModuleCount,
@@ -2955,8 +2985,8 @@ function DevFiveMManager({
         ? [...new Set([...normalizedModules, canonicalModuleId])]
         : normalizedModules.filter((currentModuleId) => currentModuleId !== canonicalModuleId)
       : checked
-        ? [...new Set([...normalizedModules, "fivem", canonicalModuleId])]
-        : nextFiveMModulesAfterDisable(normalizedModules, canonicalModuleId);
+        ? [...new Set([...normalizedModules, canonicalModuleId])]
+        : normalizedModules.filter((currentModuleId) => currentModuleId !== canonicalModuleId);
     const optimisticBot = {
       ...selectedBot,
       enabledModules: nextModules
@@ -3012,7 +3042,7 @@ function DevFiveMManager({
       const nextBotModules = selectedBot && enabled.has(canonicalModuleId)
         ? scope === "police"
           ? normalizeFiveMModules(selectedBot.enabledModules).filter((currentModuleId) => currentModuleId !== canonicalModuleId)
-          : nextFiveMModulesAfterDisable(normalizeFiveMModules(selectedBot.enabledModules), canonicalModuleId)
+          : normalizeFiveMModules(selectedBot.enabledModules).filter((currentModuleId) => currentModuleId !== canonicalModuleId)
         : null;
       await deleteDevFivemModule(moduleId);
       if (selectedBot && nextBotModules) {
@@ -3187,6 +3217,171 @@ function ModuleActivationButton({
   );
 }
 
+function DevFivemExpensesReleaseManager({
+  bots,
+  onBotUpdated,
+  onSelectBot,
+  selectedBotId
+}: {
+  bots: DashboardBot[];
+  onBotUpdated: (bot: DashboardBot) => void;
+  onSelectBot: (botId: string | null) => void;
+  selectedBotId: string | null;
+}) {
+  const [botList, setBotList] = useState<DashboardBot[]>(bots);
+  const [draft, setDraft] = useState({
+    imageUrl: "",
+    organizationId: "",
+    organizationName: "",
+    panelName: "",
+    releaseStatus: "active" as FivemExpenseConfig["releaseStatus"]
+  });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [releases, setReleases] = useState<FivemExpenseConfig[]>([]);
+  const [saving, setSaving] = useState(false);
+  const selectedBot = botList.find((bot) => bot.id === selectedBotId) ?? botList[0] ?? null;
+  const currentReleases = releases.filter((release) => release.botId === selectedBot?.id);
+
+  useEffect(() => {
+    setBotList(bots);
+    onSelectBot(selectedBotId ?? bots[0]?.id ?? null);
+  }, [bots]);
+
+  useEffect(() => {
+    if (!selectedBot) return;
+    setLoading(true);
+    getDevFivemExpenseReleases(selectedBot.id)
+      .then(setReleases)
+      .catch(() => setMessage("Não foi possível carregar as liberações de gastos."))
+      .finally(() => setLoading(false));
+  }, [selectedBot?.id]);
+
+  async function handleSave() {
+    if (!selectedBot || !draft.organizationId.trim()) return;
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      const config = await saveDevFivemExpenseRelease({
+        botId: selectedBot.id,
+        clientId: selectedBot.clientId,
+        guildId: selectedBot.mainGuildId,
+        imageUrl: draft.imageUrl || null,
+        organizationId: draft.organizationId.trim(),
+        organizationName: draft.organizationName.trim() || draft.organizationId.trim(),
+        panelName: draft.panelName.trim() || `Painel de Gastos ${draft.organizationName.trim() || draft.organizationId.trim()}`,
+        releaseStatus: draft.releaseStatus
+      });
+      setReleases((current) => [config, ...current.filter((release) => release.id !== config.id)]);
+      if (!selectedBot.enabledModules.includes("fivem-expenses")) {
+        onBotUpdated({ ...selectedBot, enabledModules: [...selectedBot.enabledModules, "fivem-expenses"] });
+      }
+      setMessage("Liberação do Sistema de Gastos salva.");
+    } catch {
+      setMessage("Não foi possível salvar a liberação do Sistema de Gastos.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editRelease(release: FivemExpenseConfig) {
+    setDraft({
+      imageUrl: release.imageUrl ?? "",
+      organizationId: release.organizationId,
+      organizationName: release.organizationName,
+      panelName: release.panelName,
+      releaseStatus: release.releaseStatus
+    });
+  }
+
+  return (
+    <div className="min-w-0 space-y-6">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-white sm:text-2xl">Sistema de Gastos da FAC</h2>
+          <p className="mt-1 text-sm text-zinc-500">Liberação isolada por bot, servidor e organização. O cliente só configura depois que o DEV liberar aqui.</p>
+        </div>
+        <select
+          className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none sm:w-auto"
+          onChange={(event) => onSelectBot(event.target.value || null)}
+          value={selectedBot?.id ?? ""}
+        >
+          {botList.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
+        </select>
+      </section>
+
+      {message ? <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100">{message}</div> : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <FiveMStat icon={WalletCards} label="Organizações liberadas" value={String(currentReleases.filter((release) => release.releaseStatus === "active").length)} />
+        <FiveMStat icon={ShieldAlert} label="Suspensas" value={String(currentReleases.filter((release) => release.releaseStatus === "suspended").length)} />
+        <FiveMStat icon={Building2} label="Servidor principal" value={selectedBot?.mainGuildName ?? "-"} />
+        <FiveMStat icon={Activity} label="Módulo no bot" value={selectedBot?.enabledModules.includes("fivem-expenses") ? "Liberado" : "Pendente"} />
+      </section>
+
+      <Card className="border-zinc-800/80 bg-zinc-950/75">
+        <CardHeader className="p-5 sm:p-6">
+          <CardTitle>Release por Organização</CardTitle>
+          <CardDescription>Use ID da organização/facção. Não vincule apenas pelo nome.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 p-5 pt-0 sm:p-6 sm:pt-0 lg:grid-cols-2">
+          <label className="grid gap-1 text-sm text-zinc-300">ID da organização
+            <input className="rounded-lg border border-zinc-800 bg-black px-3 py-2 text-zinc-100 outline-none" value={draft.organizationId} onChange={(event) => setDraft({ ...draft, organizationId: event.target.value })} placeholder="vortex" />
+          </label>
+          <label className="grid gap-1 text-sm text-zinc-300">Nome exibido
+            <input className="rounded-lg border border-zinc-800 bg-black px-3 py-2 text-zinc-100 outline-none" value={draft.organizationName} onChange={(event) => setDraft({ ...draft, organizationName: event.target.value })} placeholder="Vortex" />
+          </label>
+          <label className="grid gap-1 text-sm text-zinc-300">Nome do painel
+            <input className="rounded-lg border border-zinc-800 bg-black px-3 py-2 text-zinc-100 outline-none" value={draft.panelName} onChange={(event) => setDraft({ ...draft, panelName: event.target.value })} placeholder="Painel de Gastos Vortex" />
+          </label>
+          <label className="grid gap-1 text-sm text-zinc-300">Banner padrão
+            <input className="rounded-lg border border-zinc-800 bg-black px-3 py-2 text-zinc-100 outline-none" value={draft.imageUrl} onChange={(event) => setDraft({ ...draft, imageUrl: event.target.value })} placeholder="https://..." />
+          </label>
+          <label className="grid gap-1 text-sm text-zinc-300">Status
+            <select className="rounded-lg border border-zinc-800 bg-black px-3 py-2 text-zinc-100 outline-none" value={draft.releaseStatus} onChange={(event) => setDraft({ ...draft, releaseStatus: event.target.value as FivemExpenseConfig["releaseStatus"] })}>
+              <option value="active">Ativo</option>
+              <option value="disabled">Desativado</option>
+              <option value="suspended">Suspenso</option>
+            </select>
+          </label>
+          <div className="flex items-end">
+            <Button className="w-full sm:w-auto" disabled={!selectedBot || !draft.organizationId.trim() || saving} onClick={() => void handleSave()}>
+              <WalletCards className="h-4 w-4" />
+              Salvar liberação
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-zinc-800/80 bg-zinc-950/75">
+        <CardHeader className="p-5 sm:p-6">
+          <CardTitle>Organizações com acesso</CardTitle>
+          <CardDescription>Remover acesso muda o status, sem apagar histórico.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-5 pt-0 sm:p-6 sm:pt-0 lg:grid-cols-2">
+          {loading ? (
+            <div className="rounded-lg border border-zinc-900 bg-black/35 p-4 text-sm text-zinc-500">Carregando liberações...</div>
+          ) : currentReleases.length ? currentReleases.map((release) => (
+            <button className="rounded-lg border border-zinc-900 bg-black/35 p-4 text-left hover:border-[#FFD500]/50" key={release.id} onClick={() => editRelease(release)} type="button">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">{release.panelName}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{release.organizationName} • {release.organizationId}</p>
+                  <p className="mt-2 text-xs text-zinc-400">Caixa vinculado: Caixa da FAC - {release.organizationName}</p>
+                </div>
+                <Badge variant={release.releaseStatus === "active" ? "default" : "muted"}>{release.releaseStatus}</Badge>
+              </div>
+            </button>
+          )) : (
+            <div className="rounded-lg border border-zinc-900 bg-black/35 p-4 text-sm text-zinc-500">Nenhuma organização liberada para este bot.</div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function FiveMStat({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <Card className="border-zinc-800/80 bg-zinc-950/75">
@@ -3204,18 +3399,7 @@ function normalizeFiveMModules(moduleIds: string[]) {
 }
 
 function normalizeFiveMModuleId(moduleId: string) {
-  return moduleId === "fivem-fac" ? "fivem-absences" : moduleId;
-}
-
-function nextFiveMModulesAfterDisable(moduleIds: string[], disabledModuleId: string) {
-  const withoutModule = moduleIds.filter((moduleId) => moduleId !== disabledModuleId);
-  const hasOtherFiveMModule = withoutModule.some((moduleId) => moduleId.startsWith("fivem-") && !isPoliceModule(moduleId));
-
-  if (hasOtherFiveMModule) {
-    return [...new Set([...withoutModule, "fivem"])];
-  }
-
-  return withoutModule.filter((moduleId) => moduleId !== "fivem");
+  return moduleId;
 }
 
 function toFiveMModuleView(module: FivemModuleDefinition): FiveMModuleView {
@@ -3231,6 +3415,8 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "fivem-corporations": BriefcaseBusiness,
     "fivem-factions": Building2,
     "fivem-finance": Activity,
+    "fivem-ammunition": PackageCheck,
+    "fivem-weapons": PackageCheck,
     "fivem-washing": PackagePlus,
     "fivem-drugs": PackagePlus,
     "fivem-hierarchy": Users,

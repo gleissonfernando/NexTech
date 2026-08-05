@@ -79,7 +79,7 @@ type DashboardPanelVisual = {
 } | null;
 
 export function startFivemFacService(client: Client, context: BotContext) {
-  if (!isBotModuleEnabled("fivem-fac")) {
+  if (!isBotModuleEnabled("fivem-absences")) {
     return;
   }
 
@@ -148,7 +148,7 @@ export async function handleFivemFacInteraction(interaction: Interaction, contex
     return false;
   }
 
-  if (!isBotModuleEnabled("fivem-fac")) {
+  if (!isBotModuleEnabled("fivem-absences")) {
     await replySafely(interaction, "O sistema FAC não foi liberado para este bot na dashboard.");
     return true;
   }
@@ -168,7 +168,7 @@ export async function handleFivemFacInteraction(interaction: Interaction, contex
 }
 
 export async function handleFivemFacMemberAdd(member: GuildMember, context: BotContext) {
-  if (!isBotModuleEnabled("fivem-fac")) {
+  if (!isBotModuleEnabled("fivem-absences")) {
     return;
   }
 
@@ -876,7 +876,7 @@ async function createAbsenceChannel(guild: Guild, settings: FivemFacSettings, ab
 }
 
 async function processDueFivemFacAbsences(client: Client, context: BotContext) {
-  if (dueCheckRunning || !isBotModuleEnabled("fivem-fac")) {
+  if (dueCheckRunning || !isBotModuleEnabled("fivem-absences")) {
     return;
   }
 
@@ -899,7 +899,7 @@ async function processDueFivemFacAbsences(client: Client, context: BotContext) {
 }
 
 async function processPendingFivemFacPanelRequests(client: Client, context: BotContext) {
-  if (panelRequestCheckRunning || !isBotModuleEnabled("fivem-fac")) {
+  if (panelRequestCheckRunning || !isBotModuleEnabled("fivem-absences")) {
     return;
   }
 

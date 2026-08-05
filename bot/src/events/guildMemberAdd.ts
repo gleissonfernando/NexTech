@@ -41,7 +41,7 @@ export async function handleGuildMemberAdd(member: GuildMember, context: BotCont
   if (await isLogsRuntimeAuthorized(context, member.guild.id)) tasks.push(logMemberJoin(context, member));
   if (automaticRolesTask) tasks.push(automaticRolesTask);
   if (welcomeEnabled) tasks.push(sendWelcomeMessage(context, member));
-  if (isBotModuleEnabled("fivem-fac")) tasks.push(handleFivemFacMemberAdd(member, context));
+  if (isBotModuleEnabled("fivem-absences")) tasks.push(handleFivemFacMemberAdd(member, context));
   if (isBotModuleEnabled("fivem-hierarchy")) scheduleHierarchyRefreshForMember(member, context);
 
   await Promise.allSettled(tasks);

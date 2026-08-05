@@ -40,6 +40,10 @@ import {
   listFivemModules,
   updateFivemModule
 } from "../services/fivemModuleService";
+import {
+  listFivemExpenseReleases,
+  saveFivemExpenseRelease
+} from "../services/fivemExpenseService";
 import { createDashboardAuditLog } from "../services/dashboardAuditService";
 import { createLog } from "../services/logService";
 import {
@@ -144,6 +148,17 @@ const updateBotSchema = z.object({
 
 const modulesSchema = z.object({
   enabledModules: z.array(devModuleIdSchema)
+});
+
+const fivemExpenseReleaseSchema = z.object({
+  botId: z.string().min(1).max(120),
+  clientId: z.string().max(120).nullable().optional(),
+  guildId: z.string().regex(/^\d{5,32}$/),
+  imageUrl: z.string().max(2048).nullable().optional().or(z.literal("")),
+  organizationId: z.string().min(1).max(120),
+  organizationName: z.string().min(1).max(120).optional(),
+  panelName: z.string().max(120).nullable().optional(),
+  releaseStatus: z.enum(["active", "disabled", "suspended"]).optional()
 });
 
 const securityAccessSchema = z.object({
@@ -842,6 +857,48 @@ devRouter.get("/fivem/modules", async (_req, res, next) => {
   }
 });
 
+devRouter.get("/fivem-expenses/releases", async (req, res, next) => {
+  try {
+    const botId = typeof req.query.botId === "string" ? req.query.botId : null;
+    return res.json({
+      releases: await listFivemExpenseReleases(botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.put("/fivem-expenses/releases", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = fivemExpenseReleaseSchema.parse(req.body);
+
+    if (!(await canManageDevBot(auth.user, input.botId))) {
+      return res.status(403).json({
+        message: "Você não tem acesso a este bot."
+      });
+    }
+
+    const config = await saveFivemExpenseRelease(input, auth.user.discordId);
+    const bot = await getDevBot(input.botId);
+    if (bot?.desiredOnline) scheduleDevBotModuleRestart(bot.id);
+
+    await writeDevBotAudit(auth, input.guildId, input.botId, "fivem_expenses_release", `Sistema de Gastos atualizado para ${config.organizationName}.`, {
+      botId: input.botId,
+      guildId: input.guildId,
+      moduleId: config.moduleId,
+      organizationId: config.organizationId,
+      releaseStatus: config.releaseStatus
+    });
+
+    return res.json({
+      config
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 devRouter.post("/fivem/modules", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
@@ -1360,6 +1417,7 @@ devRouter.delete("/bots/:botId", async (req, res, next) => {
     }
 
     await stopDevBotProcess(req.params.botId, {
+      finalStatus: "stopped_by_admin",
       message: "Bot desconectado pelo painel DEV.",
       notifyBot: true
     });
@@ -1402,6 +1460,7 @@ devRouter.post("/bots/:botId/stop", async (req, res, next) => {
 
     await setDevBotDesiredOnline(req.params.botId, false);
     await stopDevBotProcess(req.params.botId, {
+      finalStatus: "stopped_manually",
       message: "Bot desligado pelo painel DEV.",
       notifyBot: true
     });

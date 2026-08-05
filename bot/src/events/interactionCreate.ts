@@ -4,7 +4,6 @@ import { handleFivemFacInteraction } from "../services/fivemFacService";
 import { handleGiveawayInteraction } from "../services/giveawayService";
 import { blockInteractionIfMaintenance } from "../services/maintenanceService";
 import { handleEmojiCloneInteraction } from "../services/emojiCloneService";
-import { handleMissionToolsInteraction } from "../services/missionToolsService";
 import { handleRulesInteraction } from "../services/rulesService";
 import { handleServerCloneInteraction } from "../services/serverCloneService";
 import { handleServerGeneratorInteraction } from "../services/serverGeneratorService";
@@ -16,6 +15,9 @@ import { handleReportSystemInteraction } from "../services/reportSystemService";
 import { handleManualRegistrationInteraction } from "../services/manualRegistrationService";
 import { handleFivemGoalInteraction } from "../services/fivemGoalService";
 import { handleFivemFinanceInteraction } from "../services/fivemFinanceService";
+import { handleFivemExpenseInteraction } from "../services/fivemExpenseService";
+import { handleAmmunitionInteraction } from "../services/ammunitionService";
+import { handleWeaponSaleInteraction } from "../services/weaponSaleService";
 import { handleFivemOrderInteraction } from "../services/fivemOrderService";
 import { handleFivemActionInteraction } from "../services/fivemActionService";
 import { handleFivemCaptchaInteraction } from "../services/fivemCaptchaService";
@@ -116,10 +118,6 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
     return;
   }
 
-  if (await handleMissionToolsInteraction(interaction, context)) {
-    return;
-  }
-
   if (await handleSafeBotWarningInteraction(interaction, context)) {
     return;
   }
@@ -148,6 +146,9 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
     return;
   }
   if (await handleFivemFinanceInteraction(interaction, context)) return;
+  if (await handleFivemExpenseInteraction(interaction, context)) return;
+  if (await handleAmmunitionInteraction(interaction, context)) return;
+  if (await handleWeaponSaleInteraction(interaction, context)) return;
   if (await handleFivemOrderInteraction(interaction, context)) return;
 
   if (await handleFivemActionInteraction(interaction, context)) return;

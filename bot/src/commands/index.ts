@@ -6,12 +6,14 @@ import { deleteServeCommand } from "./deleteServe";
 import { emojiClonerCommand } from "./emojiCloner";
 import { gravarCommand } from "./gravar";
 import { fivemFinanceCommand } from "./fivemFinance";
+import { gastosCommand, resetarGastosCommand } from "../services/fivemExpenseService";
+import { municaoCommand, municaoConfiguracaoCommand } from "../services/ammunitionService";
+import { armasConfigCommand } from "../services/weaponSaleService";
 import { acaoCommand } from "../services/fivemActionService";
 import { bauCommand } from "../services/factionChestService";
 import { lavagemCommand } from "./lavagem";
 import { hierarchyCommand } from "../services/fivemHierarchyService";
 import { setCommand } from "./manualRegistration";
-import { missionPanelCommand } from "./missionPanel";
 import { musicCommands } from "./music";
 import { notificarCommand } from "./notificar";
 import { pingCommand } from "./ping";
@@ -52,12 +54,16 @@ export function createCommandCollection() {
     emojiClonerCommand,
     gravarCommand,
     fivemFinanceCommand,
+    gastosCommand,
+    resetarGastosCommand,
+  municaoCommand,
+  municaoConfiguracaoCommand,
+  armasConfigCommand,
     acaoCommand,
     bauCommand,
     lavagemCommand,
     hierarchyCommand,
     setCommand,
-    missionPanelCommand,
     ...musicCommands,
     notificarCommand,
     ticketCommand,

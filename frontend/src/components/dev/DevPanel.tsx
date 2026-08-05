@@ -24,6 +24,7 @@ import {
     LockKeyhole,
     MessageSquare,
     MoreVertical,
+    PackageCheck,
     Plus,
     Power,
     RefreshCw,
@@ -175,7 +176,6 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "moderation", label: "Sistema de Moderação" },
   { id: "rules", label: "Sistema de Regras" },
   { id: "terms-panel", label: "Painel de Termos" },
-  { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "music", label: "Sistema de Música" },
   { id: "emoji-cloner", label: "Clonagem de Emojis" },
@@ -205,6 +205,9 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "fivem-washing", label: "FiveM - Sistema de Lavagem" },
   { id: "fivem-drugs", label: "FiveM - Sistema de Drogas" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
+  { id: "fivem-expenses", label: "Sistema de Gastos da FAC" },
+  { id: "fivem-ammunition", label: "Sistema de Venda de Munição" },
+  { id: "fivem-weapons", label: "Sistema de Venda de Armas" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "faction-chest", label: "Sistema de Baú" },
   { id: "ztk-webhook", label: "ZTK Webhook 🏆" },
@@ -274,6 +277,9 @@ type BotMenuId =
   | "fivem-washing"
   | "fivem-drugs"
   | "fivem-finance"
+  | "fivem-expenses"
+  | "fivem-ammunition"
+  | "fivem-weapons"
   | "fivem-goals"
   | "faction-chest"
   | "ztk-webhook"
@@ -370,7 +376,7 @@ const botMenuItems: BotMenuItem[] = [
     label: "Configurações",
     description: "Ajustes gerais do bot",
     icon: Settings,
-    moduleIds: ["avisos", "mission-tools", "voice-recorder", "server-generator"]
+    moduleIds: ["avisos", "voice-recorder", "server-generator"]
   },
   {
     group: "geral",
@@ -602,9 +608,33 @@ const botMenuItems: BotMenuItem[] = [
         group: "fivem",
         id: "fivem-factions",
         label: "Facções",
-        description: "Facções e ausências",
+        description: "Facções",
         icon: Users,
-        moduleIds: ["fivem-factions", "fivem-absences"]
+        moduleIds: ["fivem-factions"]
+      },
+      {
+        group: "fivem",
+        id: "fivem-expenses",
+        label: "Sistema de Gastos",
+        description: "Despesas e saídas do Caixa da FAC",
+        icon: ScrollText,
+        moduleIds: ["fivem-expenses"]
+      },
+      {
+        group: "fivem",
+        id: "fivem-ammunition",
+        label: "Sistema de Munição",
+        description: "Venda de munição com canais temporários e caixa da FAC",
+        icon: PackageCheck,
+        moduleIds: ["fivem-ammunition"]
+      },
+      {
+        group: "fivem",
+        id: "fivem-weapons",
+        label: "Sistema de Armas",
+        description: "Venda de armas virtuais para facções",
+        icon: PackageCheck,
+        moduleIds: ["fivem-weapons"]
       },
       {
         group: "fivem",
@@ -7369,11 +7399,9 @@ function countEnabledMenuModules(item: BotMenuItem, modules: DevModuleDefinition
   return modulesForMenu(item, modules, true).filter((module) => enabledSet.has(canonicalDevModuleId(module.id))).length;
 }
 
-const DEV_MODULE_ALIASES: Record<string, string> = {
-  "fivem-fac": "fivem-absences"
-};
+const DEV_MODULE_ALIASES: Record<string, string> = {};
 
-const HIDDEN_DEV_MODULE_IDS = new Set(["fivem-fac"]);
+const HIDDEN_DEV_MODULE_IDS = new Set<string>();
 
 function isHiddenDevModule(moduleId: string) {
   return HIDDEN_DEV_MODULE_IDS.has(moduleId);
@@ -7439,6 +7467,14 @@ function statusLabel(status: DevBotStatus) {
     ready: "Pronto",
     degraded: "Degradado",
     stopping: "Desligando",
+    stopped_manually: "Desligado manualmente",
+    stopped_by_payment: "Bloqueado por pagamento",
+    stopped_by_admin: "Desligado pelo DEV",
+    crashed: "Caiu",
+    database_error: "Erro no banco",
+    discord_connection_error: "Erro no Discord",
+    waiting_retry: "Aguardando retry",
+    maintenance: "Manutenção",
     invalid_token: "Token inválido",
     error: "Erro"
   };
@@ -7462,7 +7498,7 @@ function billingChargeLabel(type: BotBillingInvoice["chargeType"]) {
 }
 
 function isBotRunningStatus(status: DevBotStatus) {
-  return ["online", "starting", "authenticating", "syncing_config", "ready", "degraded", "stopping"].includes(status);
+  return ["online", "starting", "authenticating", "syncing_config", "ready", "degraded", "stopping", "waiting_retry"].includes(status);
 }
 
 function isBotReadyStatus(status: DevBotStatus) {
@@ -7470,7 +7506,7 @@ function isBotReadyStatus(status: DevBotStatus) {
 }
 
 function isBotErrorStatus(status: DevBotStatus) {
-  return status === "error" || status === "invalid_token";
+  return ["error", "invalid_token", "crashed", "database_error", "discord_connection_error"].includes(status);
 }
 
 function readRequestMessage(error: unknown) {

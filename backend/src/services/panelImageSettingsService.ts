@@ -141,7 +141,6 @@ const PANEL_VISUAL_REFRESH_EVENTS: Record<string, string[]> = {
   "fivem-goals": ["fivem:goals:panel_publish"],
   "manual-payments": ["manual-payments:panel_publish"],
   "manual-registration": ["manual-registration:panel_publish"],
-  "mission-tools": ["mission-tools:panel_publish"],
   "nextech-invites": ["nextech-invites:panel_publish"],
   "police-promotions": ["police-promotions:panel_publish"],
   "price-tables": ["price-tables:panel_publish"],

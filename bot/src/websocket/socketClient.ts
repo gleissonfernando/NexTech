@@ -83,6 +83,9 @@ export type FivemGoalPanelPublishEvent = {
 };
 export type FivemGoalPanelPublishAck = (response: { error?: string; ok: boolean; rankingMessageId?: string | null; requestPanelMessageId?: string | null }) => void;
 export type FivemFinancePanelPublishEvent = { botId?: string | null; guildId: string };
+export type FivemAmmunitionPanelPublishEvent = { botId?: string | null; guildId: string };
+export type WeaponSalePanelPublishEvent = { botId?: string | null; guildId: string };
+export type FivemExpensePanelPublishEvent = { botId?: string | null; guildId: string; organizationId?: string | null };
 export type FivemOrderPanelPublishEvent = { botId?: string | null; guildId: string };
 export type FivemOrderStatusUpdatedEvent = { actorId?: string | null; botId?: string | null; guildId: string; order: FivemOrder };
 export type PriceTablePanelPublishEvent = { botId?: string | null; guildId: string; tableId: string };
@@ -395,24 +398,6 @@ export type AutoActivityClockPanelRefreshEvent = {
   guildId: string;
 };
 
-export type MissionToolsSettingsEvent = {
-  botId?: string | null;
-  guildId: string;
-  settings?: unknown;
-};
-
-export type MissionToolsPanelPublishEvent = {
-  botId?: string | null;
-  guildId: string;
-  settings?: unknown;
-};
-
-export type MissionToolsUserUpdateEvent = {
-  botId?: string | null;
-  guildId: string;
-  user?: unknown;
-};
-
 export type GiveawayPanelUpdateEvent = {
   action: "publish" | "update";
   botId?: string | null;
@@ -531,6 +516,9 @@ export class BotSocketClient {
   private fivemFacPanelPublishHandler: ((payload: FivemFacPanelPublishEvent) => void) | null = null;
   private fivemGoalPanelPublishHandler: ((payload: FivemGoalPanelPublishEvent, ack?: FivemGoalPanelPublishAck) => void) | null = null;
   private fivemFinancePanelPublishHandler: ((payload: FivemFinancePanelPublishEvent) => void) | null = null;
+  private fivemAmmunitionPanelPublishHandler: ((payload: FivemAmmunitionPanelPublishEvent) => void) | null = null;
+  private weaponSalePanelPublishHandler: ((payload: WeaponSalePanelPublishEvent) => void) | null = null;
+  private fivemExpensePanelPublishHandler: ((payload: FivemExpensePanelPublishEvent) => void) | null = null;
   private fivemOrderPanelPublishHandler: ((payload: FivemOrderPanelPublishEvent) => void) | null = null;
   private fivemOrderStatusUpdatedHandler: ((payload: FivemOrderStatusUpdatedEvent) => void) | null = null;
   private priceTablePanelPublishHandler: ((payload: PriceTablePanelPublishEvent) => void) | null = null;
@@ -568,9 +556,6 @@ export class BotSocketClient {
   private messageControlUsersHandler: ((payload: MessageControlUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
   private autoActivityClockPanelRefreshHandler: ((payload: AutoActivityClockPanelRefreshEvent) => void) | null = null;
-  private missionToolsSettingsHandler: ((payload: MissionToolsSettingsEvent) => void) | null = null;
-  private missionToolsPanelPublishHandler: ((payload: MissionToolsPanelPublishEvent) => void) | null = null;
-  private missionToolsUserUpdateHandler: ((payload: MissionToolsUserUpdateEvent) => void) | null = null;
   private giveawayPanelUpdateHandler: ((payload: GiveawayPanelUpdateEvent) => void) | null = null;
   private imageAntiSpamSettingsHandler: ((payload: ImageAntiSpamSettingsEvent) => void) | null = null;
   private selfBotProtectionSettingsHandler: ((payload: SelfBotProtectionSettingsEvent) => void) | null = null;
@@ -682,6 +667,9 @@ export class BotSocketClient {
       this.socket.on("fivem:goals:panel_publish", this.fivemGoalPanelPublishHandler);
     }
     if (this.fivemFinancePanelPublishHandler) this.socket.on("fivem:finance:panel_publish", this.fivemFinancePanelPublishHandler);
+    if (this.fivemAmmunitionPanelPublishHandler) this.socket.on("fivem:ammunition:panel_publish", this.fivemAmmunitionPanelPublishHandler);
+    if (this.weaponSalePanelPublishHandler) this.socket.on("fivem:weapons:panel_publish", this.weaponSalePanelPublishHandler);
+    if (this.fivemExpensePanelPublishHandler) this.socket.on("fivem:expenses:panel_publish", this.fivemExpensePanelPublishHandler);
     if (this.fivemOrderPanelPublishHandler) this.socket.on("fivem:orders:panel_publish", this.fivemOrderPanelPublishHandler);
     if (this.fivemOrderStatusUpdatedHandler) this.socket.on("fivem:orders:status_updated", this.fivemOrderStatusUpdatedHandler);
     if (this.priceTablePanelPublishHandler) this.socket.on("price-tables:panel_publish", this.priceTablePanelPublishHandler);
@@ -747,18 +735,6 @@ export class BotSocketClient {
 
     if (this.autoActivityClockPanelRefreshHandler) {
       this.socket.on("auto-activity-clock:panel_refresh", this.autoActivityClockPanelRefreshHandler);
-    }
-
-    if (this.missionToolsSettingsHandler) {
-      this.socket.on("mission-tools:settings_updated", this.missionToolsSettingsHandler);
-    }
-
-    if (this.missionToolsPanelPublishHandler) {
-      this.socket.on("mission-tools:panel_publish", this.missionToolsPanelPublishHandler);
-    }
-
-    if (this.missionToolsUserUpdateHandler) {
-      this.socket.on("mission-tools:user_updated", this.missionToolsUserUpdateHandler);
     }
 
     if (this.giveawayPanelUpdateHandler) {
@@ -909,6 +885,24 @@ export class BotSocketClient {
     this.fivemFinancePanelPublishHandler = handler;
     this.socket?.off("fivem:finance:panel_publish");
     this.socket?.on("fivem:finance:panel_publish", handler);
+  }
+
+  onFivemAmmunitionPanelPublish(handler: (payload: FivemAmmunitionPanelPublishEvent) => void) {
+    this.fivemAmmunitionPanelPublishHandler = handler;
+    this.socket?.off("fivem:ammunition:panel_publish");
+    this.socket?.on("fivem:ammunition:panel_publish", handler);
+  }
+
+  onWeaponSalePanelPublish(handler: (payload: WeaponSalePanelPublishEvent) => void) {
+    this.weaponSalePanelPublishHandler = handler;
+    this.socket?.off("fivem:weapons:panel_publish");
+    this.socket?.on("fivem:weapons:panel_publish", handler);
+  }
+
+  onFivemExpensePanelPublish(handler: (payload: FivemExpensePanelPublishEvent) => void) {
+    this.fivemExpensePanelPublishHandler = handler;
+    this.socket?.off("fivem:expenses:panel_publish");
+    this.socket?.on("fivem:expenses:panel_publish", handler);
   }
 
   onFivemOrderPanelPublish(handler: (payload: FivemOrderPanelPublishEvent) => void) {
@@ -1126,24 +1120,6 @@ export class BotSocketClient {
     this.autoActivityClockPanelRefreshHandler = handler;
     this.socket?.off("auto-activity-clock:panel_refresh");
     this.socket?.on("auto-activity-clock:panel_refresh", handler);
-  }
-
-  onMissionToolsSettingsUpdated(handler: (payload: MissionToolsSettingsEvent) => void) {
-    this.missionToolsSettingsHandler = handler;
-    this.socket?.off("mission-tools:settings_updated");
-    this.socket?.on("mission-tools:settings_updated", handler);
-  }
-
-  onMissionToolsPanelPublish(handler: (payload: MissionToolsPanelPublishEvent) => void) {
-    this.missionToolsPanelPublishHandler = handler;
-    this.socket?.off("mission-tools:panel_publish");
-    this.socket?.on("mission-tools:panel_publish", handler);
-  }
-
-  onMissionToolsUserUpdated(handler: (payload: MissionToolsUserUpdateEvent) => void) {
-    this.missionToolsUserUpdateHandler = handler;
-    this.socket?.off("mission-tools:user_updated");
-    this.socket?.on("mission-tools:user_updated", handler);
   }
 
   onGiveawayPanelUpdate(handler: (payload: GiveawayPanelUpdateEvent) => void) {

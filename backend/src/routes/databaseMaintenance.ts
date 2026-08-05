@@ -21,11 +21,10 @@ const moduleSchema = z.enum([
   "fivem-goals",
   "fivem-orders",
   "fivem-finance",
-  "fivem-fac",
+  "fivem-absences",
   "fivem-hierarchy",
   "tickets",
   "temporary-voice",
-  "mission-tools",
   "socials",
   "security",
   "logs"

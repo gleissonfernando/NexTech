@@ -63,7 +63,6 @@ export const DEV_MODULES = [
   { id: "moderation", label: "Sistema de Moderacao" },
   { id: "rules", label: "Sistema de Regras" },
   { id: "terms-panel", label: "Painel de Termos" },
-  { id: "mission-tools", label: "Mission Tools" },
   { id: "voice-recorder", label: "Voice Recorder" },
   { id: "music", label: "Sistema de Musica" },
   { id: "emoji-cloner", label: "Clonagem de Emojis" },
@@ -93,6 +92,9 @@ export const DEV_MODULES = [
   { id: "fivem-washing", label: "FiveM - Sistema de Lavagem" },
   { id: "fivem-drugs", label: "FiveM - Sistema de Drogas" },
   { id: "fivem-finance", label: "FiveM - Sistema Financeiro" },
+  { id: "fivem-expenses", label: "Sistema de Gastos da FAC" },
+  { id: "fivem-ammunition", label: "Sistema de Venda de Munição" },
+  { id: "fivem-weapons", label: "Sistema de Venda de Armas" },
   { id: "fivem-goals", label: "FiveM - Sistema de Metas" },
   { id: "fivem-captcha", label: "FiveM - Sistema CAPTCHA" },
   { id: "fivem-commands", label: "FiveM - Comandos" },
@@ -124,7 +126,6 @@ export const DEV_MODULES = [
 
 const DEV_MODULE_IDS = new Set(DEV_MODULES.map((module) => module.id));
 const LEGACY_MODULE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
-  "fivem-fac": "fivem-absences",
   "image-anti-spam": "safe-bot",
   "link-anti-spam": "safe-bot"
 };
@@ -134,18 +135,10 @@ const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number
   "anti-link": "safe-bot",
   "anti-links": "safe-bot",
   "anti-spam": "safe-bot",
-  "courses": "police-courses",
-  "fivem-fac": "fivem-absences",
-  "police-fac": "police-absences",
   "image-anti-spam": "safe-bot",
   "link-anti-spam": "safe-bot"
 };
-const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
-  courses: ["police-courses"],
-  "police-courses": ["courses"],
-  "rh-admin": ["police-hr"],
-  "police-hr": ["rh-admin"]
-};
+const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {};
 const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "message-control", "visible-message"]);
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);

@@ -31,6 +31,7 @@ import {
     MessageCircle,
     Mic2,
     Music2,
+    PackageCheck,
     Plug,
     Plus,
     Radio,
@@ -62,7 +63,10 @@ import { CustomBotOrdersPanel } from "../components/custom-bot-orders/CustomBotO
 import { CoursesPanel } from "../components/courses/CoursesPanel";
 import { DmBarPanel } from "../components/fivem/DmBarPanel";
 import { FacAbsencePanel } from "../components/fivem/FacAbsencePanel";
+import { AmmunitionPanel } from "../components/fivem/AmmunitionPanel";
+import { WeaponSalesPanel } from "../components/fivem/WeaponSalesPanel";
 import { FivemActionsPanel } from "../components/fivem/FivemActionsPanel";
+import { FivemExpensesPanel } from "../components/fivem/FivemExpensesPanel";
 import { FivemFinancePanel } from "../components/fivem/FivemFinancePanel";
 import { FivemOrdersManager } from "../components/fivem/FivemOrdersPanel";
 import { FivemResourceMultiSelect, FivemResourceSelect } from "../components/fivem/FivemResourceSelect";
@@ -77,7 +81,6 @@ import type { ViewId } from "../components/layout/sidebar";
 import { LogsSettingsPanel } from "../components/LogsSettingsPanel";
 import { ManualPaymentsPanel } from "../components/manual-payments/ManualPaymentsPanel";
 import { MediaLibraryPanel } from "../components/media/MediaLibraryPanel";
-import { MissionToolsPanel } from "../components/mission-tools/MissionToolsPanel";
 import { SiteAccessPanel } from "../components/moderation/SiteAccessPanel";
 import { VoiceRecorderPanel } from "../components/moderation/VoiceRecorderPanel";
 import { CustomPanelsPanel } from "../components/panels/CustomPanelsPanel";
@@ -438,13 +441,6 @@ const moduleCatalog: ModuleDefinition[] = [
     description: "Cria categorias e painéis customizados com embed, mensagens e Componentes V2.",
     icon: ImageIcon,
     view: "panels"
-  },
-  {
-    id: "mission-tools",
-    title: "Mission Tools",
-    description: "Enable the Control Center with Mission, Clean, Voice, Rich Presence, and Username Checker.",
-    icon: ListChecks,
-    view: "mission-tools"
   },
   {
     id: "voice-recorder",
@@ -840,7 +836,6 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   giveaway: "giveaway",
   boosters: "boosters",
   "x-monitor": "x-monitor",
-  "mission-tools": "mission-tools",
   logs: "logs",
   fivem: "fivem",
   "fivem-absence": "fivem-absences",
@@ -866,6 +861,9 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "fivem-washing": "fivem-washing",
   "fivem-drug": "fivem-drugs",
   "fivem-finance": "fivem-finance",
+  "fivem-expenses": "fivem-expenses",
+  "fivem-ammunition": "fivem-ammunition",
+  "fivem-weapons": "fivem-weapons",
   "fivem-goals": "fivem-goals",
   "fivem-captcha": "fivem-captcha",
   "fivem-commands": "fivem-commands",
@@ -919,14 +917,8 @@ const policeTranscriptViews = new Set<ViewId>([
   "police-iab",
   "police-subpoenas"
 ]);
-const moduleReleaseAliases: Record<string, string[]> = {
-  courses: ["police-courses"],
-  "police-courses": ["courses"],
-  "rh-admin": ["police-hr"],
-  "police-hr": ["rh-admin"]
-};
 function moduleReleaseIds(moduleId: string) {
-  return [moduleId, ...(moduleReleaseAliases[moduleId] ?? [])];
+  return [moduleId];
 }
 
 function hasReleasedModule(enabledModules: string[], moduleId: string) {
@@ -1685,23 +1677,6 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
             guildId={selectedGuild.id}
           />
         ) : null}
-        {activeView === "mission-tools" ? (
-          <div className="space-y-5">
-            <PanelImageSettings
-              botId={activeBotId}
-              canManage={canManageModule(selectedBot, "mission-tools", canManageDashboard)}
-              guildId={selectedGuild?.id ?? null}
-              panelId="mission-tools"
-              panelLabel="Mission Tools"
-            />
-            <MissionToolsPanel
-              botId={activeBotId}
-              canManage={canManageModule(selectedBot, "mission-tools", canManageDashboard)}
-              guild={selectedGuild}
-              user={auth.user}
-            />
-          </div>
-        ) : null}
         {activeView === "voice-recorder" ? (
           <VoiceRecorderPanel
             botId={activeBotId}
@@ -1843,7 +1818,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "fivem" ? (
           <FivemView
             botId={activeBotId}
-            canManage={canManageModule(selectedBot, "fivem", canManageDashboard) || canManageModule(selectedBot, "fivem-factions", canManageDashboard)}
+            canManage={canManageModule(selectedBot, "fivem", canManageDashboard)}
             enabledModules={enabledModules}
             fivemModules={fivemModules}
             guild={selectedGuild}
@@ -1853,7 +1828,7 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         {activeView === "fivem-absence" ? (
           <FacAbsencePanel
             botId={activeBotId}
-            canManage={canManageModule(selectedBot, "fivem-absences", canManageDashboard) || canManageModule(selectedBot, "fivem-fac", canManageDashboard)}
+            canManage={canManageModule(selectedBot, "fivem-absences", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -2026,6 +2001,15 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
         ) : null}
         {activeView === "fivem-finance" ? (
           <FivemFinancePanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-finance", canManageDashboard)} guild={selectedGuild} />
+        ) : null}
+        {activeView === "fivem-expenses" ? (
+          <FivemExpensesPanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-expenses", canManageDashboard)} guild={selectedGuild} />
+        ) : null}
+        {activeView === "fivem-ammunition" ? (
+          <AmmunitionPanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-ammunition", canManageDashboard)} guild={selectedGuild} />
+        ) : null}
+        {activeView === "fivem-weapons" ? (
+          <WeaponSalesPanel botId={activeBotId} canManage={canManageModule(selectedBot, "fivem-weapons", canManageDashboard)} guild={selectedGuild} />
         ) : null}
         {activeView === "fivem-goals" ? (
           <FivemView
@@ -4960,6 +4944,8 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Lavagem RP com regras de porcentagem, cálculo automático, logs e histórico.", id: "fivem-washing", permissions: "Admin FiveM", title: "Sistema de Lavagem" },
     { builtIn: true, description: "Drogas, famílias autorizadas, pedidos, produção, logs e histórico isolados.", id: "fivem-drugs", permissions: "Admin FiveM", title: "Sistema de Drogas" },
     { builtIn: true, description: "Fluxo financeiro, caixa e lancamentos RP.", id: "fivem-finance", permissions: "Admin FiveM", title: "Financeiro" },
+    { builtIn: true, description: "Venda de municao com canais temporarios, registros, resumo semanal e integracao ao caixa.", id: "fivem-ammunition", permissions: "Admin FiveM", title: "Sistema de Municao" },
+    { builtIn: true, description: "Venda de armas virtuais com canais temporarios, confirmacao, logs e historico.", id: "fivem-weapons", permissions: "Admin FiveM", title: "Sistema de Armas" },
     { builtIn: true, description: "Metas por membro com fotos e registros via Components V2.", id: "fivem-goals", permissions: "Admin FiveM", title: "Metas" },
     { builtIn: true, description: "Verificação inteligente por CAPTCHA integrada ao fluxo FiveM.", id: "fivem-captcha", permissions: "Admin FiveM", title: "CAPTCHA FiveM" },
     { builtIn: true, description: "Painel Components V2 com comandos essenciais do FiveM e atalhos para som e miras.", id: "fivem-commands", permissions: "Admin FiveM", title: "Comandos FiveM" },
@@ -4967,7 +4953,7 @@ function fivemUserModules(enabledModules: string[], fivemModules: FivemModuleDef
     { builtIn: true, description: "Ações profissionais da FAC com painel, participantes e relatórios separados.", id: "fivem-actions", permissions: "Admin FiveM", title: "Ações FAC" }
   ];
   const catalog = fivemModules.length ? fivemModules : fallbackCatalog;
-  const enabled = new Set(enabledModules.map((moduleId) => moduleId === "fivem-fac" ? "fivem-absences" : moduleId));
+  const enabled = new Set(enabledModules);
 
   return catalog
     .filter((module) => isFivemCatalogModule(module.id))
@@ -4994,6 +4980,9 @@ function fivemIconForModule(moduleId: string) {
     "fivem-corporations": Server,
     "fivem-factions": Building2,
     "fivem-finance": Activity,
+    "fivem-expenses": CircleDollarSign,
+    "fivem-ammunition": PackageCheck,
+    "fivem-weapons": PackageCheck,
     "fivem-washing": CircleDollarSign,
     "fivem-goals": ListChecks,
     "fivem-captcha": ShieldCheck,
@@ -5082,7 +5071,6 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "custom-bot-orders",
       "network",
       "x-monitor",
-      "mission-tools",
       "voice-recorder",
       "emoji-cloner",
       "server-cloner",
@@ -5100,6 +5088,9 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "fivem-washing",
       "fivem-drugs",
       "fivem-finance",
+      "fivem-expenses",
+      "fivem-ammunition",
+      "fivem-weapons",
       "fivem-goals",
       "fivem-captcha",
       "fivem-commands",
@@ -5121,8 +5112,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "visible-message",
       "message-control",
       "police-dm",
-      "police-open-duty",
-      "fivem-fac"
+      "police-open-duty"
     ].includes(moduleId);
   }
 
@@ -5135,26 +5125,6 @@ function isModuleReleasedForBot(bot: DashboardBot, moduleId: string) {
   }
 
   const released = new Set(bot.enabledModules);
-
-  if (moduleId === "fivem") {
-    return [...released].some((enabledModule) => enabledModule === "fivem" || enabledModule.startsWith("fivem-"));
-  }
-
-  if (moduleId === "fivem-fac") {
-    return released.has("fivem-fac") || released.has("fivem-absences");
-  }
-
-  if (moduleId === "police-absences") {
-    return released.has("police-absences");
-  }
-
-  if (moduleId === "fivem-drugs") {
-    return released.has("fivem-drugs");
-  }
-
-  if (moduleId === "fivem-washing") {
-    return released.has("fivem-washing");
-  }
 
   return moduleReleaseIds(moduleId).some((candidate) => released.has(candidate));
 }
@@ -12163,9 +12133,6 @@ function friendlyLog(log: LogEntry) {
     "fivem.fac.request_rejected": { badge: "FiveM", title: "Solicitação de ausência reprovada" },
     "fivem.fac.absence_started": { badge: "FiveM", title: "Ausência iniciada" },
     "fivem.fac.absence_finished": { badge: "FiveM", title: "Ausência finalizada" },
-    "mission_tools.settings_updated": { badge: "Mission", title: "Mission Tools updated" },
-    "mission_tools.panel_publish_requested": { badge: "Mission", title: "Control Center publication requested" },
-    "mission_tools.fake_token_detected": { badge: "Mission", title: "Fake token detected" }
   };
   const mapped = byType[log.type];
 
@@ -12198,10 +12165,6 @@ function friendlyLog(log: LogEntry) {
 
   if (log.type.includes("fivem.fac")) {
     return { badge: "FiveM", title: message || "FAC atualizado", description: message };
-  }
-
-  if (log.type.includes("mission_tools")) {
-    return { badge: "Mission", title: message || "Mission Tools updated", description: message };
   }
 
   if (log.type.includes("image_anti_spam")) {
@@ -12405,7 +12368,6 @@ const fallbackDashboardViewOrder: ViewId[] = [
   "panels",
   "courses",
   "rh-admin",
-  "mission-tools",
   "voice-recorder",
   "music",
   "self-bot-protection",
@@ -12450,6 +12412,9 @@ const fallbackDashboardViewOrder: ViewId[] = [
   "fivem-washing",
   "fivem-drug",
   "fivem-finance",
+  "fivem-expenses",
+  "fivem-ammunition",
+  "fivem-weapons",
   "fivem-goals",
   "fivem-captcha",
   "fivem-commands",
@@ -12501,17 +12466,8 @@ function isViewAllowed(view: ViewId, enabledModules: string[]) {
     return enabledModules.includes("moderation");
   }
 
-  if (view === "fivem") {
-    return enabledModules.some((moduleId) => [
-      "fivem",
-      "fivem-factions",
-      "fivem-corporations",
-      "fivem-finance"
-    ].includes(moduleId));
-  }
-
   if (view === "fivem-absence") {
-    return enabledModules.includes("fivem-absences") || enabledModules.includes("fivem-fac");
+    return enabledModules.includes("fivem-absences");
   }
 
   if (view === "police-absence") {

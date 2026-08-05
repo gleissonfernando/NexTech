@@ -25,6 +25,7 @@ import {
     MessageCircle,
     Mic2,
     Music2,
+    PackageCheck,
     Radio,
     ScrollText,
     Search,
@@ -41,6 +42,7 @@ import {
     UserMinus,
     UserPlus,
     Users,
+    WalletCards,
     X
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -68,7 +70,6 @@ export type ViewId =
   | "panels"
   | "courses"
   | "rh-admin"
-  | "mission-tools"
   | "voice-recorder"
   | "music"
   | "self-bot-protection"
@@ -113,6 +114,9 @@ export type ViewId =
   | "fivem-washing"
   | "fivem-drug"
   | "fivem-finance"
+  | "fivem-expenses"
+  | "fivem-ammunition"
+  | "fivem-weapons"
   | "fivem-goals"
   | "fivem-captcha"
   | "fivem-commands"
@@ -164,9 +168,8 @@ const navItems: NavItem[] = [
   { id: "custom-bot-orders", label: "Pedidos de Bots", icon: Bot, moduleId: "custom-bot-orders" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },
   { id: "panels", label: "Painéis", icon: ImageIcon, moduleId: "panels" },
-  { id: "courses", label: "Cursos", icon: BookOpen, moduleIds: ["courses", "police-courses"] },
-  { id: "rh-admin", label: "Departamento de RH", icon: ShieldCheck, moduleIds: ["rh-admin", "police-hr"] },
-  { id: "mission-tools", label: "Mission Tools", icon: ListChecks, moduleId: "mission-tools" },
+  { id: "courses", label: "Cursos", icon: BookOpen, moduleId: "courses" },
+  { id: "rh-admin", label: "Departamento de RH", icon: ShieldCheck, moduleId: "rh-admin" },
   { id: "voice-recorder", label: "Voice Recorder", icon: Mic2, moduleId: "voice-recorder" },
   { id: "music", label: "Música", icon: Music2, moduleId: "music" },
   { id: "self-bot-protection", label: "SelfBot Protection", icon: ShieldCheck, moduleId: "safe-bot" },
@@ -188,8 +191,8 @@ const navItems: NavItem[] = [
   { id: "first-lady", label: "Primeira Dama", icon: UserPlus, moduleId: "first-lady" },
   { id: "permissions", label: "Usuários", icon: Users, moduleId: "verification" },
   { id: "logs", label: "Logs e Notificações", icon: ScrollText, moduleId: "logs" },
-  { id: "fivem", label: "FiveM Geral", icon: Building2, moduleIds: ["fivem", "fivem-factions", "fivem-corporations", "fivem-finance"] },
-  { id: "fivem-absence", label: "Ausência", icon: CalendarClock, moduleIds: ["fivem-absences", "fivem-fac"] },
+  { id: "fivem", label: "FiveM Geral", icon: Building2, moduleId: "fivem" },
+  { id: "fivem-absence", label: "Ausência", icon: CalendarClock, moduleId: "fivem-absences" },
   { id: "fivem-hierarchy", label: "hierarquia", icon: ListTree, moduleId: "fivem-hierarchy" },
   { id: "fivem-actions", label: "Ações FAC", icon: Activity, moduleId: "fivem-actions" },
   { id: "police-absence", label: "Ausência Policial", icon: CalendarClock, moduleId: "police-absences" },
@@ -211,6 +214,9 @@ const navItems: NavItem[] = [
   { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },
   { id: "fivem-finance", label: "Financeiro", icon: CircleDollarSign, moduleId: "fivem-finance" },
+  { id: "fivem-expenses", label: "Sistema de Gastos", icon: WalletCards, moduleId: "fivem-expenses" },
+  { id: "fivem-ammunition", label: "Sistema de Munição", icon: PackageCheck, moduleId: "fivem-ammunition" },
+  { id: "fivem-weapons", label: "Sistema de Armas", icon: PackageCheck, moduleId: "fivem-weapons" },
   { id: "fivem-goals", label: "Metas", icon: ListChecks, moduleId: "fivem-goals" },
   { id: "fivem-captcha", label: "CAPTCHA FiveM", icon: ShieldCheck, moduleId: "fivem-captcha" },
   { id: "fivem-commands", label: "Comandos FiveM", icon: ScrollText, moduleId: "fivem-commands" },
@@ -274,6 +280,9 @@ const fivemViewIds = new Set<ViewId>([
   "fivem-washing",
   "fivem-drug",
   "fivem-finance",
+  "fivem-expenses",
+  "fivem-ammunition",
+  "fivem-weapons",
   "fivem-goals",
   "fivem-captcha",
   "fivem-commands",
@@ -310,10 +319,6 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
   const itemModuleIds = item.moduleIds ?? (item.moduleId ? [item.moduleId] : []);
   const releasedItemModuleIds = itemModuleIds.filter((moduleId) => enabledModuleSet.has(moduleId));
 
-  if (item.id === "courses") {
-    return releasedItemModuleIds.includes("police-courses") ? "police" : "user";
-  }
-
   if (item.id === "rh-admin") {
     return "police";
   }
@@ -322,7 +327,7 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
     return "police";
   }
 
-  if (fivemViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => moduleId.startsWith("fivem-") || moduleId === "fivem" || moduleId === "fivem-fac")) {
+  if (fivemViewIds.has(item.id) || releasedItemModuleIds.some((moduleId) => moduleId.startsWith("fivem-") || moduleId === "fivem")) {
     return "fivem";
   }
 

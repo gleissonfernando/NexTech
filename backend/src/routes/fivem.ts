@@ -359,7 +359,7 @@ const facPhotoUpload = raw({
   type: ["image/gif", "image/jpeg", "image/png", "image/webp"]
 });
 const allowedFacPhotoMimeTypes = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
-const FAC_MODULE_IDS = ["fivem-absences", "fivem-fac", "police-absences"] as const;
+const FAC_MODULE_IDS = ["fivem-absences"] as const;
 
 export const fivemRouter = Router();
 

@@ -102,7 +102,7 @@ export function registerEvents(client: Client, context: BotContext) {
     || isBotModuleEnabled("fivem-hierarchy")
     || isSelfBotModuleEnabled();
 
-  if (memberEventsEnabled && (managedRuntimeBot || ["welcome", "leave", "roles", "logs", "fivem-fac", "fivem-hierarchy", "account-age-security", "safe-bot", "anti-ban"].some(isBotModuleEnabled))) {
+  if (memberEventsEnabled && (managedRuntimeBot || ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-hierarchy", "account-age-security", "safe-bot", "anti-ban"].some(isBotModuleEnabled))) {
     client.on(Events.GuildMemberAdd, (member) => {
       runEvent("guildMemberAdd", async () => {
         const resolved = await resolveMember(member);

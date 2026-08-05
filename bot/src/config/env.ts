@@ -170,22 +170,15 @@ const envSchema = z
   });
 
 export const env = envSchema.parse(process.env);
-const ALWAYS_ENABLED_MODULE_IDS = ["mission-tools"] as const;
+const ALWAYS_ENABLED_MODULE_IDS = [] as const;
 const enabledModules = new Set(
   env.BOT_ENABLED_MODULES.split(",")
     .map((moduleId) => moduleId.trim())
     .filter(Boolean)
 );
 const MODULE_ALIASES: Record<string, string[]> = {
-  courses: ["courses", "police-courses"],
-  "police-courses": ["police-courses", "courses"],
-  "fivem-absences": ["fivem-absences", "fivem-fac", "police-absences"],
-  "fivem-fac": ["fivem-fac", "fivem-absences", "police-absences"],
-  "police-absences": ["police-absences", "fivem-absences", "fivem-fac"],
   "fivem-drugs": ["fivem-drugs"],
-  "fivem-washing": ["fivem-washing"],
-  daf: ["police-daf-roster", "daf"],
-  "police-daf-roster": ["police-daf-roster", "daf"]
+  "fivem-washing": ["fivem-washing"]
 };
 let runtimeEnabledModules: Set<string> | null = null;
 let runtimeBotId = env.DASHBOARD_BOT_ID.trim() || null;

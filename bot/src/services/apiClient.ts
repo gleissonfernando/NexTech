@@ -1238,6 +1238,77 @@ export type FivemFinanceTransaction = {
   managerId?: string; managerName?: string; personName?: string; reason?: string; targetUserId?: string; notes?: string | null;
 };
 
+export type FivemExpenseConfig = {
+  adminRoleIds: string[]; allowAdministrators: boolean; allowNegativeBalance: boolean; authorizedRoleIds: string[]; botId: string | null; clientId: string | null; color: string; enabled: boolean;
+  footerText: string | null; guildId: string; id: string; imageUrl: string | null; logsChannelId: string | null; moduleId: "fivem-expenses"; moduleType: "EXPENSES"; organizationId: string;
+  organizationName: string; panelChannelId: string | null; panelDescription: string; panelMessageId: string | null; panelName: string; panelTitle: string;
+  releaseStatus: "active" | "disabled" | "suspended"; releasedAt: string | null; releasedBy: string | null; summaryChannelId: string | null; thumbnailUrl: string | null; updatedAt: string | null; updatedBy?: string | null;
+};
+export type FivemExpenseItem = {
+  amountMode: "TOTAL" | "UNIT_PRICE" | "BOTH"; botId: string | null; createdAt: string; deductFromCash: boolean; defaultUnitAmountCents: number | null;
+  description: string | null; emoji: string | null; enabled: boolean; guildId: string; id: string; maxQuantity: number | null; minQuantity: number | null; name: string;
+  organizationId: string; position: number; requiresAmount: boolean; requiresDescription: boolean; requiresQuantity: boolean; transactionType: "OUTFLOW"; updatedAt: string;
+};
+export type FivemExpenseRecord = {
+  archived: boolean; balanceAfterCents: number; balanceBeforeCents: number; botId: string | null; cashOperation: "DEBIT"; cashTransactionId: string | null; channelId: string; createdAt: string;
+  description: string | null; errorMessage: string | null; guildId: string; id: string; interactionId: string; itemEmoji: string | null; itemId: string; itemName: string;
+  messageId: string | null; moduleType: "EXPENSES"; organizationId: string; organizationName: string; quantity: number | null; resetBatchId: string | null; status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  totalAmountCents: number; transactionId: string; transactionType: "OUTFLOW"; unitAmountCents: number | null; updatedAt: string; userAvatar: string | null;
+  userDisplayName: string; userId: string;
+};
+export type FivemExpenseRuntime = {
+  config: FivemExpenseConfig;
+  finance: FivemFinanceSettings;
+  items: FivemExpenseItem[];
+  records: FivemExpenseRecord[];
+  report: { balanceCents: number; count: number; totalCents: number; biggest: FivemExpenseRecord | null; last: FivemExpenseRecord | null; byItem: Array<{ count: number; itemName: string; totalAmountCents: number }> };
+};
+
+export type AmmunitionPermissionType = "CREATE_ORDER" | "VIEW_CHANNEL" | "COMPLETE_ORDER" | "CANCEL_ORDER" | "VIEW_REPORT" | "MANAGE_CONFIG";
+export type AmmunitionConfig = {
+  botId: string | null; cancelledChannelDeleteDelaySeconds: number; completedChannelDeleteDelaySeconds: number; createdAt: string; currency: "BRL";
+  enabled: boolean; guildId: string; id: string; logChannelId: string | null; panelChannelId: string | null; panelMessageId: string | null;
+  roles: Record<AmmunitionPermissionType, string[]>; sellerFactionId: string | null; temporaryCategoryId: string | null; timezone: string;
+  unitPriceInCents: number | null; updatedAt: string; updatedBy: string | null;
+};
+export type AmmunitionFaction = { emoji: string | null; id: string; name: string };
+export type AmmunitionType = { active: boolean; aliases: string[]; botId: string | null; createdAt: string; guildId: string; id: string; name: string; normalizedName: string; unitPriceInCents: number | null; updatedAt: string };
+export type AmmunitionOrderItem = { ammunitionTypeId: string; name: string; quantity: number; subtotalInCents: number; unitPriceInCents: number; updatedAt: string };
+export type AmmunitionOrder = {
+  botId: string | null; buyerFactionId: string; buyerFactionName: string; cancelledAt: string | null; cancelledByUserId: string | null;
+  cancelReason: string | null; cashIdempotencyKey: string; cashTransactionId: string | null; completedAt: string | null; completedByUserId: string | null;
+  createdAt: string; guildId: string; id: string; itemEditingLocked: boolean; items: AmmunitionOrderItem[]; openedByUserId: string; orderNumber: number; panelMessageId: string | null;
+  processingStartedAt: string | null; quantity: number; sellerFactionId: string; sellerFactionName: string; sellerUserId: string;
+  status: "PENDING" | "PROCESSING" | "DELIVERED" | "CANCELLED" | "FAILED"; temporaryChannelId: string | null; totalValueInCents: number;
+  unitPriceInCents: number; updatedAt: string;
+};
+export type AmmunitionRuntime = { ammunitionTypes: AmmunitionType[]; config: AmmunitionConfig; factions: AmmunitionFaction[]; orders: AmmunitionOrder[] };
+export type AmmunitionWeeklySummary = {
+  buyers: Array<{ count: number; id: string; name: string; totalUnits: number; totalValueInCents: number }>;
+  end: string; orderCount: number; sellerFactionId: string | null; sellerFactionName: string | null;
+  sellers: Array<{ count: number; id: string; name: string; totalUnits: number; totalValueInCents: number }>;
+  start: string; totalUnits: number; totalValueInCents: number;
+};
+
+export type WeaponSaleConfig = {
+  accentColor: string | null; botId: string | null; buttonText: string; cancelDeleteDelaySeconds: number; completedDeleteDelaySeconds: number;
+  createdAt: string; description: string; enabled: boolean; expirationMinutes: number; footerImageUrl: string | null; guildId: string; id: string;
+  imageUrl: string | null; logChannelId: string | null; managerRoleIds: string[]; managerUserIds: string[]; orientationText: string;
+  panelChannelId: string | null; panelMessageId: string | null; temporaryCategoryId: string | null; temporaryChannelText: string; thumbnailUrl: string | null;
+  title: string; updatedAt: string; updatedBy: string | null;
+};
+export type WeaponSaleWeapon = { active: boolean; botId: string | null; createdAt: string; createdBy: string | null; guildId: string; id: string; name: string; normalizedName: string; unitPriceInCents: number; updatedAt: string };
+export type WeaponSaleItem = { quantity: number; subtotalInCents: number; unitPriceInCents: number; weaponId: string; weaponName: string };
+export type WeaponSaleSession = {
+  botId: string | null; buyerFactionId: string; buyerFactionName: string; channelId: string | null; completedAt: string | null; completedByUserId: string | null;
+  createdAt: string; expiresAt: string | null; guildId: string; id: string; items: WeaponSaleItem[]; lastActivityAt: string; logMessageId: string | null;
+  openedByUserId: string; panelMessageId: string | null; saleCode: string; sellerName: string | null;
+  status: "aguardando_itens" | "em_preenchimento" | "aguardando_confirmacao" | "processando" | "concluida" | "cancelada" | "expirada";
+  totalQuantity: number; totalValueInCents: number; updatedAt: string;
+};
+export type WeaponSaleFaction = { emoji: string | null; id: string; name: string };
+export type WeaponSaleRuntime = { config: WeaponSaleConfig; factions: WeaponSaleFaction[]; sessions: WeaponSaleSession[]; weapons: WeaponSaleWeapon[] };
+
 export type FivemGoalUserChannel = {
   channelId: string;
   guildId: string;
@@ -2088,136 +2159,6 @@ export type OpenDutySettings = {
   counterMode: "accumulate" | "reset_after_3" | "cycles";
   updatedAt: string;
   updatedBy: string | null;
-};
-
-export type MissionToolsFeatureId =
-  | "mission"
-  | "clear"
-  | "voice"
-  | "rich-presence"
-  | "username-checker";
-
-export type MissionToolsStatus =
-  | "active"
-  | "inactive"
-  | "deactivated"
-  | "waiting"
-  | "running"
-  | "completed"
-  | "error";
-
-export type MissionToolsClearMode = "bulk" | "userDm";
-export type MissionToolsVoiceStatus = "connected" | "disconnected" | "reconnecting";
-export type MissionToolsRichPresenceStatus = "active" | "inactive";
-export type MissionToolsRichPresenceActivityType = 0 | 1 | 2 | 3 | 5;
-export type MissionToolsTokenStatus = "connected" | "invalid" | "expired" | "disconnected" | "fake";
-
-export type MissionToolsRichPresenceConfig = {
-  applicationId?: string;
-  activityType?: MissionToolsRichPresenceActivityType;
-  name?: string;
-  description?: string;
-  state?: string;
-  details?: string;
-  buttonLabel?: string;
-  buttonUrl?: string;
-  largeImage?: string;
-  largeText?: string;
-  smallImage?: string;
-  smallText?: string;
-  startTimestamp?: string;
-};
-
-export type MissionToolsUsernameCheckerOptions = {
-  usernameLength?: number;
-  concurrency?: number;
-  requestDelay?: number;
-};
-
-export type MissionToolsUsernameCheckerStats = {
-  hits: number;
-  taken: number;
-  errors: number;
-  activeProxies: number;
-  deadProxies: number;
-  bannedProxies: number;
-  workersRunning: number;
-};
-
-export type MissionToolsSettings = {
-  id: string;
-  botId: string;
-  guildId: string;
-  enabled: boolean;
-  panelChannelId: string | null;
-  panelMessageId: string | null;
-  logChannelId: string | null;
-  managerRoleIds: string[];
-  allowedRoleIds: string[];
-  enabledFeatures: MissionToolsFeatureId[];
-  lastPanelRequestedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type MissionToolsUserPanel = {
-  id: string;
-  botId: string;
-  guildId: string;
-  userId: string;
-  username: string | null;
-  dmChannelId: string | null;
-  clearMessageId: string | null;
-  missionMessageId: string | null;
-  voiceMessageId: string | null;
-  richPresenceMessageId: string | null;
-  usernameCheckerMessageId: string | null;
-  tokenConfigured: boolean;
-  tokenStatus: MissionToolsTokenStatus;
-  tokenLast4: string | null;
-  tokenUpdatedAt: string | null;
-  tokenLastValidatedAt: string | null;
-  tokenInvalidReason: string | null;
-  clearStatus: MissionToolsStatus;
-  clearMode: MissionToolsClearMode;
-  clearTargetUserId: string | null;
-  missionStatus: MissionToolsStatus;
-  voiceStatus: MissionToolsVoiceStatus;
-  richPresenceStatus: MissionToolsRichPresenceStatus;
-  usernameCheckerStatus: MissionToolsStatus;
-  currentMission: string | null;
-  missionDetail: string | null;
-  voiceGuildId: string | null;
-  voiceGuildName: string | null;
-  voiceChannelId: string | null;
-  voiceChannelName: string | null;
-  voiceConnectedAt: string | null;
-  richPresenceConfig: MissionToolsRichPresenceConfig;
-  richPresenceUpdatedAt: string | null;
-  usernameCheckerOptions: MissionToolsUsernameCheckerOptions;
-  usernameCheckerStats: MissionToolsUsernameCheckerStats;
-  usernameCheckerLastEvent: string | null;
-  usernameCheckerUpdatedAt: string | null;
-  completedCount: number;
-  totalMissions: number;
-  progress: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type MissionToolsUserPatch = Partial<Omit<
-  MissionToolsUserPanel,
-  "id" | "botId" | "guildId" | "userId" | "createdAt" | "updatedAt"
->>;
-
-export type MissionToolsTokenResponse = {
-  token: string;
-  tokenConfigured: boolean;
-  tokenLast4: string | null;
-  tokenStatus: MissionToolsTokenStatus;
-  invalidReason: string | null;
-  lastValidatedAt: string | null;
-  updatedAt: string;
 };
 
 export type PriceTableItem = {
@@ -3754,6 +3695,163 @@ export class ApiClient {
     return data.settings;
   }
 
+  async getFivemExpenseRuntime(guildId: string, organizationId?: string | null) {
+    const { data } = await this.http.get<FivemExpenseRuntime>(`/fivem-expenses/bot/${guildId}/runtime`, { params: organizationId ? { organizationId } : undefined });
+    return data;
+  }
+
+  async registerFivemExpense(guildId: string, input: {
+    channelId: string; description?: string | null; interactionId: string; itemId: string; organizationId?: string | null; quantity?: number | null;
+    totalAmountCents: number; unitAmountCents?: number | null; userAvatar?: string | null; userDisplayName: string; userId: string;
+  }) {
+    const { data } = await this.http.post<{ record: FivemExpenseRecord }>(`/fivem-expenses/bot/${guildId}/register`, input);
+    return data.record;
+  }
+
+  async updateFivemExpensePanelState(guildId: string, input: { messageId: string | null; organizationId?: string | null }) {
+    const { data } = await this.http.put<{ config: FivemExpenseConfig }>(`/fivem-expenses/bot/${guildId}/panel-state`, input);
+    return data.config;
+  }
+
+  async resetFivemExpenses(guildId: string, input: { actorId: string; organizationId?: string | null; reason?: string | null }) {
+    const { data } = await this.http.post<{ affected: number; resetBatchId: string }>(`/fivem-expenses/bot/${guildId}/reset`, input);
+    return data;
+  }
+
+  async getAmmunitionRuntime(guildId: string) {
+    const { data } = await this.http.get<AmmunitionRuntime>(`/ammunition/bot/${guildId}/runtime`);
+    return data;
+  }
+
+  async saveAmmunitionRuntimeSettings(guildId: string, input: Partial<{
+    cancelledChannelDeleteDelaySeconds: number; completedChannelDeleteDelaySeconds: number; enabled: boolean; logChannelId: string | null;
+    panelChannelId: string | null; panelMessageId: string | null; roles: Partial<Record<AmmunitionPermissionType, string[]>>;
+    sellerFactionId: string | null; temporaryCategoryId: string | null; timezone: string | null; unitPriceInCents: number | null;
+  }>) {
+    const { data } = await this.http.put<{ config: AmmunitionConfig }>(`/ammunition/bot/${guildId}/settings`, input);
+    return data.config;
+  }
+
+  async updateAmmunitionPanelState(guildId: string, messageId: string | null) {
+    const { data } = await this.http.put<{ config: AmmunitionConfig }>(`/ammunition/bot/${guildId}/panel-state`, { messageId });
+    return data.config;
+  }
+
+  async createAmmunitionOrder(guildId: string, input: { buyerFactionId: string; openedByUserId: string; quantity?: number; sellerUserId: string }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders`, input);
+    return data.order;
+  }
+
+  async getPendingAmmunitionOrderByChannel(guildId: string, channelId: string) {
+    const { data } = await this.http.get<{ order: AmmunitionOrder | null }>(`/ammunition/bot/${guildId}/orders/by-channel/${channelId}`);
+    return data.order;
+  }
+
+  async addAmmunitionOrderItems(guildId: string, orderId: string, input: { actorId: string; items: Array<{ ammunitionTypeId: string; quantity: number }>; messageContent?: string | null; messageId?: string | null }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/items`, input);
+    return data.order;
+  }
+
+  async removeAmmunitionOrderItem(guildId: string, orderId: string, ammunitionTypeId: string, input: { actorId: string; messageContent?: string | null; messageId?: string | null }) {
+    const { data } = await this.http.delete<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/items/${ammunitionTypeId}`, { data: input });
+    return data.order;
+  }
+
+  async clearAmmunitionOrderItems(guildId: string, orderId: string, input: { actorId: string; messageContent?: string | null; messageId?: string | null }) {
+    const { data } = await this.http.delete<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/items`, { data: input });
+    return data.order;
+  }
+
+  async setAmmunitionOrderItemLock(guildId: string, orderId: string, input: { actorId: string; locked: boolean; messageContent?: string | null; messageId?: string | null }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/item-lock`, input);
+    return data.order;
+  }
+
+  async recordAmmunitionOrderMessage(guildId: string, orderId: string, input: { action: "LIST_ITEMS" | "REJECTED"; actorId: string; messageContent?: string | null; messageId?: string | null; metadata?: Record<string, unknown> }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/message-log`, input);
+    return data.order;
+  }
+
+  async updateAmmunitionOrderChannel(guildId: string, orderId: string, input: { panelMessageId?: string | null; temporaryChannelId?: string | null }) {
+    const { data } = await this.http.patch<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/channel`, input);
+    return data.order;
+  }
+
+  async completeAmmunitionOrder(guildId: string, orderId: string, actor: { avatarUrl?: string | null; id: string; name: string }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/complete`, actor);
+    return data.order;
+  }
+
+  async cancelAmmunitionOrder(guildId: string, orderId: string, input: { actorId: string; reason?: string | null }) {
+    const { data } = await this.http.post<{ order: AmmunitionOrder }>(`/ammunition/bot/${guildId}/orders/${orderId}/cancel`, input);
+    return data.order;
+  }
+
+  async getAmmunitionWeeklySummary(guildId: string) {
+    const { data } = await this.http.get<{ summary: AmmunitionWeeklySummary }>(`/ammunition/bot/${guildId}/summary`);
+    return data.summary;
+  }
+
+  async getWeaponSaleRuntime(guildId: string) {
+    const { data } = await this.http.get<WeaponSaleRuntime>(`/weapon-sales/bot/${guildId}/runtime`);
+    return data;
+  }
+
+  async saveWeaponSaleRuntimeSettings(guildId: string, input: Partial<WeaponSaleConfig> & { weapons?: Array<Partial<WeaponSaleWeapon> & { name: string; unitPriceInCents: number }> }) {
+    const { data } = await this.http.put<{ config: WeaponSaleConfig }>(`/weapon-sales/bot/${guildId}/settings`, input);
+    return data.config;
+  }
+
+  async updateWeaponSalePanelState(guildId: string, messageId: string | null) {
+    const { data } = await this.http.put<{ config: WeaponSaleConfig }>(`/weapon-sales/bot/${guildId}/panel-state`, { messageId });
+    return data.config;
+  }
+
+  async createWeaponSaleSession(guildId: string, input: { buyerFactionId: string; openedByUserId: string; sellerName?: string | null }) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions`, input);
+    return data.session;
+  }
+
+  async updateWeaponSaleSessionChannel(guildId: string, sessionId: string, input: { channelId?: string | null; panelMessageId?: string | null }) {
+    const { data } = await this.http.patch<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/channel`, input);
+    return data.session;
+  }
+
+  async getWeaponSaleSessionByChannel(guildId: string, channelId: string) {
+    const { data } = await this.http.get<{ session: WeaponSaleSession | null }>(`/weapon-sales/bot/${guildId}/sessions/by-channel/${channelId}`);
+    return data.session;
+  }
+
+  async addWeaponSaleItems(guildId: string, sessionId: string, input: { actorId: string; items: Array<{ quantity: number; weaponId: string }>; messageContent?: string | null; messageId?: string | null }) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/items`, input);
+    return data.session;
+  }
+
+  async clearWeaponSaleItems(guildId: string, sessionId: string, actorId: string) {
+    const { data } = await this.http.delete<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/items`, { data: { actorId } });
+    return data.session;
+  }
+
+  async readyWeaponSaleSession(guildId: string, sessionId: string, actorId: string) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/ready`, { actorId });
+    return data.session;
+  }
+
+  async reopenWeaponSaleSession(guildId: string, sessionId: string, actorId: string) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/reopen`, { actorId });
+    return data.session;
+  }
+
+  async confirmWeaponSaleSession(guildId: string, sessionId: string, actorId: string) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/confirm`, { actorId });
+    return data.session;
+  }
+
+  async cancelWeaponSaleSession(guildId: string, sessionId: string, actorId: string) {
+    const { data } = await this.http.post<{ session: WeaponSaleSession }>(`/weapon-sales/bot/${guildId}/sessions/${sessionId}/cancel`, { actorId });
+    return data.session;
+  }
+
   async getFivemGoalChannelByChannel(channelId: string) {
     const { data } = await this.http.get<{ channel: FivemGoalUserChannel | null }>(`/fivem/bot/goals/channel/${channelId}`);
     return data.channel;
@@ -4653,91 +4751,6 @@ export class ApiClient {
     const { data } = await this.http.post<FivemFacLifecycleResult>(`/fivem/bot/fac/absences/${absenceId}/finish`, {
       roleRemoved
     });
-    return data;
-  }
-
-  async getActiveMissionToolsConfigs() {
-    const { data } = await this.http.get<{ configs: MissionToolsSettings[] }>("/mission-tools/bot/configs");
-    return data.configs;
-  }
-
-  async getMissionToolsSettings(guildId: string) {
-    const { data } = await this.http.get<{ settings: MissionToolsSettings }>(`/mission-tools/bot/${guildId}`);
-    return data.settings;
-  }
-
-  async saveMissionToolsSettings(guildId: string, input: Partial<Pick<
-    MissionToolsSettings,
-    "allowedRoleIds" | "enabled" | "enabledFeatures" | "logChannelId" | "managerRoleIds" | "panelChannelId"
-  >>) {
-    const { data } = await this.http.patch<{ settings: MissionToolsSettings }>(
-      `/mission-tools/bot/${guildId}/settings`,
-      input
-    );
-    return data.settings;
-  }
-
-  async updateMissionToolsPanelState(input: { guildId: string; messageId?: string | null }) {
-    const { data } = await this.http.post<{ settings: MissionToolsSettings }>("/mission-tools/bot/panel-state", input);
-    return data.settings;
-  }
-
-  async getMissionToolsUser(guildId: string, userId: string) {
-    const { data } = await this.http.get<{ user: MissionToolsUserPanel }>(
-      `/mission-tools/bot/${guildId}/users/${userId}`
-    );
-    return data.user;
-  }
-
-  async updateMissionToolsUser(guildId: string, userId: string, input: MissionToolsUserPatch) {
-    const { data } = await this.http.patch<{ user: MissionToolsUserPanel }>(
-      `/mission-tools/bot/${guildId}/users/${userId}`,
-      input
-    );
-    return data.user;
-  }
-
-  async saveMissionToolsToken(guildId: string, userId: string, token: string) {
-    const { data } = await this.http.post<{
-      accepted: false;
-      fake: true;
-      tokenConfigured: boolean;
-      tokenLast4: string | null;
-      tokenStatus: MissionToolsTokenStatus;
-      user: MissionToolsUserPanel;
-    }>(
-      `/mission-tools/bot/${guildId}/users/${userId}/token`,
-      { token }
-    );
-    return data;
-  }
-
-  async deleteMissionToolsToken(guildId: string, userId: string) {
-    const { data } = await this.http.delete<{ tokenConfigured: boolean }>(
-      `/mission-tools/bot/${guildId}/users/${userId}/token`
-    );
-    return data;
-  }
-
-  async getMissionToolsToken(guildId: string, userId: string) {
-    const { data } = await this.http.get<MissionToolsTokenResponse>(
-      `/mission-tools/bot/${guildId}/users/${userId}/token`
-    );
-    return data;
-  }
-
-  async markMissionToolsTokenAuthFailure(guildId: string, userId: string, input: {
-    reason?: string | null;
-    source?: string | null;
-    statusCode?: number | null;
-  }) {
-    const { data } = await this.http.post<{
-      tokenStatus: MissionToolsTokenStatus;
-      user: MissionToolsUserPanel;
-    }>(
-      `/mission-tools/bot/${guildId}/users/${userId}/token/auth-failure`,
-      input
-    );
     return data;
   }
 
