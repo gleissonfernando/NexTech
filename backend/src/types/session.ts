@@ -41,8 +41,8 @@ declare module "express-session" {
       expiresAt: number;
       returnTo: string;
       state: string;
-      type: "dev" | "bot";
-      ua: string;
+      type: "dev" | "bot" | "dashboard" | "customer";
+      ua?: string;
     };
     discordAccessToken?: string;
     discordRefreshToken?: string;

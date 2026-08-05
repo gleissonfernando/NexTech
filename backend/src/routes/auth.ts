@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { Router } from "express";
 import { z } from "zod";
@@ -75,23 +75,17 @@ function errorRedirectUrl(reason: string) {
   return env.SITE_ORIGIN ? `${env.SITE_ORIGIN}${path}` : path;
 }
 
-function requestFingerprint(req: Request) {
-  return createHash("sha256")
-    .update(req.get("user-agent") ?? "")
-    .digest("base64url");
-}
-
 async function createOAuthState(req: Request, input: {
   botId?: string;
   botSlug?: string;
   returnTo: string;
   type: "dev" | "bot" | "dashboard" | "customer";
 }) {
+  void req;
   const payload = {
     ...input,
     expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
-    nonce: randomUUID(),
-    ua: requestFingerprint(req)
+    nonce: randomUUID()
   };
 
   return signOAuthState(payload);
@@ -103,7 +97,6 @@ function consumeOAuthState(req: Request, state: string) {
   if (
     !saved ||
     saved.expiresAt < Date.now() ||
-    saved.ua !== requestFingerprint(req) ||
     !isAllowedReturnTo(saved.returnTo, saved.botSlug)
   ) {
     return null;
@@ -119,7 +112,7 @@ type SignedOAuthState = {
   nonce: string;
   returnTo: string;
   type: "dev" | "bot" | "dashboard" | "customer";
-  ua: string;
+  ua?: string;
 };
 
 function signOAuthState(payload: SignedOAuthState) {
@@ -150,8 +143,7 @@ function verifyOAuthState(state: string): SignedOAuthState | null {
       typeof parsed.expiresAt !== "number" ||
       typeof parsed.nonce !== "string" ||
       typeof parsed.returnTo !== "string" ||
-      (parsed.type !== "dev" && parsed.type !== "bot" && parsed.type !== "dashboard" && parsed.type !== "customer") ||
-      typeof parsed.ua !== "string"
+      (parsed.type !== "dev" && parsed.type !== "bot" && parsed.type !== "dashboard" && parsed.type !== "customer")
     ) {
       return null;
     }
