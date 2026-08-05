@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
+import { DEV_MODULES } from "./devBotService";
 import { expandModuleAccessKeys, moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
 
 test("converte entitlements comerciais em modulos reais", () => {
@@ -110,4 +111,8 @@ test("expande chaves antigas sem remover modulos ja validos", () => {
       "safe-bot"
     ]
   );
+});
+
+test("inclui o modulo de cursos na lista de modulos liberados", () => {
+  assert.ok(DEV_MODULES.some((module) => module.id === "courses"));
 });

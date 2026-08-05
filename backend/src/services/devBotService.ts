@@ -1,38 +1,37 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import axios from "axios";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import {
-  getMongoCollections,
-  type MongoBotGuildConfig,
-  type MongoBotGuildModuleConfig,
-  type MongoDevBot,
-  type MongoDevBotStatus,
-  type MongoSecurityFeatureAccess
+    getMongoCollections,
+    type MongoBotGuildConfig,
+    type MongoBotGuildModuleConfig,
+    type MongoDevBot,
+    type MongoDevBotStatus,
+    type MongoSecurityFeatureAccess
 } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
+import { canStartBotByBilling, getBotBillingAccess, type BotBillingAccessDto } from "./botBillingService";
 import {
-  canManageModuleAtLevel,
-  canReadModuleAtLevel,
-  dashboardPermissionsForLevel,
-  highestDashboardAccessLevel,
-  type DashboardAccessLevel,
-  type DashboardPermissionFlags,
-  type SessionAccessLevel
+    canManageModuleAtLevel,
+    canReadModuleAtLevel,
+    dashboardPermissionsForLevel,
+    highestDashboardAccessLevel,
+    type DashboardAccessLevel,
+    type DashboardPermissionFlags,
+    type SessionAccessLevel
 } from "./dashboardPermissionService";
+import { canAccessDevDashboard } from "./devPermissionService";
 import { getDiscordAvatarUrl, getGuildIconUrl } from "./discordAssetService";
 import { fetchDiscordCurrentUserGuildMember, refreshDiscordTokens } from "./discordOAuthService";
 import { ensureSafeBotDiscordResources } from "./discordOptionsService";
-import { getGuildSettings, getPersistedDashboardAccess, saveSafeBotMessageState, updateGuildSettings } from "./settingsService";
+import { isCustomFivemModuleId } from "./fivemModuleService";
 import { getImageAntiSpamSettings } from "./imageAntiSpamService";
-import { saveSelfBotProtectionSettings } from "./selfBotProtectionService";
-import { getSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
 import { createLog } from "./logService";
 import { expandModuleAccessKeys } from "./moduleEntitlementService";
+import { getSelfBotProtectionSettings, saveSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
+import { getGuildSettings, getPersistedDashboardAccess, saveSafeBotMessageState, updateGuildSettings } from "./settingsService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
-import { isCustomFivemModuleId } from "./fivemModuleService";
-import { canAccessDevDashboard } from "./devPermissionService";
-import { getBotBillingAccess, canStartBotByBilling, type BotBillingAccessDto } from "./botBillingService";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
@@ -50,6 +49,7 @@ export const DEV_MODULES = [
   { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
   { id: "price-tables", label: "Tabela de Precos" },
   { id: "panels", label: "Sistema de Painéis" },
+  { id: "courses", label: "Sistema de Cursos" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },
