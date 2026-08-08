@@ -93,6 +93,21 @@ export const fechamentoMetaCommand: BotCommand = {
   }
 };
 
+export const fechaMetaCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("fecha")
+    .setDescription("Fecha meta individual.")
+    .addSubcommand((subcommand) => subcommand
+      .setName("meta")
+      .setDescription("Fecha a meta de uma pessoa no período atual.")
+      .addUserOption((option) => option.setName("usuario").setDescription("Pessoa que terá a meta fechada.").setRequired(true))),
+  moduleId: "fivem-goals",
+  async execute(interaction, context) {
+    if (interaction.options.getSubcommand() !== "meta") return;
+    await closeSingleUserGoal(interaction, context);
+  }
+};
+
 export const resumoMetaCommand: BotCommand = {
   data: new SlashCommandBuilder().setName("resumo-meta").setDescription("Mostra o resumo semanal de metas de todos os usuários."),
   moduleId: "fivem-goals",
@@ -643,6 +658,61 @@ async function showFarmingFinalizePanel(interaction: ChatInputCommandInteraction
     return;
   }
   await interaction.reply(createFarmingFinalizeConfirmPayload(settings, interaction.guild));
+}
+
+async function closeSingleUserGoal(interaction: ChatInputCommandInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
+    await interaction.reply({
+      content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.",
+      ephemeral: true
+    });
+    return;
+  }
+
+  const target = interaction.options.getUser("usuario", true);
+  await interaction.deferReply({ ephemeral: true });
+
+  const result = await context.api.finalizeFivemGoalUserPeriod(interaction.guild.id, {
+    actorId: interaction.user.id,
+    userId: target.id
+  }).catch((error) => ({ error }));
+
+  if ("error" in result) {
+    await interaction.editReply(readApiError(result.error, "Não foi possível fechar a meta desta pessoa."));
+    return;
+  }
+
+  const report = result.report;
+  const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
+  if (!result.alreadyFinalized) {
+    await sendGoalLog(interaction.guild, context, [
+      "✅ Meta individual fechada",
+      "",
+      `Gerente: <@${interaction.user.id}> | ${interaction.user.id}`,
+      `Pessoa: <@${target.id}> | ${target.id}`,
+      `Período: ${periodText}`,
+      `Registros: ${report.totalRecords}`,
+      `Aprovadas: ${report.approvedCount}`,
+      `Pendentes: ${report.pendingCount}`,
+      `Reprovadas: ${report.refusedCount}`,
+      `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
+      `Data: ${formatBrazilDateTime(new Date())}`
+    ].join("\n"), { periodEnd: report.periodEnd, periodStart: report.periodStart, targetUserId: target.id });
+  }
+
+  await interaction.editReply([
+    result.alreadyFinalized ? "⚠️ A meta dessa pessoa já estava fechada neste período." : "✅ Meta da pessoa fechada neste período.",
+    "",
+    `Pessoa: <@${target.id}>`,
+    `Período: ${periodText}`,
+    `Registros: ${report.totalRecords}`,
+    `Aprovadas: ${report.approvedCount}`,
+    `Pendentes: ${report.pendingCount}`,
+    `Reprovadas: ${report.refusedCount}`,
+    `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`
+  ].join("\n"));
 }
 
 async function handleFarmingManagementInteraction(interaction: Interaction, context: BotContext) {

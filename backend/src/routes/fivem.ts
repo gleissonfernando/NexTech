@@ -55,6 +55,7 @@ import {
   FIVEM_GOALS_MODULE_ID,
   deleteFivemGoalConfig,
   finalizeCurrentFivemGoalPeriod,
+  finalizeFivemGoalUserPeriod,
   getFivemGoalDashboard,
   getFivemGoalRankingRuntime,
   getFivemGoalSettings,
@@ -176,6 +177,10 @@ const botGoalItemActionSchema = z.object({
 const botGoalFinalizeSchema = z.object({
   actorId: snowflakeSchema,
   finalizationType: z.enum(["manual", "automatic"]).optional().default("manual")
+});
+const botGoalUserFinalizeSchema = z.object({
+  actorId: snowflakeSchema,
+  userId: snowflakeSchema
 });
 const goalSettingsSchema = z.object({
   autoCreateWithManualRegistration: z.boolean().optional(),
@@ -953,6 +958,22 @@ fivemRouter.post("/bot/goals/:guildId/finalize", requireBot, async (req, res, ne
       botId,
       finalizationType: input.finalizationType,
       guildId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/finalize-user", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = botGoalUserFinalizeSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json(await finalizeFivemGoalUserPeriod({
+      actorId: input.actorId,
+      botId,
+      guildId,
+      userId: input.userId
     }));
   } catch (error) {
     return next(error);

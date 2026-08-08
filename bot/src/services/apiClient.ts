@@ -3489,6 +3489,26 @@ export class ApiClient {
     return data;
   }
 
+  async finalizeFivemGoalUserPeriod(guildId: string, input: { actorId: string; userId: string }) {
+    const { data } = await this.http.post<{
+      alreadyFinalized: boolean;
+      finalized: boolean;
+      logId: string | null;
+      report: {
+        approvedCount: number;
+        pendingCount: number;
+        periodEnd: string;
+        periodStart: string;
+        refusedCount: number;
+        totalApprovedValue: number;
+        totalPendingValue: number;
+        totalRecords: number;
+        userId: string;
+      };
+    }>(`/fivem/bot/goals/${guildId}/finalize-user`, input);
+    return data;
+  }
+
   async getFivemOrderRuntime(guildId: string) {
     const { data } = await this.http.get<{ families: FivemOrderFamily[]; products: FivemOrderProduct[]; settings: FivemOrderSettings }>(`/fivem-orders/bot/${guildId}/runtime`);
     return data;
