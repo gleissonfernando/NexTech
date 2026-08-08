@@ -741,7 +741,7 @@ async function finalizeSingleUserGoal(
   const report = result.report;
   const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
   const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel, "Manual");
-  const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, input.targetUserId, finalReport);
+  const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, input.targetUserId, createFinalUserGoalReportPayload(guild, report, input.actorLabel, input.targetLabel, "Manual"));
   if (input.sendAdminLog) {
     await sendGoalLog(guild, context, finalReport, {
       deliveredToUser: delivery.ok,
@@ -794,6 +794,13 @@ function createCloseUserGoalConfirmPayload(guild: Guild, managerId: string, targ
 }
 
 export function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
+  const okIcon = farmSystemEmojiText("visto", guild, guild.client);
+  const listIcon = farmSystemEmojiText("prancheta", guild, guild.client);
+  const timeIcon = farmSystemEmojiText("relogio", guild, guild.client);
+  const calendarIcon = farmSystemEmojiText("calendario", guild, guild.client);
+  const userIcon = farmSystemEmojiText("homem", guild, guild.client);
+  const nameIcon = farmSystemEmojiText("folha", guild, guild.client);
+  const typeIcon = farmSystemEmojiText("engrenagem", guild, guild.client);
   const groupedItems = buildFinalGoalReportGroups(report);
   const detailLines = groupedItems.length
     ? groupedItems.flatMap((item) => {
@@ -806,23 +813,37 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
     })
     : ["Nenhum registro realizado neste período.", ""];
   return [
-    "✅ **Relatório Final — Meta**",
+    `${okIcon} **Relatório Final — Meta**`,
     "",
-    "☑️ Período finalizado com sucesso.",
+    `${okIcon} Período finalizado com sucesso.`,
     "",
-    "📋 **Registros do período**",
+    `${listIcon} **Registros do período**`,
     ...detailLines,
     "",
-    `🕒 Fechamento: ${formatBrazilDateTime(new Date())}`,
-    `📆 Período: ${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`,
-    `👤 Usuário: ${targetLabel} | ${report.userId}`,
-    `🧾 Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
-    `⚙️ Tipo: ${finalizationType}`,
+    `${timeIcon} Fechamento: ${formatBrazilDateTime(new Date())}`,
+    `${calendarIcon} Período: ${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`,
+    `${userIcon} Usuário: ${targetLabel} | ${report.userId}`,
+    `${nameIcon} Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
+    `${typeIcon} Tipo: ${finalizationType}`,
     `◉ Responsável: ${actorLabel}`,
-    "☑️ Status: Finalizado",
+    `${okIcon} Status: Finalizado`,
     "",
     "-# *NexTech - Todos os direitos reservados*"
   ].join("\n").slice(0, 3900);
+}
+
+function createFinalUserGoalReportPayload(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: 0x22c55e,
+      components: [
+        { type: 10, content: replaceSystemEmojis(createFinalUserGoalReportContent(guild, report, actorLabel, targetLabel, finalizationType), guild, guild.client) }
+      ]
+    }],
+    flags: MessageFlags.IsComponentsV2 as const
+  };
 }
 
 function buildFinalGoalReportGroups(report: FinalizedGoalUserReport) {
@@ -845,7 +866,7 @@ function buildFinalGoalReportGroups(report: FinalizedGoalUserReport) {
   return [...groups.values()];
 }
 
-async function sendFinalGoalReportToUserChannel(guild: Guild, channelId: string | null, userId: string, content: string) {
+async function sendFinalGoalReportToUserChannel(guild: Guild, channelId: string | null, userId: string, payload: ReturnType<typeof createFinalUserGoalReportPayload>) {
   if (!channelId) return { channelId: null, error: "Canal individual não cadastrado.", messageId: null, ok: false, userId };
   const channel = await guild.channels.fetch(channelId).catch((error) => ({ error }));
   if (!channel || (typeof channel === "object" && "error" in channel)) {
@@ -854,7 +875,7 @@ async function sendFinalGoalReportToUserChannel(guild: Guild, channelId: string 
   if (!channel.isSendable()) {
     return { channelId, error: "Canal individual não aceita envio de mensagens.", messageId: null, ok: false, userId };
   }
-  const sent = await channel.send({ content, allowedMentions: { parse: [] } }).catch((error) => ({ error }));
+  const sent = await channel.send(payload).catch((error) => ({ error }));
   if (!sent || (typeof sent === "object" && "error" in sent)) {
     return { channelId, error: sent && "error" in sent ? readUnknownError(sent.error) : "Falha ao enviar resumo no canal individual.", messageId: null, ok: false, userId };
   }
@@ -878,7 +899,7 @@ async function closeDueWeeklyGoalPeriod(guild: Guild, context: BotContext) {
     for (const report of result.report.userReports ?? []) {
       const targetLabel = `<@${report.userId}>`;
       const content = createFinalUserGoalReportContent(guild, report, "Sistema", targetLabel, "Automático");
-      const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, report.userId, content);
+      const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, report.userId, createFinalUserGoalReportPayload(guild, report, "Sistema", targetLabel, "Automático"));
       deliveryResults.push(delivery);
       await sendGoalLog(guild, context, content, {
         automatic: true,
@@ -1029,7 +1050,7 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
       for (const userReport of report.userReports ?? []) {
         const targetLabel = `<@${userReport.userId}>`;
         const finalReport = createFinalUserGoalReportContent(guild, userReport, `<@${interaction.user.id}>`, targetLabel, "Manual");
-        const delivery = await sendFinalGoalReportToUserChannel(guild, userReport.channelId ?? null, userReport.userId, finalReport);
+        const delivery = await sendFinalGoalReportToUserChannel(guild, userReport.channelId ?? null, userReport.userId, createFinalUserGoalReportPayload(guild, userReport, `<@${interaction.user.id}>`, targetLabel, "Manual"));
         deliveryResults.push(delivery);
         await sendGoalLog(guild, context, finalReport, {
           deliveredToUser: delivery.ok,
@@ -2289,6 +2310,24 @@ function farmSystemEmojiText(key: SystemEmojiKey, guild: Guild | null, client: C
 function renderFarmConfiguredEmoji(value: string | null | undefined, guild: Guild, fallbackKey: SystemEmojiKey = "caixa") {
   const raw = value?.trim();
   if (!raw) return farmSystemEmojiText(fallbackKey, guild, guild.client);
+  const customMatch = raw.match(/^<a?:([a-zA-Z0-9_]{2,64}):(\d{15,25})>$/);
+  if (customMatch) return raw;
+  const numericId = raw.match(/^<?(\d{15,25})>?$/)?.[1];
+  if (numericId) {
+    const found = guild.emojis.cache.get(numericId) ?? guild.client.emojis.cache.get(numericId);
+    if (found?.name) return `<${found.animated ? "a" : ""}:${found.name}:${found.id}>`;
+    const fixed = Object.values(FIXED_SYSTEM_EMOJI_BY_KEY).find((item) => item.emojiId === numericId);
+    if (fixed) return `<${fixed.animated ? "a" : ""}:${fixed.name}:${fixed.emojiId}>`;
+    return farmSystemEmojiText(fallbackKey, guild, guild.client);
+  }
+  const nameId = raw.match(/^([a-zA-Z0-9_]{2,64}):(\d{15,25})$/);
+  if (nameId) {
+    const name = nameId[1] ?? fallbackKey;
+    const id = nameId[2] ?? "";
+    if (!id) return farmSystemEmojiText(fallbackKey, guild, guild.client);
+    const found = guild.emojis.cache.get(id) ?? guild.client.emojis.cache.get(id);
+    return `<${found?.animated ? "a" : ""}:${found?.name ?? name}:${id}>`;
+  }
   const normalized = replaceSystemEmojis(raw, guild, guild.client)
     .replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => isSystemEmojiKey(alias) ? farmSystemEmojiText(alias, guild, guild.client) : match)
     .trim();
