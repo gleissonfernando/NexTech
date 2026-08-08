@@ -62,6 +62,7 @@ import { botLivesRouter, socialNotificationsRouter } from "./socialNotifications
 import { socialsRouter } from "./socials";
 import { statusRouter } from "./status";
 import { subscriptionPresenceRouter } from "./subscriptionPresence";
+import { systemUpdatesRouter } from "./systemUpdates";
 import { temporaryVoiceRouter } from "./temporaryVoice";
 import { ticketsRouter } from "./tickets";
 import { transcriptsRouter } from "./transcripts";
@@ -154,6 +155,7 @@ apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/social-notifications", socialNotificationsRouter);
 apiRouter.use("/socials", socialsRouter);
 apiRouter.use("/status", statusRouter);
+apiRouter.use("/system-updates", systemUpdatesRouter);
 apiRouter.use("/payment-presence", subscriptionPresenceRouter);
 apiRouter.use("/subscription-presence", subscriptionPresenceRouter);
 apiRouter.use("/x-monitor", xMonitorRouter);

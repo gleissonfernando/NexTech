@@ -584,17 +584,17 @@ function isDetailedChangelogItem(item) {
 
 async function persistChangelog(changelog, publication) {
   const uris = mongoUriCandidates();
-  if (!uris.length) return;
   let MongoClient;
-  try {
-    ({ MongoClient } = await import("mongodb"));
-  } catch {
-    console.warn("[auto-update] mongodb indisponível; histórico permanente salvo apenas no arquivo local.");
-    return;
+  if (uris.length) {
+    try {
+      ({ MongoClient } = await import("mongodb"));
+    } catch {
+      console.warn("[auto-update] mongodb indisponível; tentando salvar histórico pela API interna.");
+    }
   }
 
   let lastError = "";
-  for (const uri of uris) {
+  for (const uri of MongoClient ? uris : []) {
     const client = new MongoClient(uri);
     try {
       await client.connect();
@@ -624,7 +624,8 @@ async function persistChangelog(changelog, publication) {
     }
   }
 
-  console.warn("[auto-update] falha ao salvar changelog no Mongo:", lastError);
+  if (await persistChangelogViaBackend(changelog, publication)) return;
+  console.warn("[auto-update] falha ao salvar changelog no histórico permanente:", lastError || "backend interno indisponível");
 }
 
 function mongoUriCandidates() {
@@ -658,6 +659,30 @@ function readPackedConfigValue(key) {
     return value === null || value === undefined ? "" : String(value).trim();
   } catch {
     return "";
+  }
+}
+
+async function persistChangelogViaBackend(changelog, publication) {
+  const token = readConfigValue("BOT_API_TOKEN");
+  const base = readConfigValue("BACKEND_URL") || readConfigValue("SITE_ORIGIN") || readConfigValue("FRONTEND_URL") || "https://nextech.discloud.app";
+  if (!token || !isHttpUrl(base)) return false;
+  try {
+    const response = await fetch(`${base.replace(/\/+$/, "")}/api/system-updates/internal/changelog`, {
+      body: JSON.stringify({ changelog, publication }),
+      headers: {
+        "Content-Type": "application/json",
+        "x-bot-token": token
+      },
+      method: "POST"
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status}: ${body.slice(0, 240)}`);
+    }
+    return true;
+  } catch (error) {
+    console.warn("[auto-update] backend interno não salvou changelog:", error instanceof Error ? error.message : String(error));
+    return false;
   }
 }
 
