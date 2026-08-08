@@ -797,36 +797,28 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
   const okIcon = farmSystemEmojiText("visto", guild, guild.client);
   const listIcon = farmSystemEmojiText("prancheta", guild, guild.client);
   const timeIcon = farmSystemEmojiText("relogio", guild, guild.client);
-  const calendarIcon = farmSystemEmojiText("calendario", guild, guild.client);
   const userIcon = farmSystemEmojiText("homem", guild, guild.client);
-  const nameIcon = farmSystemEmojiText("folha", guild, guild.client);
-  const typeIcon = farmSystemEmojiText("engrenagem", guild, guild.client);
   const groupedItems = buildFinalGoalReportGroups(report);
   const detailLines = groupedItems.length
     ? groupedItems.flatMap((item) => {
       const emoji = finalGoalItemEmoji(item, guild);
-      const lines = [`${emoji} **${item.name}**`];
-      for (const entry of item.entries.slice(0, 25)) lines.push(`• ${formatGoalValue(entry.quantity)}`);
+      const lines = item.entries.slice(0, 25).map((entry) => `- ${emoji} **${item.name}:** ${formatGoalValue(entry.quantity)}`);
       if (item.entries.length > 25) lines.push(`• ... mais ${item.entries.length - 25} registro(s)`);
-      lines.push(`Total: ${formatGoalValue(item.total)}`, "");
       return lines;
     })
     : ["Nenhum registro realizado neste período.", ""];
   return [
-    `${okIcon} **Relatório Final — Meta**`,
+    `${okIcon} **Relatório final (Admin)**`,
     "",
-    `${okIcon} Período finalizado com sucesso.`,
+    `${okIcon} Farm finalizado com sucesso.`,
     "",
-    `${listIcon} **Registros do período**`,
+    `${listIcon} **Detalhes**`,
     ...detailLines,
     "",
     `${timeIcon} Fechamento: ${formatBrazilDateTime(new Date())}`,
-    `${calendarIcon} Período: ${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`,
-    `${userIcon} Usuário: ${targetLabel} | ${report.userId}`,
-    `${nameIcon} Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
-    `${typeIcon} Tipo: ${finalizationType}`,
-    `◉ Responsável: ${actorLabel}`,
-    `${okIcon} Status: Finalizado`,
+    `${userIcon} Finalizado por: ${actorLabel}`,
+    `Status: ${okIcon} Finalizado`,
+    `Tipo: ${finalizationType}`,
     "",
     "-# *NexTech - Todos os direitos reservados*"
   ].join("\n").slice(0, 3900);
@@ -834,14 +826,16 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
 
 function createFinalUserGoalReportPayload(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
   const bannerUrl = goalReportBannerUrl(guild);
+  const content = replaceSystemEmojis(createFinalUserGoalReportContent(guild, report, actorLabel, targetLabel, finalizationType), guild, guild.client);
   return {
     allowedMentions: { parse: [] as never[] },
     components: [{
       type: 17,
       accent_color: 0x22c55e,
       components: [
-        ...(bannerUrl ? [{ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner do servidor" }] }] : []),
-        { type: 10, content: replaceSystemEmojis(createFinalUserGoalReportContent(guild, report, actorLabel, targetLabel, finalizationType), guild, guild.client) }
+        bannerUrl
+          ? { type: 9, components: [{ type: 10, content }], accessory: { type: 11, media: { url: bannerUrl }, description: "Banner do servidor" } }
+          : { type: 10, content }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const

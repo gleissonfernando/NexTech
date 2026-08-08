@@ -55,13 +55,12 @@ test("relatório final agrupa registros por item configurado", () => {
     userId: "111111111111111111"
   } as any, "<@999999999999999999>", "<@111111111111111111>", "Manual");
 
-  assert.match(content, /Relatório Final — Meta/);
+  assert.match(content, /Relatório final \(Admin\)/);
   assert.match(content, /Dinheiro Sujo/);
-  assert.match(content, /• 29\.108/);
-  assert.match(content, /• 37\.743/);
-  assert.match(content, /Total: 66\.851/);
+  assert.match(content, /Dinheiro Sujo:\*\* 29\.108/);
+  assert.match(content, /Dinheiro Sujo:\*\* 37\.743/);
   assert.match(content, /Pilha/);
-  assert.match(content, /Total: 150/);
+  assert.match(content, /Pilha:\*\* 150/);
   assert.match(content, /Tipo: Manual/);
 });
 
