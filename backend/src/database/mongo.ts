@@ -1207,7 +1207,7 @@ export type MongoFivemGoalEntry = {
   userId: string;
 };
 
-export type MongoFivemGoalPeriodStatus = "ACTIVE" | "CLOSING" | "CLOSED";
+export type MongoFivemGoalPeriodStatus = "ACTIVE" | "CLOSING" | "CLOSED" | "ERRO_NO_FECHAMENTO";
 
 export type MongoFivemGoalPeriod = {
   _id: string;

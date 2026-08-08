@@ -158,14 +158,6 @@ export function startFivemGoalService(client: Client<true>, context: BotContext)
     void publishGoalRequestPanel(guild, context);
     void refreshFivemGoalRankingPanel(guild, context);
   }
-  const closeDuePeriods = () => {
-    for (const guild of client.guilds.cache.values()) {
-      void closeDueWeeklyGoalPeriod(guild, context);
-    }
-  };
-  closeDuePeriods();
-  const interval = setInterval(closeDuePeriods, 60_000);
-  interval.unref();
 }
 
 export type FivemGoalSetIntegrationResult = {
@@ -806,13 +798,14 @@ function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUse
       const emoji = item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
       return `${emoji} ${item.name}: ${formatGoalValue(item.quantity)}`;
     })
-    : ["Nenhum registro de meta foi realizado nesta semana."];
+    : ["Fechamento concluído — nenhum registro realizado neste período."];
   return [
     "✅ **Relatório final (Admin)**",
     "",
     "☑ Farm finalizado com sucesso.",
     "",
     "📋 **Detalhes**",
+    `Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
     ...itemLines,
     "",
     `🕘 Data: ${formatBrazilDateTime(new Date())}`,
@@ -822,6 +815,22 @@ function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUse
     "",
     "-# *NexTech - Todos os direitos reservados*"
   ].join("\n").slice(0, 3900);
+}
+
+async function sendFinalGoalReportToUserChannel(guild: Guild, channelId: string | null, userId: string, content: string) {
+  if (!channelId) return { channelId: null, error: "Canal individual não cadastrado.", messageId: null, ok: false, userId };
+  const channel = await guild.channels.fetch(channelId).catch((error) => ({ error }));
+  if (!channel || (typeof channel === "object" && "error" in channel)) {
+    return { channelId, error: channel && "error" in channel ? readUnknownError(channel.error) : "Canal individual não encontrado.", messageId: null, ok: false, userId };
+  }
+  if (!channel.isSendable()) {
+    return { channelId, error: "Canal individual não aceita envio de mensagens.", messageId: null, ok: false, userId };
+  }
+  const sent = await channel.send({ content, allowedMentions: { parse: [] } }).catch((error) => ({ error }));
+  if (!sent || (typeof sent === "object" && "error" in sent)) {
+    return { channelId, error: sent && "error" in sent ? readUnknownError(sent.error) : "Falha ao enviar resumo no canal individual.", messageId: null, ok: false, userId };
+  }
+  return { channelId, error: null, messageId: sent.id, ok: true, userId };
 }
 
 async function closeDueWeeklyGoalPeriod(guild: Guild, context: BotContext) {
@@ -956,8 +965,10 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
     return;
   }
   if (interaction.isButton() && action === "finalize_confirm") {
+    const guild = interaction.guild;
+    if (!guild) return;
     await interaction.deferUpdate();
-    const result = await context.api.finalizeFivemGoalPeriod(interaction.guild.id, {
+    const result = await context.api.finalizeFivemGoalPeriod(guild.id, {
       actorId: interaction.user.id,
       finalizationType: "manual"
     }).catch((error) => ({ error }));
@@ -968,6 +979,66 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
     const report = result.report;
     const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
     if (!result.alreadyFinalized) {
+      const deliveryResults = [];
+      for (const userReport of report.userReports ?? []) {
+        const targetLabel = `<@${userReport.userId}>`;
+        const finalReport = createFinalUserGoalReportContent(guild, userReport, `<@${interaction.user.id}>`, targetLabel);
+        const delivery = await sendFinalGoalReportToUserChannel(guild, userReport.channelId ?? null, userReport.userId, finalReport);
+        deliveryResults.push(delivery);
+        await sendGoalLog(guild, context, finalReport, {
+          deliveredToUser: delivery.ok,
+          deliveryError: delivery.error,
+          messageId: delivery.messageId,
+          periodEnd: userReport.periodEnd,
+          periodId: userReport.periodId,
+          periodStart: userReport.periodStart,
+          targetUserId: userReport.userId
+        });
+      }
+      const failed = deliveryResults.filter((delivery) => !delivery.ok);
+      if (failed.length) {
+        await context.api.failFivemGoalPeriodFinalization(guild.id, {
+          actorId: interaction.user.id,
+          deliveryResults,
+          error: `Falha ao enviar ${failed.length} resumo(s) individual(is).`,
+          periodId: result.period.id
+        }).catch(() => null);
+        await interaction.followUp({ content: `Fechamento interrompido: ${failed.length} resumo(s) não foram enviados. Os registros foram mantidos para nova tentativa.`, ephemeral: true });
+        return;
+      }
+      const completed = await context.api.completeFivemGoalPeriodFinalization(guild.id, {
+        actorId: interaction.user.id,
+        deliveryResults,
+        periodId: result.period.id
+      }).catch((error) => ({ error }));
+      if ("error" in completed) {
+        await context.api.failFivemGoalPeriodFinalization(guild.id, {
+          actorId: interaction.user.id,
+          deliveryResults,
+          error: readApiError(completed.error, "Falha ao salvar o histórico final do fechamento."),
+          periodId: result.period.id
+        }).catch(() => null);
+        await interaction.followUp({ content: readApiError(completed.error, "Os resumos foram enviados, mas o histórico final não foi salvo. Os registros foram mantidos."), ephemeral: true });
+        return;
+      }
+      await sendGoalLog(guild, context, [
+        "Meta finalizada",
+        "",
+        `Gerente: <@${interaction.user.id}> | ${interaction.user.id}`,
+        `Periodo: ${periodText}`,
+        `Participantes: ${report.participantCount}`,
+        `Registros: ${report.totalRecords}`,
+        `Aprovadas: ${report.approvedCount}`,
+        `Pendentes: ${report.pendingCount}`,
+        `Reprovadas: ${report.refusedCount}`,
+        `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
+        `Resumos enviados: ${deliveryResults.length}`,
+        `Data: ${formatBrazilDateTime(new Date())}`
+      ].join("\n"), { deliveryResults, periodEnd: report.periodEnd, periodStart: report.periodStart });
+      const next = await context.api.getFivemGoalSettings(guild.id).catch(() => settings);
+      await interaction.editReply(createFarmingManagementPayload(next, guild, "Meta finalizada, histórico salvo e novo ciclo aberto automaticamente."));
+      return;
+      /*
       await sendGoalLog(interaction.guild, context, [
         "✅ Meta finalizada",
         "",
@@ -994,9 +1065,10 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
           targetUserId: userReport.userId
         });
       }
+      */
     }
-    const next = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => settings);
-    await interaction.editReply(createFarmingManagementPayload(next, interaction.guild, result.alreadyFinalized ? "Este período já estava finalizado." : "Meta finalizada e log registrada."));
+    const next = await context.api.getFivemGoalSettings(guild.id).catch(() => settings);
+    await interaction.editReply(createFarmingManagementPayload(next, guild, result.alreadyFinalized ? "Este período já estava finalizado." : "Meta finalizada e log registrada."));
     return;
   }
 }
@@ -1019,7 +1091,7 @@ function createFarmingManagementPayload(settings: FivemGoalSettings, guild: Guil
           "",
           `Período atual: ${activeConfig ? goalPeriodLabel(activeConfig.period) : "Sem meta ativa"}`,
           `Finalização: ${weekdayName(settings.cycle?.startDay ?? 1)} às ${settings.cycle?.startTime ?? "00:00"}`,
-          `Modo: ${settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}`,
+          "Modo: Manual",
           `Itens ativos: ${activeItems.length}`,
           `Gerentes: ${correctionManagers.length ? correctionManagers.map((id) => `<@&${id}>`).join(", ") : "Nenhum cargo configurado"}`
         ].filter(Boolean).join("\n") },
@@ -1082,7 +1154,7 @@ function createFarmingFinalizeConfirmPayload(settings: FivemGoalSettings, guild:
           "",
           `Meta: ${activeConfig?.name ?? "Meta semanal"}`,
           `Período: ${activeConfig ? goalPeriodLabel(activeConfig.period) : "Sem meta ativa"}`,
-          `Relatórios: ${settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}`,
+          "Relatórios: Manual",
           "",
           "Ao confirmar, o sistema registra o fechamento do período atual e envia o log. A mesma semana não será finalizada duas vezes."
         ].join("\n") },

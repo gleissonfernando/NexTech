@@ -51,9 +51,11 @@ import {
   createFivemGoalConfig,
   createFivemGoalEntry,
   cancelFivemGoalCorrectionRequest,
+  completeFivemGoalPeriodFinalization,
   deleteFivemGoalUserChannelByChannel,
   FIVEM_GOALS_MODULE_ID,
   deleteFivemGoalConfig,
+  failFivemGoalPeriodFinalization,
   finalizeCurrentFivemGoalPeriod,
   finalizeFivemGoalUserPeriod,
   getFivemGoalDashboard,
@@ -177,6 +179,21 @@ const botGoalItemActionSchema = z.object({
 const botGoalFinalizeSchema = z.object({
   actorId: snowflakeSchema,
   finalizationType: z.enum(["manual", "automatic"]).optional().default("manual")
+});
+const botGoalDeliveryResultSchema = z.object({
+  channelId: optionalSnowflakeSchema,
+  error: z.string().max(1000).nullable().optional(),
+  messageId: optionalSnowflakeSchema,
+  ok: z.boolean(),
+  userId: snowflakeSchema
+});
+const botGoalFinalizeCompleteSchema = z.object({
+  actorId: snowflakeSchema,
+  deliveryResults: z.array(botGoalDeliveryResultSchema).max(5000),
+  periodId: z.string().min(1).max(120)
+});
+const botGoalFinalizeFailSchema = botGoalFinalizeCompleteSchema.extend({
+  error: z.string().min(1).max(1000)
 });
 const botGoalUserFinalizeSchema = z.object({
   actorId: snowflakeSchema,
@@ -959,6 +976,55 @@ fivemRouter.post("/bot/goals/:guildId/finalize", requireBot, async (req, res, ne
       finalizationType: input.finalizationType,
       guildId
     }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/finalize/complete", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = botGoalFinalizeCompleteSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json(await completeFivemGoalPeriodFinalization({
+      actorId: input.actorId,
+      botId,
+      deliveryResults: input.deliveryResults.map((result) => ({
+        channelId: normalizeOptionalId(result.channelId),
+        error: result.error ?? null,
+        messageId: normalizeOptionalId(result.messageId),
+        ok: result.ok,
+        userId: result.userId
+      })),
+      guildId,
+      periodId: input.periodId
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+fivemRouter.post("/bot/goals/:guildId/finalize/fail", requireBot, async (req, res, next) => {
+  try {
+    const guildId = guildIdSchema.parse(req.params.guildId);
+    const input = botGoalFinalizeFailSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.json({
+      period: await failFivemGoalPeriodFinalization({
+        actorId: input.actorId,
+        botId,
+        deliveryResults: input.deliveryResults.map((result) => ({
+          channelId: normalizeOptionalId(result.channelId),
+          error: result.error ?? null,
+          messageId: normalizeOptionalId(result.messageId),
+          ok: result.ok,
+          userId: result.userId
+        })),
+        error: input.error,
+        guildId,
+        periodId: input.periodId
+      })
+    });
   } catch (error) {
     return next(error);
   }

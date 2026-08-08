@@ -1148,6 +1148,35 @@ export type FivemGoalSubmission = { correctionRequestId: string | null; createdA
 export type FivemGoalUserRuntime = { configs: FivemGoalConfig[]; ranking: Array<{ rank: number; total: number; userId: string }>; submissions: FivemGoalSubmission[]; userId: string };
 export type FivemGoalRankingMember = { firstFarmAt: string; items: Array<{ emoji: string | null; itemId: string | null; name: string; quantity: number }>; rank: number; registeredName: string; targetValue: number; total: number; userId: string };
 export type FivemGoalRankingRuntime = { generatedAt: string; members: FivemGoalRankingMember[]; periodEnd: string; periodStart: string; settings: { rankingChannelId: string | null; rankingMessageId?: string | null; summaryChannelId?: string | null }; totalPlayers: number };
+export type FivemGoalFinalizationDeliveryResult = { channelId: string | null; error: string | null; messageId: string | null; ok: boolean; userId: string };
+export type FivemGoalFinalizationUserReport = {
+  approvedCount: number;
+  channelId: string | null;
+  items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
+  pendingCount: number;
+  periodEnd: string;
+  periodId: string;
+  periodStart: string;
+  registeredName: string;
+  refusedCount: number;
+  result: "completed" | "no_records";
+  totalApprovedValue: number;
+  totalPendingValue: number;
+  totalRecords: number;
+  userId: string;
+};
+export type FivemGoalFinalizationReport = {
+  approvedCount: number;
+  participantCount: number;
+  pendingCount: number;
+  periodEnd: string;
+  periodStart: string;
+  refusedCount: number;
+  totalApprovedValue: number;
+  totalPendingValue: number;
+  totalRecords: number;
+  userReports?: FivemGoalFinalizationUserReport[];
+};
 
 export type FivemOrderStatus = "open" | "pending_approval" | "approved" | "in_production" | "ready" | "delivered" | "cancelled" | "rejected";
 export type FivemOrderSettings = {
@@ -3474,31 +3503,19 @@ export class ApiClient {
       alreadyFinalized: boolean;
       finalized: boolean;
       logId: string | null;
-      report: {
-        approvedCount: number;
-        participantCount: number;
-        pendingCount: number;
-        periodEnd: string;
-        periodStart: string;
-        refusedCount: number;
-        totalApprovedValue: number;
-        totalPendingValue: number;
-        totalRecords: number;
-        userReports?: Array<{
-          approvedCount: number;
-          items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
-          pendingCount: number;
-          periodEnd: string;
-          periodId: string;
-          periodStart: string;
-          refusedCount: number;
-          totalApprovedValue: number;
-          totalPendingValue: number;
-          totalRecords: number;
-          userId: string;
-        }>;
-      };
+      period: { id: string };
+      report: FivemGoalFinalizationReport;
     }>(`/fivem/bot/goals/${guildId}/finalize`, input);
+    return data;
+  }
+
+  async completeFivemGoalPeriodFinalization(guildId: string, input: { actorId: string; deliveryResults: FivemGoalFinalizationDeliveryResult[]; periodId: string }) {
+    const { data } = await this.http.post<{ alreadyFinalized: boolean; finalized: boolean; logId: string | null; report: FivemGoalFinalizationReport }>(`/fivem/bot/goals/${guildId}/finalize/complete`, input);
+    return data;
+  }
+
+  async failFivemGoalPeriodFinalization(guildId: string, input: { actorId: string; deliveryResults: FivemGoalFinalizationDeliveryResult[]; error: string; periodId: string }) {
+    const { data } = await this.http.post<{ period: unknown }>(`/fivem/bot/goals/${guildId}/finalize/fail`, input);
     return data;
   }
 

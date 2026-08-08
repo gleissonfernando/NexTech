@@ -4496,7 +4496,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                 ["items", "Itens"],
                 ["channels", "Canais"],
                 ["permissions", "Permissões"],
-                ["finalization", "Finalização automática"],
+                ["finalization", "Finalização manual"],
                 ["history", "Histórico"],
                 ["appearance", "Aparência"]
               ].map(([id, label]) => (
@@ -4516,7 +4516,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                   {activeConfig ? (
                     <div className="mt-4 grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
                       <p>Finalização: <span className="font-semibold text-white">{nextFinishLabel}</span></p>
-                      <p>Modo: <span className="font-semibold text-white">{settings.weeklySummaryEnabled === false ? "Manual" : "Automático"}</span></p>
+                      <p>Modo: <span className="font-semibold text-white">Manual</span></p>
                       <p>Aprovação: <span className="font-semibold text-white">{activeConfig.requiresApproval ? "Manual" : "Automática"}</span></p>
                       <p>Itens ativos: <span className="font-semibold text-white">{activeItems.length}</span></p>
                     </div>
@@ -4725,14 +4725,13 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
             {activeGoalTab === "finalization" ? (
               <section className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 <div>
-                  <p className="text-sm font-semibold text-white">Finalização automática</p>
-                  <p className="mt-1 text-sm text-zinc-400">Define o período, horário, fuso e canal dos relatórios.</p>
+                  <p className="text-sm font-semibold text-white">Finalização manual</p>
+                  <p className="mt-1 text-sm text-zinc-400">Define o período, fuso e canal dos relatórios. O fechamento só acontece por comando autorizado e o novo ciclo abre automaticamente após a conclusão.</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <label className="block text-xs font-medium text-zinc-400">Resumo semanal
-                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patch({ weeklySummaryEnabled: event.target.value === "true" })} value={String(settings.weeklySummaryEnabled ?? true)}>
-                      <option value="true">Automático</option>
-                      <option value="false">Manual</option>
+                  <label className="block text-xs font-medium text-zinc-400">Fechamento
+                    <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled value="manual">
+                      <option value="manual">Manual</option>
                     </select>
                   </label>
                   <TicketField disabled={!canManage} label="Fuso horário" onChange={(value) => patch({ timezone: value })} value={settings.timezone ?? "America/Sao_Paulo"} />

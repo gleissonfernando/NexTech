@@ -246,7 +246,7 @@ export type FivemGoalPeriodDto = {
   nextPeriodId: string | null;
   previousPeriodId: string | null;
   startAt: string;
-  status: "ACTIVE" | "CLOSING" | "CLOSED";
+  status: "ACTIVE" | "CLOSING" | "CLOSED" | "ERRO_NO_FECHAMENTO";
   updatedAt: string;
 };
 
@@ -291,6 +291,7 @@ export type FivemGoalReportDto = {
 
 export type FivemGoalUserReportDto = {
   approvedCount: number;
+  channelId: string | null;
   items: Array<{
     entryId: string;
     itemId: string | null;
@@ -304,7 +305,9 @@ export type FivemGoalUserReportDto = {
   periodEnd: string;
   periodId: string;
   periodStart: string;
+  registeredName: string;
   refusedCount: number;
+  result: "completed" | "no_records";
   totalApprovedValue: number;
   totalPendingValue: number;
   totalRecords: number;
@@ -317,6 +320,14 @@ export type FivemGoalUserFinalizationDto = {
   logId: string | null;
   period: FivemGoalPeriodDto;
   report: FivemGoalUserReportDto;
+};
+
+export type FivemGoalFinalizationDeliveryResult = {
+  channelId: string | null;
+  error: string | null;
+  messageId: string | null;
+  ok: boolean;
+  userId: string;
 };
 
 export type FivemGoalRankingMemberDto = {
@@ -545,22 +556,15 @@ async function getOrCreateActiveFivemGoalPeriod(guildId: string, botId?: string 
   return withFivemGoalPeriodLock(guildId, normalizedBotId, async () => {
     const { fivemGoalPeriods } = await getMongoCollections();
     for (let attempts = 0; attempts < 3; attempts += 1) {
-      const active = await fivemGoalPeriods.findOne({
-        ...scopeQuery(guildId, normalizedBotId),
-        status: "ACTIVE",
-        startAt: { $lte: now },
-        endAt: { $gt: now }
-      });
+      const active = await fivemGoalPeriods.findOne({ ...scopeQuery(guildId, normalizedBotId), status: "ACTIVE" }, { sort: { startAt: -1 } });
       if (active) return active;
 
-      const expired = await fivemGoalPeriods.findOne({
-        ...scopeQuery(guildId, normalizedBotId),
-        status: "ACTIVE",
-        endAt: { $lte: now }
-      }, { sort: { endAt: 1 } });
-      if (expired) {
-        await rolloverFivemGoalPeriodUnsafe({ actorId: null, botId: normalizedBotId, finalizationType: "automatic", guildId, now });
-        continue;
+      const blocked = await fivemGoalPeriods.findOne(
+        { ...scopeQuery(guildId, normalizedBotId), status: { $in: ["CLOSING", "ERRO_NO_FECHAMENTO"] } },
+        { sort: { updatedAt: -1 } }
+      );
+      if (blocked) {
+        throw Object.assign(new Error("O ciclo de metas está em fechamento manual. Aguarde a conclusão antes de registrar novos valores."), { status: 409 });
       }
 
       const settings = await getFivemGoalSettings(guildId, normalizedBotId);
@@ -797,9 +801,9 @@ async function buildFivemGoalUserReportForPeriod(
   period: Pick<MongoFivemGoalPeriod, "_id" | "startAt" | "endAt">,
   userId: string
 ): Promise<FivemGoalUserReportDto> {
-  const { fivemGoalEntries, fivemGoalSettings, fivemGoalSubmissions } = await getMongoCollections();
+  const { fivemGoalEntries, fivemGoalSettings, fivemGoalSubmissions, fivemGoalUserChannels, manualRegistrationSubmissions } = await getMongoCollections();
   const scope = scopeQuery(guildId, botId);
-  const [rows, entries, settings] = await Promise.all([
+  const [rows, entries, settings, channel, registration] = await Promise.all([
     fivemGoalSubmissions.find({
       $and: [
         scope,
@@ -815,9 +819,12 @@ async function buildFivemGoalUserReportForPeriod(
         { $or: [{ status: "confirmed" }, { status: "corrected" }, { status: { $exists: false } }] }
       ]
     }).sort({ registeredAt: 1, createdAt: 1 }).limit(5000).toArray(),
-    fivemGoalSettings.findOne(scope)
+    fivemGoalSettings.findOne(scope),
+    fivemGoalUserChannels.findOne({ ...scope, userId }),
+    manualRegistrationSubmissions.findOne({ ...scope, status: "approved", userId }, { sort: { approvedAt: -1, createdAt: -1 } })
   ]);
   const itemById = new Map((settings?.items ?? []).map((item) => [item.id, item]));
+  const registeredName = registration ? manualRegistrationDisplayName(registration.fields, registration.requestedName ?? registration.username) : "Sem cadastro no Set";
 
   let approvedCount = 0;
   let pendingCount = 0;
@@ -840,6 +847,7 @@ async function buildFivemGoalUserReportForPeriod(
 
   return {
     approvedCount,
+    channelId: channel?.channelId ?? null,
     items: entries.map((entry) => {
       const item = entry.itemId ? itemById.get(entry.itemId) : null;
       const name = item?.name ?? entry.fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() ?? "Farm";
@@ -858,10 +866,12 @@ async function buildFivemGoalUserReportForPeriod(
     periodEnd: period.endAt.toISOString(),
     periodId: period._id,
     periodStart: period.startAt.toISOString(),
+    registeredName,
     refusedCount,
+    result: entries.length || rows.length ? "completed" : "no_records",
     totalApprovedValue,
     totalPendingValue,
-    totalRecords: rows.length,
+    totalRecords: Math.max(rows.length, entries.length),
     userId
   };
 }
@@ -871,13 +881,14 @@ async function buildFivemGoalUserReportsForPeriod(
   botId: string | null,
   period: MongoFivemGoalPeriod
 ): Promise<FivemGoalUserReportDto[]> {
-  const { fivemGoalEntries, fivemGoalSubmissions } = await getMongoCollections();
+  const { fivemGoalEntries, fivemGoalSubmissions, fivemGoalUserChannels } = await getMongoCollections();
   const scope = scopeQuery(guildId, botId);
-  const [submissionUsers, entryUsers] = await Promise.all([
+  const [submissionUsers, entryUsers, channelUsers] = await Promise.all([
     fivemGoalSubmissions.distinct("userId", { $and: [scope, periodRecordWindowQuery(period)] }),
-    fivemGoalEntries.distinct("userId", { $and: [scope, periodRecordWindowQuery(period)] })
+    fivemGoalEntries.distinct("userId", { $and: [scope, periodRecordWindowQuery(period)] }),
+    fivemGoalUserChannels.distinct("userId", scope)
   ]);
-  const userIds = [...new Set([...submissionUsers, ...entryUsers].filter((value): value is string => typeof value === "string" && value.length > 0))].sort();
+  const userIds = [...new Set([...submissionUsers, ...entryUsers, ...channelUsers].filter((value): value is string => typeof value === "string" && value.length > 0))].sort();
   const reports: FivemGoalUserReportDto[] = [];
   for (const userId of userIds) {
     reports.push(await buildFivemGoalUserReportForPeriod(guildId, botId, period, userId));
@@ -1058,6 +1069,220 @@ async function finalizeFivemGoalUserPeriodUnsafe(
   };
 }
 
+async function prepareFivemGoalPeriodFinalizationUnsafe(input: {
+  actorId: string | null;
+  botId: string | null;
+  finalizationType: "manual" | "automatic";
+  guildId: string;
+  now: Date;
+}) {
+  if (input.finalizationType !== "manual") {
+    throw Object.assign(new Error("O fechamento automático de metas foi desativado. Inicie o fechamento manualmente."), { status: 409 });
+  }
+  const { fivemGoalLogs, fivemGoalPeriods } = await getMongoCollections();
+  const query = scopeQuery(input.guildId, input.botId);
+  const current = await fivemGoalPeriods.findOne({ ...query, status: { $in: ["ACTIVE", "CLOSING", "ERRO_NO_FECHAMENTO"] } }, { sort: { updatedAt: -1, endAt: 1 } });
+  if (!current) {
+    const closed = await fivemGoalPeriods.findOne({ ...query, status: "CLOSED" }, { sort: { cutAt: -1 } });
+    if (closed) {
+      const report = closed.reportSnapshot ? closed.reportSnapshot as FivemGoalReportDto : await buildFivemGoalReportForPeriod(input.guildId, input.botId, closed);
+      return { alreadyFinalized: true, finalized: false, logId: null, period: toPeriodDto(closed), report };
+    }
+    throw new Error("Nenhum período ativo de meta foi encontrado para fechamento.");
+  }
+
+  const closingStartedAt = current.status === "CLOSING" && current.closingStartedAt ? current.closingStartedAt : new Date();
+  const cutAt = current.status === "ACTIVE" ? input.now : current.cutAt;
+  const closingPeriod: MongoFivemGoalPeriod = {
+    ...current,
+    auditError: null,
+    auditStartedAt: current.auditStartedAt ?? closingStartedAt,
+    closingStartedAt,
+    cutAt,
+    endAt: cutAt,
+    finalizedBy: input.actorId,
+    finalizationType: "manual",
+    status: "CLOSING",
+    updatedAt: closingStartedAt
+  };
+  const claimed = await fivemGoalPeriods.findOneAndUpdate(
+    { _id: current._id, ...query, status: { $in: ["ACTIVE", "CLOSING", "ERRO_NO_FECHAMENTO"] } },
+    {
+      $set: {
+        auditError: null,
+        auditStartedAt: closingPeriod.auditStartedAt,
+        closingStartedAt,
+        cutAt,
+        endAt: cutAt,
+        finalizedBy: input.actorId,
+        finalizationType: "manual",
+        status: "CLOSING",
+        updatedAt: closingStartedAt
+      }
+    },
+    { returnDocument: "after" }
+  );
+  if (!claimed) throw Object.assign(new Error("Outro fechamento de metas já está em andamento."), { status: 409 });
+
+  const report = await buildFivemGoalReportForPeriod(input.guildId, input.botId, closingPeriod);
+  report.userReports = await buildFivemGoalUserReportsForPeriod(input.guildId, input.botId, closingPeriod);
+  const existingLog = await fivemGoalLogs.findOne({ action: "period.finalization_prepared", ...query, "details.periodId": current._id });
+  if (!existingLog) {
+    await writeFivemGoalLog({
+      action: "period.finalization_prepared",
+      botId: input.botId,
+      details: {
+        actorId: input.actorId,
+        finalizationType: "manual",
+        periodEnd: report.periodEnd,
+        periodId: current._id,
+        periodStart: report.periodStart,
+        status: "CLOSING",
+        userCount: report.userReports.length
+      },
+      guildId: input.guildId,
+      metaId: null,
+      userId: input.actorId
+    });
+  }
+  const savedLog = existingLog ?? await fivemGoalLogs.findOne({ action: "period.finalization_prepared", ...query, "details.periodId": current._id });
+  if (input.botId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, input.botId), "fivem:goals:updated", { botId: input.botId, guildId: input.guildId });
+  return { alreadyFinalized: false, finalized: false, logId: savedLog?._id ?? null, period: toPeriodDto(claimed), report };
+}
+
+export async function completeFivemGoalPeriodFinalization(input: {
+  actorId: string | null;
+  botId?: string | null;
+  deliveryResults: FivemGoalFinalizationDeliveryResult[];
+  guildId: string;
+  periodId: string;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  return withFivemGoalPeriodLock(input.guildId, normalizedBotId, async () => {
+    const { fivemGoalLogs, fivemGoalPeriods } = await getMongoCollections();
+    const query = scopeQuery(input.guildId, normalizedBotId);
+    const period = await fivemGoalPeriods.findOne({ _id: input.periodId, ...query, status: "CLOSING" });
+    if (!period) {
+      const closed = await fivemGoalPeriods.findOne({ _id: input.periodId, ...query, status: "CLOSED" });
+      if (closed) return { alreadyFinalized: true, finalized: false, logId: null, period: toPeriodDto(closed), report: closed.reportSnapshot as FivemGoalReportDto };
+      throw Object.assign(new Error("Ciclo de metas não está em fechamento."), { status: 409 });
+    }
+    const failed = input.deliveryResults.filter((result) => !result.ok);
+    if (failed.length) throw Object.assign(new Error("Nem todos os resumos foram enviados. O ciclo não será zerado."), { status: 409, failedDeliveries: failed });
+
+    const report = await buildFivemGoalReportForPeriod(input.guildId, normalizedBotId, period);
+    report.userReports = await buildFivemGoalUserReportsForPeriod(input.guildId, normalizedBotId, period);
+    const historySnapshot = { ...report, deliveryResults: input.deliveryResults };
+    const nextWindow = nextFivemGoalPeriodWindow(period);
+    const now = new Date();
+    let nextPeriod = await fivemGoalPeriods.findOne({ ...query, startAt: nextWindow.startAt, endAt: nextWindow.endAt });
+    if (!nextPeriod) {
+      const nextDoc: MongoFivemGoalPeriod = {
+        _id: randomUUID(),
+        auditCompletedAt: null,
+        auditError: null,
+        auditStartedAt: null,
+        botId: normalizedBotId,
+        closedAt: null,
+        closingStartedAt: null,
+        createdAt: now,
+        cutAt: nextWindow.endAt,
+        endAt: nextWindow.endAt,
+        finalizedBy: null,
+        finalizationType: null,
+        guildId: input.guildId,
+        nextPeriodId: null,
+        previousPeriodId: period._id,
+        reportSnapshot: null,
+        startAt: nextWindow.startAt,
+        status: "ACTIVE",
+        updatedAt: now
+      };
+      try {
+        await fivemGoalPeriods.insertOne(nextDoc);
+        nextPeriod = nextDoc;
+      } catch (error) {
+        if (!isDuplicateKeyError(error)) throw error;
+        nextPeriod = await fivemGoalPeriods.findOne({ ...query, status: "ACTIVE" }, { sort: { startAt: -1 } });
+      }
+    } else if (nextPeriod.status !== "ACTIVE") {
+      const promoted = await fivemGoalPeriods.findOneAndUpdate({ _id: nextPeriod._id, ...query }, { $set: { status: "ACTIVE", updatedAt: now } }, { returnDocument: "after" });
+      if (promoted) nextPeriod = promoted;
+    }
+    if (!nextPeriod) throw new Error("Não foi possível criar o novo ciclo de metas.");
+
+    const existingLog = await fivemGoalLogs.findOne({ action: "period.finalized", ...query, "details.periodId": period._id });
+    let logId = existingLog?._id ?? null;
+    if (!existingLog) {
+      await writeFivemGoalLog({
+        action: "period.finalized",
+        botId: normalizedBotId,
+        details: {
+          actorId: input.actorId,
+          approvedCount: report.approvedCount,
+          deliveryResults: input.deliveryResults,
+          finalizationType: "manual",
+          nextPeriodEnd: nextPeriod.endAt.toISOString(),
+          nextPeriodId: nextPeriod._id,
+          nextPeriodStart: nextPeriod.startAt.toISOString(),
+          participantCount: report.participantCount,
+          pendingCount: report.pendingCount,
+          periodEnd: report.periodEnd,
+          periodId: period._id,
+          periodStart: report.periodStart,
+          refusedCount: report.refusedCount,
+          totalApprovedValue: report.totalApprovedValue,
+          totalPendingValue: report.totalPendingValue,
+          totalRecords: report.totalRecords,
+          usersWithoutRecords: report.userReports.filter((item) => item.result === "no_records").map((item) => item.userId)
+        },
+        guildId: input.guildId,
+        metaId: null,
+        userId: input.actorId
+      });
+      const savedLog = await fivemGoalLogs.findOne({ action: "period.finalized", ...query, "details.periodId": period._id });
+      logId = savedLog?._id ?? null;
+    }
+
+    const completedAt = new Date();
+    const closed = await fivemGoalPeriods.findOneAndUpdate(
+      { _id: period._id, ...query, status: "CLOSING" },
+      { $set: { auditCompletedAt: completedAt, auditError: null, closedAt: completedAt, nextPeriodId: nextPeriod._id, reportSnapshot: historySnapshot, status: "CLOSED", updatedAt: completedAt } },
+      { returnDocument: "after" }
+    );
+    if (normalizedBotId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId: input.guildId });
+    return { alreadyFinalized: Boolean(existingLog), finalized: !existingLog, logId, nextPeriod: toPeriodDto(nextPeriod), period: toPeriodDto(closed ?? period), report: historySnapshot };
+  });
+}
+
+export async function failFivemGoalPeriodFinalization(input: {
+  actorId: string | null;
+  botId?: string | null;
+  deliveryResults: FivemGoalFinalizationDeliveryResult[];
+  error: string;
+  guildId: string;
+  periodId: string;
+}) {
+  const normalizedBotId = normalizeBotId(input.botId);
+  const { fivemGoalPeriods } = await getMongoCollections();
+  const now = new Date();
+  const updated = await fivemGoalPeriods.findOneAndUpdate(
+    { _id: input.periodId, ...scopeQuery(input.guildId, normalizedBotId), status: "CLOSING" },
+    { $set: { auditError: normalizeText(input.error, 1000), reportSnapshot: { deliveryResults: input.deliveryResults }, status: "ERRO_NO_FECHAMENTO", updatedAt: now } },
+    { returnDocument: "after" }
+  );
+  await writeFivemGoalLog({
+    action: "period.finalization_failed",
+    botId: normalizedBotId,
+    details: { actorId: input.actorId, deliveryResults: input.deliveryResults, error: normalizeText(input.error, 1000), periodId: input.periodId },
+    guildId: input.guildId,
+    metaId: null,
+    userId: input.actorId
+  });
+  if (normalizedBotId) emitRealtimeToRoom(dashboardLogRealtimeRoom(input.guildId, normalizedBotId), "fivem:goals:updated", { botId: normalizedBotId, guildId: input.guildId });
+  return updated ? toPeriodDto(updated) : null;
+}
+
 async function rolloverFivemGoalPeriodUnsafe(input: {
   actorId: string | null;
   botId: string | null;
@@ -1065,6 +1290,10 @@ async function rolloverFivemGoalPeriodUnsafe(input: {
   guildId: string;
   now: Date;
 }) {
+  return prepareFivemGoalPeriodFinalizationUnsafe(input);
+  /*
+  Legacy rollover is intentionally unreachable. Manual finalization now waits
+  for Discord delivery confirmation before creating the next active cycle.
   const { fivemGoalLogs, fivemGoalPeriods } = await getMongoCollections();
   const active = await fivemGoalPeriods.findOne({ ...scopeQuery(input.guildId, input.botId), status: "ACTIVE" }, { sort: { endAt: 1 } });
   if (!active) {
@@ -1215,6 +1444,7 @@ async function rolloverFivemGoalPeriodUnsafe(input: {
     period: toPeriodDto(closed ?? { ...closingPeriod, auditCompletedAt: completedAt, closedAt: completedAt, reportSnapshot: report, status: "CLOSED", updatedAt: completedAt }),
     report
   };
+  */
 }
 
 export async function listFivemGoalConfigs(guildId: string, botId?: string | null, ensureLegacy = false) {
@@ -1377,9 +1607,6 @@ export async function createFivemGoalEntry(input: {
       ? await fivemGoalEntries.findOne({ ...scopeQuery(input.guildId, normalizedBotId), sourceMessageId, attachmentId })
       : null;
   if (existing) return toEntryDto(existing);
-  if (await isFivemGoalUserPeriodFinalized(input.guildId, normalizedBotId, activePeriod._id, input.userId)) {
-    throw Object.assign(new Error("A meta deste usuário já foi fechada neste período."), { status: 409 });
-  }
 
   const doc: MongoFivemGoalEntry = {
     _id: randomUUID(),
@@ -1625,9 +1852,6 @@ export async function createFivemGoalSubmission(input: {
   if (idempotencyKey) {
     const existing = await fivemGoalSubmissions.findOne({ ...scopeQuery(input.guildId, normalizedBotId), idempotencyKey });
     if (existing) return toSubmissionDto(existing);
-  }
-  if (await isFivemGoalUserPeriodFinalized(input.guildId, normalizedBotId, activePeriod._id, input.userId)) {
-    throw Object.assign(new Error("A meta deste usuário já foi fechada neste período."), { status: 409 });
   }
   const status = meta.requiresApproval ? "pending" as const : "approved" as const;
   const doc: MongoFivemGoalSubmission = {
