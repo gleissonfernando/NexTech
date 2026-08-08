@@ -3953,7 +3953,7 @@ export class ApiClient {
     sourceMessageId?: string | null;
     userId: string;
   }) {
-    const { data } = await this.http.post("/fivem/bot/goals/entries", input);
+    const { data } = await this.http.post("/fivem/bot/goals/entries", input, { timeout: 20_000 });
     return data;
   }
 

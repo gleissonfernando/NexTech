@@ -1560,7 +1560,7 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
       quantity: quantityValue,
       correctionRequestId: pending.correctionRequestId,
       replacementForRegistrationId: pending.replacementForRegistrationId,
-      roleIdsSnapshot: member ? [...member.roles.cache.keys()] : [],
+      roleIdsSnapshot: member ? [...member.roles.cache.keys()].slice(0, 100) : [],
       sourceMessageId: pending.sourceMessageId,
       userId: interaction.user.id
     }).catch((error) => ({ error }));
