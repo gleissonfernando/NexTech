@@ -6326,6 +6326,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoFivemGoalSubmission>("fivem_goal_submissions").createIndex({ botId: 1, guildId: 1, periodId: 1, registeredAt: -1 }),
     db.collection<MongoFivemGoalLog>("fivem_goal_logs").createIndex({ botId: 1, guildId: 1, metaId: 1, createdAt: -1 }),
+    db.collection<MongoFivemGoalLog>("fivem_goal_logs").createIndex(
+      { botId: 1, guildId: 1, action: 1, "details.periodId": 1, "details.targetUserId": 1 },
+      { name: "fivem_goal_user_period_finalized_unique", partialFilterExpression: { action: "user.period.finalized", "details.periodId": { $type: "string" }, "details.targetUserId": { $type: "string" } }, unique: true }
+    ),
     db.collection<MongoFivemOrderSettings>("fivem_order_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoFivemOrderFamily>("fivem_order_families").createIndex(
       { botId: 1, guildId: 1, name: 1, active: 1 },

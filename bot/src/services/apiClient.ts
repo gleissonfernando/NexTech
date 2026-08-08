@@ -3484,6 +3484,19 @@ export class ApiClient {
         totalApprovedValue: number;
         totalPendingValue: number;
         totalRecords: number;
+        userReports?: Array<{
+          approvedCount: number;
+          items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
+          pendingCount: number;
+          periodEnd: string;
+          periodId: string;
+          periodStart: string;
+          refusedCount: number;
+          totalApprovedValue: number;
+          totalPendingValue: number;
+          totalRecords: number;
+          userId: string;
+        }>;
       };
     }>(`/fivem/bot/goals/${guildId}/finalize`, input);
     return data;
@@ -3498,12 +3511,14 @@ export class ApiClient {
         approvedCount: number;
         pendingCount: number;
         periodEnd: string;
+        periodId: string;
         periodStart: string;
         refusedCount: number;
         totalApprovedValue: number;
         totalPendingValue: number;
         totalRecords: number;
         userId: string;
+        items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
       };
     }>(`/fivem/bot/goals/${guildId}/finalize-user`, input);
     return data;

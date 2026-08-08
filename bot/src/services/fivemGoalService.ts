@@ -27,6 +27,7 @@ import {
 import type { BotContext } from "../types";
 import type { BotCommand } from "../types";
 import type { FivemGoalCorrectionRequest, FivemGoalEntry, FivemGoalItem, FivemGoalRankingRuntime, FivemGoalSettings } from "./apiClient";
+import { currentRuntimeBotId } from "../config/env";
 import { FIXED_SYSTEM_EMOJI_BY_KEY, SYSTEM_EMOJI_BY_KEY, isSystemEmojiKey, type SystemEmojiKey } from "../config/systemEmojis";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
@@ -36,6 +37,7 @@ const RANKING_PANEL_PREFIX = `${PREFIX}:ranking`;
 const SUMMARY_PANEL_PREFIX = `${PREFIX}:summary`;
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
 const FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX = `${PREFIX}:room:close`;
+const CLOSE_USER_GOAL_PREFIX = `${PREFIX}:close_user`;
 const EDIT_USER_SELECT_CUSTOM_ID = `${PREFIX}:edit:user`;
 const EDIT_RECORD_SELECT_CUSTOM_ID_PREFIX = `${PREFIX}:edit:record`;
 const EDIT_REASON_MODAL_PREFIX = `${PREFIX}:edit:reason`;
@@ -45,9 +47,12 @@ const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif)(?:\?.*)?$/i;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const pendingFarmItems = new Set<string>();
 const processedGoalImageTriggers = new Map<string, number>();
+const automaticGoalCloseRuns = new Set<string>();
 const pendingFarmModalContexts = new Map<string, FarmComponentContext & { expiresAt: number }>();
 const pendingEditSelections = new Map<string, { entries: FivemGoalEntry[]; expiresAt: number; guildId: string; managerId: string; targetUserId: string }>();
 const pendingEditConfirmations = new Map<string, { entry: FivemGoalEntry; expiresAt: number; guildId: string; managerId: string; managerName: string; reason: string; targetUserId: string }>();
+
+type FinalizedGoalUserReport = Awaited<ReturnType<BotContext["api"]["finalizeFivemGoalUserPeriod"]>>["report"];
 
 type PanelPublishResult = {
   error?: string;
@@ -153,6 +158,14 @@ export function startFivemGoalService(client: Client<true>, context: BotContext)
     void publishGoalRequestPanel(guild, context);
     void refreshFivemGoalRankingPanel(guild, context);
   }
+  const closeDuePeriods = () => {
+    for (const guild of client.guilds.cache.values()) {
+      void closeDueWeeklyGoalPeriod(guild, context);
+    }
+  };
+  closeDuePeriods();
+  const interval = setInterval(closeDuePeriods, 60_000);
+  interval.unref();
 }
 
 export type FivemGoalSetIntegrationResult = {
@@ -440,6 +453,11 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(`${CLOSE_USER_GOAL_PREFIX}:`)) {
+    await handleCloseUserGoalConfirmation(interaction, context);
+    return true;
+  }
+
   if (interaction.customId.startsWith(`${MANAGEMENT_PREFIX}:`)) {
     await handleFarmingManagementInteraction(interaction, context);
     return true;
@@ -672,47 +690,178 @@ async function closeSingleUserGoal(interaction: ChatInputCommandInteraction, con
   }
 
   const target = interaction.options.getUser("usuario", true);
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.reply(createCloseUserGoalConfirmPayload(interaction.guild, interaction.user.id, target.id));
+}
 
-  const result = await context.api.finalizeFivemGoalUserPeriod(interaction.guild.id, {
+async function handleCloseUserGoalConfirmation(interaction: ButtonInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+  const [, , action, managerId, targetUserId] = interaction.customId.split(":");
+  if (!targetUserId || !managerId || interaction.user.id !== managerId) {
+    await interaction.reply({ content: "Somente quem abriu esta confirmação pode concluir o fechamento.", ephemeral: true });
+    return;
+  }
+  if (action === "cancel") {
+    await interaction.update({ content: "Fechamento cancelado.", components: [] });
+    return;
+  }
+  if (action !== "confirm") return;
+
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
+    await interaction.reply({ content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.", ephemeral: true });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  const target = await interaction.guild.members.fetch(targetUserId).then((member) => member.user).catch(() => null);
+  const result = await finalizeSingleUserGoal(interaction.guild, context, {
     actorId: interaction.user.id,
-    userId: target.id
+    actorLabel: `<@${interaction.user.id}>`,
+    sendAdminLog: true,
+    targetAvatarUrl: target?.displayAvatarURL({ size: 256 }) ?? null,
+    targetLabel: target ? `<@${target.id}>` : `<@${targetUserId}>`,
+    targetUserId
+  });
+  await interaction.editReply({ content: result.message, components: [] });
+}
+
+async function finalizeSingleUserGoal(
+  guild: Guild,
+  context: BotContext,
+  input: { actorId: string | null; actorLabel: string; sendAdminLog: boolean; targetAvatarUrl?: string | null; targetLabel: string; targetUserId: string }
+) {
+  const result = await context.api.finalizeFivemGoalUserPeriod(guild.id, {
+    actorId: input.actorId ?? "system",
+    userId: input.targetUserId
   }).catch((error) => ({ error }));
 
   if ("error" in result) {
-    await interaction.editReply(readApiError(result.error, "Não foi possível fechar a meta desta pessoa."));
-    return;
+    return { alreadyFinalized: false, delivered: false, message: readApiError(result.error, "Não foi possível fechar a meta desta pessoa.") };
   }
 
   const report = result.report;
   const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
+  let delivered = false;
   if (!result.alreadyFinalized) {
-    await sendGoalLog(interaction.guild, context, [
-      "✅ Meta individual fechada",
-      "",
-      `Gerente: <@${interaction.user.id}> | ${interaction.user.id}`,
-      `Pessoa: <@${target.id}> | ${target.id}`,
-      `Período: ${periodText}`,
-      `Registros: ${report.totalRecords}`,
-      `Aprovadas: ${report.approvedCount}`,
-      `Pendentes: ${report.pendingCount}`,
-      `Reprovadas: ${report.refusedCount}`,
-      `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
-      `Data: ${formatBrazilDateTime(new Date())}`
-    ].join("\n"), { periodEnd: report.periodEnd, periodStart: report.periodStart, targetUserId: target.id });
+    const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel);
+    const member = await guild.members.fetch(input.targetUserId).catch(() => null);
+    delivered = Boolean(await member?.send({ content: finalReport, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
+    if (input.sendAdminLog) {
+      await sendGoalLog(guild, context, finalReport, {
+        deliveredToUser: delivered,
+        periodEnd: report.periodEnd,
+        periodId: report.periodId,
+        periodStart: report.periodStart,
+        targetUserId: input.targetUserId
+      });
+    }
   }
 
-  await interaction.editReply([
+  return {
+    alreadyFinalized: result.alreadyFinalized,
+    delivered,
+    message: [
     result.alreadyFinalized ? "⚠️ A meta dessa pessoa já estava fechada neste período." : "✅ Meta da pessoa fechada neste período.",
     "",
-    `Pessoa: <@${target.id}>`,
+    `Pessoa: ${input.targetLabel}`,
     `Período: ${periodText}`,
     `Registros: ${report.totalRecords}`,
     `Aprovadas: ${report.approvedCount}`,
     `Pendentes: ${report.pendingCount}`,
     `Reprovadas: ${report.refusedCount}`,
-    `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`
-  ].join("\n"));
+    `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
+    `DM enviada: ${delivered ? "sim" : "não"}`
+  ].join("\n")
+  };
+}
+
+function createCloseUserGoalConfirmPayload(guild: Guild, managerId: string, targetUserId: string) {
+  return {
+    allowedMentions: { parse: [] as never[] },
+    components: [{
+      type: 17,
+      accent_color: 0xf59e0b,
+      components: [
+        { type: 10, content: [
+          `## ${systemEmojiText("alerta", guild)} Fechar meta`,
+          "",
+          `Tem certeza que deseja fechar a meta de <@${targetUserId}>?`,
+          "",
+          "Somente os registros dessa pessoa na semana atual serão processados. Os outros usuários não serão alterados."
+        ].join("\n") },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`${CLOSE_USER_GOAL_PREFIX}:confirm:${managerId}:${targetUserId}`).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Confirmar fechamento").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`${CLOSE_USER_GOAL_PREFIX}:cancel:${managerId}:${targetUserId}`).setEmoji(systemComponentEmoji("voltar", guild)).setLabel("Cancelar").setStyle(ButtonStyle.Secondary)
+        )
+      ]
+    }],
+    ephemeral: true,
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const
+  };
+}
+
+function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string) {
+  const itemLines = report.items.length
+    ? report.items.slice(0, 40).map((item) => {
+      const emoji = item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
+      return `${emoji} ${item.name}: ${formatGoalValue(item.quantity)}`;
+    })
+    : ["Nenhum registro de meta foi realizado nesta semana."];
+  return [
+    "✅ **Relatório final (Admin)**",
+    "",
+    "☑ Farm finalizado com sucesso.",
+    "",
+    "📋 **Detalhes**",
+    ...itemLines,
+    "",
+    `🕘 Data: ${formatBrazilDateTime(new Date())}`,
+    `◉ Finalizado por: ${actorLabel}`,
+    `Usuário: ${targetLabel} | ${report.userId}`,
+    "Status: ☑ Finalizado",
+    "",
+    "-# *NexTech - Todos os direitos reservados*"
+  ].join("\n").slice(0, 3900);
+}
+
+async function closeDueWeeklyGoalPeriod(guild: Guild, context: BotContext) {
+  const settings = await context.api.getFivemGoalSettings(guild.id).catch(() => null);
+  if (!settings?.enabled || settings.weeklySummaryEnabled === false) return;
+  const runtime = await context.api.getFivemGoalRankingRuntime(guild.id).catch(() => null);
+  if (!runtime) return;
+  const periodEndMs = Date.parse(runtime.periodEnd);
+  if (!Number.isFinite(periodEndMs) || Date.now() < periodEndMs) return;
+  const key = `${currentRuntimeBotId() ?? guild.client.user.id}:${guild.id}:${runtime.periodStart}:${runtime.periodEnd}`;
+  if (automaticGoalCloseRuns.has(key)) return;
+  automaticGoalCloseRuns.add(key);
+  try {
+    const result = await context.api.finalizeFivemGoalPeriod(guild.id, { actorId: "system", finalizationType: "automatic" });
+    if (result.alreadyFinalized) return;
+    for (const report of result.report.userReports ?? []) {
+      const targetLabel = `<@${report.userId}>`;
+      const content = createFinalUserGoalReportContent(guild, report, "Sistema", targetLabel);
+      const member = await guild.members.fetch(report.userId).catch(() => null);
+      const delivered = Boolean(await member?.send({ content, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
+      await sendGoalLog(guild, context, content, {
+        automatic: true,
+        deliveredToUser: delivered,
+        periodEnd: report.periodEnd,
+        periodId: report.periodId,
+        periodStart: report.periodStart,
+        targetUserId: report.userId
+      });
+    }
+  } catch (error) {
+    automaticGoalCloseRuns.delete(key);
+    await context.api.postLog({
+      botId: currentRuntimeBotId(),
+      guildId: guild.id,
+      message: `Falha no fechamento semanal automático de metas: ${readUnknownError(error)}`,
+      metadata: { periodEnd: runtime.periodEnd, periodStart: runtime.periodStart },
+      type: "fivem.goals.weekly_close_failed",
+      userId: null
+    }).catch(() => null);
+  }
 }
 
 async function handleFarmingManagementInteraction(interaction: Interaction, context: BotContext) {
@@ -832,6 +981,19 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
         `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
         `Data: ${formatBrazilDateTime(new Date())}`
       ].join("\n"), { periodEnd: report.periodEnd, periodStart: report.periodStart });
+      for (const userReport of report.userReports ?? []) {
+        const targetLabel = `<@${userReport.userId}>`;
+        const finalReport = createFinalUserGoalReportContent(interaction.guild, userReport, `<@${interaction.user.id}>`, targetLabel);
+        const member = await interaction.guild.members.fetch(userReport.userId).catch(() => null);
+        const delivered = Boolean(await member?.send({ content: finalReport, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
+        await sendGoalLog(interaction.guild, context, finalReport, {
+          deliveredToUser: delivered,
+          periodEnd: userReport.periodEnd,
+          periodId: userReport.periodId,
+          periodStart: userReport.periodStart,
+          targetUserId: userReport.userId
+        });
+      }
     }
     const next = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => settings);
     await interaction.editReply(createFarmingManagementPayload(next, interaction.guild, result.alreadyFinalized ? "Este período já estava finalizado." : "Meta finalizada e log registrada."));
