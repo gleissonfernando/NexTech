@@ -576,12 +576,15 @@ function hydrateCategoriesFromCommit(categories, release) {
 function isDetailedChangelogItem(item) {
   const normalized = String(item || "").trim();
   if (normalized.length < 16) return false;
-  return !/^(painel atualizado|sistema atualizado|sistema melhorado|atualiza[cç][aã]o publicada|ajustes gerais|corre[cç][oõ]es gerais)$/i.test(normalized);
+  return !/^(painel atualizado|sistema atualizado|sistema melhorado|atualiza[cç][aã]o publicada|ajustes gerais|corre[cç][oõ]es gerais)$/i.test(normalized)
+    && !/Correções de falhas e tratamento de erro detectadas no código alterado/i.test(normalized)
+    && !/Carregamento, cache ou streaming otimizado automaticamente pelo diff/i.test(normalized)
+    && !/Atualização publicada com alterações registradas no repositório/i.test(normalized);
 }
 
 async function persistChangelog(changelog, publication) {
-  const uri = readConfigValue("MONGODB_URI") || readConfigValue("MONGO_URI") || readConfigValue("DATABASE_URL");
-  if (!uri || !/^mongodb(?:\+srv)?:\/\//i.test(uri)) return;
+  const uris = mongoUriCandidates();
+  if (!uris.length) return;
   let MongoClient;
   try {
     ({ MongoClient } = await import("mongodb"));
@@ -590,31 +593,80 @@ async function persistChangelog(changelog, publication) {
     return;
   }
 
-  const client = new MongoClient(uri);
-  try {
-    await client.connect();
-    const db = client.db(databaseNameFromUri(uri));
-    const collection = db.collection(changelogCollectionName);
-    await collection.createIndex({ commitHash: 1 }, { unique: true });
-    await collection.createIndex({ publishedAt: -1 });
-    await collection.updateOne(
-      { commitHash: changelog.commitHash },
-      {
-        $set: {
-          ...changelog,
-          publication,
-          updatedAt: new Date().toISOString()
+  let lastError = "";
+  for (const uri of uris) {
+    const client = new MongoClient(uri);
+    try {
+      await client.connect();
+      const db = client.db(databaseNameFromUri(uri));
+      const collection = db.collection(changelogCollectionName);
+      await collection.createIndex({ commitHash: 1 }, { unique: true });
+      await collection.createIndex({ publishedAt: -1 });
+      await collection.updateOne(
+        { commitHash: changelog.commitHash },
+        {
+          $set: {
+            ...changelog,
+            publication,
+            updatedAt: new Date().toISOString()
+          },
+          $setOnInsert: {
+            createdAt: new Date().toISOString()
+          }
         },
-        $setOnInsert: {
-          createdAt: new Date().toISOString()
-        }
-      },
-      { upsert: true }
+        { upsert: true }
+      );
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  }
+
+  console.warn("[auto-update] falha ao salvar changelog no Mongo:", lastError);
+}
+
+function mongoUriCandidates() {
+  const keys = ["MONGODB_URI", "MONGO_URI", "DATABASE_URL"];
+  const candidates = [];
+  for (const key of keys) {
+    candidates.push(
+      process.env[key]?.trim() || "",
+      readRuntimeConfigValue(key),
+      readDotEnvValue(key),
+      readPackedConfigValue(key)
     );
-  } catch (error) {
-    console.warn("[auto-update] falha ao salvar changelog no Mongo:", error instanceof Error ? error.message : String(error));
-  } finally {
-    await client.close().catch(() => undefined);
+  }
+  return unique(candidates.filter((uri) => /^mongodb(?:\+srv)?:\/\//i.test(uri)));
+}
+
+function readPackedConfigValue(key) {
+  const rawConfig = process.env.APP_CONFIG_JSON?.trim()
+    || (process.env.APP_CONFIG_B64?.trim() ? Buffer.from(process.env.APP_CONFIG_B64.trim(), "base64").toString("utf8") : "")
+    || (process.env.APP_CONFIG_BASE64?.trim() ? Buffer.from(process.env.APP_CONFIG_BASE64.trim(), "base64").toString("utf8") : "")
+    || (process.env.NEX_TECH_CONFIG_B64?.trim() ? Buffer.from(process.env.NEX_TECH_CONFIG_B64.trim(), "base64").toString("utf8") : "")
+    || readDotEnvValue("APP_CONFIG_JSON")
+    || decodeBase64Config(readDotEnvValue("APP_CONFIG_B64"))
+    || decodeBase64Config(readDotEnvValue("APP_CONFIG_BASE64"))
+    || decodeBase64Config(readDotEnvValue("NEX_TECH_CONFIG_B64"));
+
+  if (!rawConfig) return "";
+  try {
+    const parsed = JSON.parse(rawConfig);
+    const value = parsed?.[key];
+    return value === null || value === undefined ? "" : String(value).trim();
+  } catch {
+    return "";
+  }
+}
+
+function decodeBase64Config(value) {
+  if (!value) return "";
+  try {
+    return Buffer.from(value, "base64").toString("utf8");
+  } catch {
+    return "";
   }
 }
 
