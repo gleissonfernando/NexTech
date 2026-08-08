@@ -1565,7 +1565,8 @@ async function submitGoalModal(interaction: ModalSubmitInteraction, context: Bot
       userId: interaction.user.id
     }).catch((error) => ({ error }));
     if ("error" in saved) {
-      await interaction.editReply("Não foi possível registrar essa meta. Tente novamente em alguns instantes.");
+      console.warn("[fivem-goals] falha ao registrar meta:", readApiError(saved.error, "erro desconhecido"));
+      await interaction.editReply(readApiError(saved.error, "Não foi possível registrar essa meta. Tente novamente em alguns instantes."));
       return;
     }
 
