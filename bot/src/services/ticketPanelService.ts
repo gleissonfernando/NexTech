@@ -20,10 +20,12 @@ import {
   type InteractionEditReplyOptions,
   type InteractionReplyOptions,
   type InteractionUpdateOptions,
+  LabelBuilder,
   type Message,
   type MessageCreateOptions,
   type MessageEditOptions,
   type ModalSubmitInteraction,
+  RadioGroupBuilder,
   type StringSelectMenuInteraction,
   type TextChannel
 } from "discord.js";
@@ -243,19 +245,18 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
   }
 
   const selectedValue = interaction.values[0];
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === selectedValue);
 
   if (!settings?.ticketEnabled || !option) {
-    await interaction.editReply("Esta opção de ticket não está mais disponível.");
+    await interaction.reply({ content: "Esta opção de ticket não está mais disponível.", flags: MessageFlags.Ephemeral });
     return true;
   }
 
   void resetSelectMenuMessage(interaction);
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, option.value);
-  await interaction.editReply(renderTicketPreOpenEditPayload(settings, token, interaction.guild, getOpenTicketSession(token), "Categoria selecionada. Informe se você é cliente para continuar."));
+  await interaction.showModal(createOpenTicketModal(token, settings));
 
   return true;
 }
@@ -267,16 +268,15 @@ async function handleTicketOpenButton(interaction: ButtonInteraction, context: B
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
   const options = activeTicketOptions(settings);
   if (!settings?.ticketEnabled || !options.length) {
-    await interaction.editReply("Nenhuma categoria de ticket ativa foi configurada na Dashboard.");
+    await interaction.reply({ content: "Nenhuma categoria de ticket ativa foi configurada na Dashboard.", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.editReply(renderTicketPreOpenEditPayload(settings, token, interaction.guild, getOpenTicketSession(token)));
+  await interaction.showModal(createOpenTicketModal(token, settings));
 }
 
 async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -335,7 +335,7 @@ async function handleTicketOpenContinue(interaction: ButtonInteraction, context:
     return;
   }
 
-  await interaction.showModal(createOpenTicketModal(token));
+  await interaction.showModal(createOpenTicketModal(token, settings));
 }
 
 async function handleTicketOpenCancel(interaction: ButtonInteraction) {
@@ -362,10 +362,12 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
     return;
   }
 
-  const subject = normalizeTicketSubject(interaction.fields.getTextInputValue("subject"));
-  const clientLabel = session.clientStatus === "yes" ? "Sim" : "Não";
+  const selectedCategory = selectedModalStringValue(interaction, "category") ?? session.optionValue;
+  const clientStatus = selectedModalRadioValue(interaction, "isClient") ?? session.clientStatus;
+  const subject = normalizeTicketDescription(interaction.fields.getTextInputValue("description"));
+  const clientLabel = clientStatus === "yes" ? "Sim" : "Não";
   if (!subject) {
-    await interaction.reply({ content: "O assunto do ticket precisa conter pelo menos três palavras. Descreva resumidamente o motivo do atendimento.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: "A descrição do ticket precisa conter pelo menos três palavras. Descreva resumidamente o que aconteceu.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -375,9 +377,9 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
     logTicketTechnical("settings_load_failed", interaction, { error });
     return null;
   });
-  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === session.optionValue);
+  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === selectedCategory);
 
-  if (!settings?.ticketEnabled || !option || !session.clientStatus) {
+  if (!settings?.ticketEnabled || !option || !clientStatus) {
     await interaction.editReply("Esta categoria de ticket não está mais disponível.");
     return;
   }
@@ -400,31 +402,19 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   return true;
 }
 
-export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, rawSubject: string) {
+export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, _rawSubject = "") {
   if (!interaction.guild) return;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const subject = normalizeTicketSubject(rawSubject) ?? "Atendimento geral Nextech";
-  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
+  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
     logTicketTechnical("settings_load_failed", interaction, { error });
     return null;
   });
-  const option = activeTicketOptions(settings)[0];
-  if (!settings?.ticketEnabled || !option) {
-    await interaction.editReply("O sistema de tickets está desativado ou não possui modalidade ativa.");
+  if (!settings?.ticketEnabled || !activeTicketOptions(settings).length) {
+    await interaction.reply({ content: "O sistema de tickets está desativado ou não possui categoria ativa.", flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, option.value, resolveTicketModuleType(option));
-  if (ticketCreationLocks.has(lockKey)) {
-    await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
-    return;
-  }
-  const creation = createTicketForInteraction(interaction, context, settings, option, subject, "Não informado")
-    .finally(() => {
-      if (ticketCreationLocks.get(lockKey) === creation) ticketCreationLocks.delete(lockKey);
-    });
-  ticketCreationLocks.set(lockKey, creation);
-  await creation;
+  const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
+  await interaction.showModal(createOpenTicketModal(token, settings));
 }
 
 async function createTicketForInteraction(
@@ -1265,6 +1255,12 @@ function normalizeTicketSubject(value: string) {
   return words.length >= 3 ? normalized : null;
 }
 
+function normalizeTicketDescription(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim().slice(0, 1000);
+  const words = normalized.split(" ").filter(Boolean);
+  return words.length >= 3 ? normalized : null;
+}
+
 function activeTicketOptions(settings: GuildSettings | null | undefined) {
   return (settings?.ticketPanelOptions ?? [])
     .filter((option) => option.enabled)
@@ -1272,21 +1268,65 @@ function activeTicketOptions(settings: GuildSettings | null | undefined) {
     .slice(0, 25);
 }
 
-function createOpenTicketModal(token: string) {
+function selectedModalStringValue(interaction: ModalSubmitInteraction, customId: string) {
+  try {
+    const values = interaction.fields.getStringSelectValues(customId);
+    return values.length === 1 ? values[0] ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
+function selectedModalRadioValue(interaction: ModalSubmitInteraction, customId: string) {
+  try {
+    return interaction.fields.getRadioGroup(customId) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function createOpenTicketModal(token: string, settings: GuildSettings) {
+  const options = activeTicketOptions(settings);
+  const session = getOpenTicketSession(token);
   return new ModalBuilder()
     .setCustomId(`${OPEN_MODAL_PREFIX}${token}`)
     .setTitle("Abrir Novo Ticket")
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("subject")
-          .setLabel("Assunto do Ticket")
-          .setPlaceholder("Descreva resumidamente o motivo do atendimento com pelo menos três palavras.")
-          .setRequired(true)
-          .setStyle(TextInputStyle.Short)
-          .setMinLength(3)
-          .setMaxLength(100)
-      )
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Categoria")
+        .setDescription("Selecione a categoria do atendimento")
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId("category")
+            .setPlaceholder("Selecione uma categoria")
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(options.map((option) => toSelectOption(option).setDefault(option.value === session?.optionValue)))
+        ),
+      new LabelBuilder()
+        .setLabel("O que aconteceu?")
+        .setDescription("Digite aqui o que aconteceu com pelo menos três palavras")
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId("description")
+            .setPlaceholder("Digite aqui o que aconteceu...")
+            .setRequired(true)
+            .setStyle(TextInputStyle.Paragraph)
+            .setMinLength(3)
+            .setMaxLength(1000)
+        ),
+      new LabelBuilder()
+        .setLabel("Você é cliente?")
+        .setDescription("Selecione uma opção")
+        .setRadioGroupComponent(
+          new RadioGroupBuilder()
+            .setCustomId("isClient")
+            .setRequired(true)
+            .addOptions(
+              { default: session?.clientStatus === "yes", label: "Sim", value: "yes" },
+              { default: session?.clientStatus === "no", label: "Não", value: "no" }
+            )
+        )
     );
 }
 
@@ -1779,7 +1819,7 @@ export function parseTicketPanelText(text: string, channel: Pick<TextChannel, "g
   const openerId = text.match(/Autor:\s*<@!?(\d{5,32})>/i)?.[1] ?? text.match(/ID do usu[aá]rio:\s*(\d{5,32})/i)?.[1] ?? null;
   if (!openerId) return null;
   const categoryName = cleanRecoveredTicketText(text.match(/Categoria:\s*([^\n\r]+)/i)?.[1]) ?? "Atendimento";
-  const subject = cleanRecoveredTicketText(text.match(/Assunto:\s*([^\n\r]+)/i)?.[1]) ?? channel.name;
+  const subject = cleanRecoveredTicketText(text.match(/Acontecido:\s*([^\n\r]+)/i)?.[1] ?? text.match(/Assunto:\s*([^\n\r]+)/i)?.[1]) ?? channel.name;
   const categoryId = channel.parentId ?? slugRecoveredTicketToken(categoryName) ?? "ticket";
   const responsibleRoleId = text.match(/<@&(\d{5,32})>/)?.[1] ?? null;
   return {
@@ -2027,7 +2067,7 @@ function createOpenTicketPayload(input: {
       `Usuário: <@${openerId}>`,
       `ID: ${openerId}`,
       `Categoria: ${category}`,
-      `Assunto: ${subject}`,
+      `Acontecido: ${subject}`,
       `Cliente: ${clientLabel ?? "Não informado"}`,
       `Servidor: ${guild?.name ?? "Não informado"}`,
       `Data: ${formatTicketDate(createdAt)}`,
