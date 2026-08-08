@@ -688,20 +688,26 @@ async function closeSingleUserGoal(interaction: ChatInputCommandInteraction, con
 async function handleCloseUserGoalConfirmation(interaction: ButtonInteraction, context: BotContext) {
   if (!interaction.guild) return;
   const [, , action, managerId, targetUserId] = interaction.customId.split(":");
+
+  await interaction.deferReply({ ephemeral: true });
+
   if (!targetUserId || !managerId || interaction.user.id !== managerId) {
-    await interaction.reply({ content: "Somente quem abriu esta confirmação pode concluir o fechamento.", ephemeral: true });
+    await interaction.editReply("Somente quem abriu esta confirmação pode concluir o fechamento.");
     return;
   }
   if (action === "cancel") {
-    await interaction.update({ content: "Fechamento cancelado.", components: [] });
+    await interaction.editReply("Fechamento cancelado.");
+    await interaction.message.edit({ components: [] }).catch(() => null);
     return;
   }
-  if (action !== "confirm") return;
+  if (action !== "confirm") {
+    await interaction.editReply("Ação inválida.");
+    return;
+  }
 
-  await interaction.deferUpdate();
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
   if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
-    await interaction.editReply({ content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.", components: [] });
+    await interaction.editReply("❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.");
     return;
   }
 
@@ -714,7 +720,8 @@ async function handleCloseUserGoalConfirmation(interaction: ButtonInteraction, c
     targetLabel: target ? `<@${target.id}>` : `<@${targetUserId}>`,
     targetUserId
   });
-  await interaction.editReply({ content: result.message, components: [] });
+  await interaction.editReply(result.message);
+  await interaction.message.edit({ components: [] }).catch(() => null);
 }
 
 async function finalizeSingleUserGoal(
