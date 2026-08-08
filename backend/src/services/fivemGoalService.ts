@@ -292,6 +292,19 @@ export type FivemGoalReportDto = {
 export type FivemGoalUserReportDto = {
   approvedCount: number;
   channelId: string | null;
+  groupedItems: Array<{
+    configured: boolean;
+    emoji: string | null;
+    entries: Array<{
+      entryId: string;
+      quantity: number;
+      registeredAt: string;
+      status: FivemGoalEntryDto["status"];
+    }>;
+    itemId: string | null;
+    name: string;
+    total: number;
+  }>;
   items: Array<{
     entryId: string;
     itemId: string | null;
@@ -824,6 +837,7 @@ async function buildFivemGoalUserReportForPeriod(
     manualRegistrationSubmissions.findOne({ ...scope, status: "approved", userId }, { sort: { approvedAt: -1, createdAt: -1 } })
   ]);
   const itemById = new Map((settings?.items ?? []).map((item) => [item.id, item]));
+  const orderedItems = [...(settings?.items ?? [])].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
   const registeredName = registration ? manualRegistrationDisplayName(registration.fields, registration.requestedName ?? registration.username) : "Sem cadastro no Set";
 
   let approvedCount = 0;
@@ -845,23 +859,44 @@ async function buildFivemGoalUserReportForPeriod(
     }
   }
 
+  const reportItems = entries.map((entry) => {
+    const item = entry.itemId ? itemById.get(entry.itemId) : null;
+    const name = item?.name ?? entry.fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() ?? "Farm";
+    const registeredAt = entry.registeredAt ?? entry.createdAt;
+    return {
+      emoji: item?.emoji ?? null,
+      entryId: entry._id,
+      itemId: entry.itemId ?? null,
+      name,
+      quantity: typeof entry.quantity === "number" && Number.isFinite(entry.quantity) ? entry.quantity : 0,
+      registeredAt: registeredAt.toISOString(),
+      status: entry.status ?? "confirmed"
+    };
+  });
+  const grouped = new Map<string, FivemGoalUserReportDto["groupedItems"][number]>();
+  for (const item of orderedItems) {
+    grouped.set(item.id, { configured: true, emoji: item.emoji ?? null, entries: [], itemId: item.id, name: item.name, total: 0 });
+  }
+  for (const item of reportItems) {
+    const key = item.itemId ?? `legacy:${item.name.toLowerCase()}`;
+    const group = grouped.get(key) ?? { configured: false, emoji: item.emoji ?? null, entries: [], itemId: item.itemId, name: item.name, total: 0 };
+    group.entries.push({ entryId: item.entryId, quantity: item.quantity, registeredAt: item.registeredAt, status: item.status });
+    group.total += item.quantity;
+    grouped.set(key, group);
+  }
+  const groupedItems = [...grouped.values()]
+    .filter((item) => item.entries.length > 0)
+    .sort((a, b) => {
+      const aOrder = a.itemId ? orderedItems.find((item) => item.id === a.itemId)?.order ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+      const bOrder = b.itemId ? orderedItems.find((item) => item.id === b.itemId)?.order ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder || a.name.localeCompare(b.name);
+    });
+
   return {
     approvedCount,
     channelId: channel?.channelId ?? null,
-    items: entries.map((entry) => {
-      const item = entry.itemId ? itemById.get(entry.itemId) : null;
-      const name = item?.name ?? entry.fields.find((field) => /item|tipo|meta/i.test(`${field.id} ${field.label}`))?.value?.trim() ?? "Farm";
-      const registeredAt = entry.registeredAt ?? entry.createdAt;
-      return {
-        emoji: item?.emoji ?? null,
-        entryId: entry._id,
-        itemId: entry.itemId ?? null,
-        name,
-        quantity: typeof entry.quantity === "number" && Number.isFinite(entry.quantity) ? entry.quantity : 0,
-        registeredAt: registeredAt.toISOString(),
-        status: entry.status ?? "confirmed"
-      };
-    }),
+    groupedItems,
+    items: reportItems,
     pendingCount,
     periodEnd: period.endAt.toISOString(),
     periodId: period._id,

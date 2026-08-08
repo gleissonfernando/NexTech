@@ -742,7 +742,7 @@ async function finalizeSingleUserGoal(
   const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
   let delivered = false;
   if (!result.alreadyFinalized) {
-    const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel);
+    const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel, "Manual");
     const member = await guild.members.fetch(input.targetUserId).catch(() => null);
     delivered = Boolean(await member?.send({ content: finalReport, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
     if (input.sendAdminLog) {
@@ -799,29 +799,56 @@ function createCloseUserGoalConfirmPayload(guild: Guild, managerId: string, targ
   };
 }
 
-function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string) {
-  const itemLines = report.items.length
-    ? report.items.slice(0, 40).map((item) => {
+export function createFinalUserGoalReportContent(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
+  const groupedItems = buildFinalGoalReportGroups(report);
+  const detailLines = groupedItems.length
+    ? groupedItems.flatMap((item) => {
       const emoji = item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
-      return `${emoji} ${item.name}: ${formatGoalValue(item.quantity)}`;
+      const lines = [`${emoji} **${item.name}**`];
+      for (const entry of item.entries.slice(0, 25)) lines.push(`• ${formatGoalValue(entry.quantity)}`);
+      if (item.entries.length > 25) lines.push(`• ... mais ${item.entries.length - 25} registro(s)`);
+      lines.push(`Total: ${formatGoalValue(item.total)}`, "");
+      return lines;
     })
-    : ["Fechamento concluído — nenhum registro realizado neste período."];
+    : ["Nenhum registro realizado neste período.", ""];
   return [
-    "✅ **Relatório final (Admin)**",
+    "✅ **Relatório Final — Meta**",
     "",
-    "☑ Farm finalizado com sucesso.",
+    "☑️ Período finalizado com sucesso.",
     "",
-    "📋 **Detalhes**",
-    `Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
-    ...itemLines,
+    "📋 **Registros do período**",
+    ...detailLines,
     "",
-    `🕘 Data: ${formatBrazilDateTime(new Date())}`,
-    `◉ Finalizado por: ${actorLabel}`,
-    `Usuário: ${targetLabel} | ${report.userId}`,
-    "Status: ☑ Finalizado",
+    `🕒 Fechamento: ${formatBrazilDateTime(new Date())}`,
+    `📆 Período: ${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`,
+    `👤 Usuário: ${targetLabel} | ${report.userId}`,
+    `🧾 Nome cadastrado: ${"registeredName" in report ? String(report.registeredName) : "Sem cadastro no Set"}`,
+    `⚙️ Tipo: ${finalizationType}`,
+    `◉ Responsável: ${actorLabel}`,
+    "☑️ Status: Finalizado",
     "",
     "-# *NexTech - Todos os direitos reservados*"
   ].join("\n").slice(0, 3900);
+}
+
+function buildFinalGoalReportGroups(report: FinalizedGoalUserReport) {
+  if ("groupedItems" in report && Array.isArray(report.groupedItems) && report.groupedItems.length) {
+    return report.groupedItems.map((item) => ({
+      emoji: item.emoji,
+      entries: item.entries.map((entry) => ({ quantity: entry.quantity })),
+      name: item.name,
+      total: item.total
+    }));
+  }
+  const groups = new Map<string, { emoji: string | null; entries: Array<{ quantity: number }>; name: string; total: number }>();
+  for (const item of report.items) {
+    const key = item.itemId ?? item.name;
+    const group = groups.get(key) ?? { emoji: item.emoji, entries: [], name: item.name, total: 0 };
+    group.entries.push({ quantity: item.quantity });
+    group.total += item.quantity;
+    groups.set(key, group);
+  }
+  return [...groups.values()];
 }
 
 async function sendFinalGoalReportToUserChannel(guild: Guild, channelId: string | null, userId: string, content: string) {
@@ -853,20 +880,38 @@ async function closeDueWeeklyGoalPeriod(guild: Guild, context: BotContext) {
   try {
     const result = await context.api.finalizeFivemGoalPeriod(guild.id, { actorId: "system", finalizationType: "automatic" });
     if (result.alreadyFinalized) return;
+    const deliveryResults = [];
     for (const report of result.report.userReports ?? []) {
       const targetLabel = `<@${report.userId}>`;
-      const content = createFinalUserGoalReportContent(guild, report, "Sistema", targetLabel);
-      const member = await guild.members.fetch(report.userId).catch(() => null);
-      const delivered = Boolean(await member?.send({ content, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
+      const content = createFinalUserGoalReportContent(guild, report, "Sistema", targetLabel, "Automático");
+      const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, report.userId, content);
+      deliveryResults.push(delivery);
       await sendGoalLog(guild, context, content, {
         automatic: true,
-        deliveredToUser: delivered,
+        deliveredToUser: delivery.ok,
+        deliveryError: delivery.error,
+        messageId: delivery.messageId,
         periodEnd: report.periodEnd,
         periodId: report.periodId,
         periodStart: report.periodStart,
         targetUserId: report.userId
       });
     }
+    const failed = deliveryResults.filter((delivery) => !delivery.ok);
+    if (failed.length) {
+      await context.api.failFivemGoalPeriodFinalization(guild.id, {
+        actorId: "system",
+        deliveryResults,
+        error: `Falha ao enviar ${failed.length} relatório(s) individual(is) no fechamento automático.`,
+        periodId: result.period.id
+      }).catch(() => null);
+      return;
+    }
+    await context.api.completeFivemGoalPeriodFinalization(guild.id, {
+      actorId: "system",
+      deliveryResults,
+      periodId: result.period.id
+    });
   } catch (error) {
     automaticGoalCloseRuns.delete(key);
     await context.api.postLog({
@@ -989,7 +1034,7 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
       const deliveryResults = [];
       for (const userReport of report.userReports ?? []) {
         const targetLabel = `<@${userReport.userId}>`;
-        const finalReport = createFinalUserGoalReportContent(guild, userReport, `<@${interaction.user.id}>`, targetLabel);
+        const finalReport = createFinalUserGoalReportContent(guild, userReport, `<@${interaction.user.id}>`, targetLabel, "Manual");
         const delivery = await sendFinalGoalReportToUserChannel(guild, userReport.channelId ?? null, userReport.userId, finalReport);
         deliveryResults.push(delivery);
         await sendGoalLog(guild, context, finalReport, {
@@ -1061,7 +1106,7 @@ async function handleFarmingManagementInteraction(interaction: Interaction, cont
       ].join("\n"), { periodEnd: report.periodEnd, periodStart: report.periodStart });
       for (const userReport of report.userReports ?? []) {
         const targetLabel = `<@${userReport.userId}>`;
-        const finalReport = createFinalUserGoalReportContent(interaction.guild, userReport, `<@${interaction.user.id}>`, targetLabel);
+        const finalReport = createFinalUserGoalReportContent(interaction.guild, userReport, `<@${interaction.user.id}>`, targetLabel, "Manual");
         const member = await interaction.guild.members.fetch(userReport.userId).catch(() => null);
         const delivered = Boolean(await member?.send({ content: finalReport, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
         await sendGoalLog(interaction.guild, context, finalReport, {

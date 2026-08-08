@@ -1152,6 +1152,14 @@ export type FivemGoalFinalizationDeliveryResult = { channelId: string | null; er
 export type FivemGoalFinalizationUserReport = {
   approvedCount: number;
   channelId: string | null;
+  groupedItems?: Array<{
+    configured: boolean;
+    emoji: string | null;
+    entries: Array<{ entryId: string; quantity: number; registeredAt: string; status: string }>;
+    itemId: string | null;
+    name: string;
+    total: number;
+  }>;
   items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
   pendingCount: number;
   periodEnd: string;
@@ -3524,19 +3532,7 @@ export class ApiClient {
       alreadyFinalized: boolean;
       finalized: boolean;
       logId: string | null;
-      report: {
-        approvedCount: number;
-        pendingCount: number;
-        periodEnd: string;
-        periodId: string;
-        periodStart: string;
-        refusedCount: number;
-        totalApprovedValue: number;
-        totalPendingValue: number;
-        totalRecords: number;
-        userId: string;
-        items: Array<{ entryId: string; itemId: string | null; name: string; emoji: string | null; quantity: number; registeredAt: string; status: string }>;
-      };
+      report: FivemGoalFinalizationUserReport;
     }>(`/fivem/bot/goals/${guildId}/finalize-user`, input);
     return data;
   }

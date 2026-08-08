@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -13,6 +13,81 @@ test("painel inicial da sala de farm usa somente o modelo de fechamento", () => 
   assert.match(serialized, /fivem_goal:room:close:987654321098765432/);
   assert.match(serialized, /<@&123456789012345678>/);
   assert.doesNotMatch(serialized, /Adicionar Meta|Histórico|Ranking|Atualizar|Solicitar Revisao/);
+});
+
+test("relatório final agrupa registros por item configurado", () => {
+  const guild = createGoalReportGuildMock();
+  const content = createFinalUserGoalReportContent(guild, {
+    approvedCount: 0,
+    channelId: "222222222222222222",
+    groupedItems: [
+      {
+        configured: true,
+        emoji: "💸",
+        entries: [
+          { entryId: "entry-1", quantity: 29108, registeredAt: "2026-08-01T10:00:00.000Z", status: "confirmed" },
+          { entryId: "entry-2", quantity: 37743, registeredAt: "2026-08-02T10:00:00.000Z", status: "confirmed" }
+        ],
+        itemId: "dinheiro-sujo",
+        name: "Dinheiro Sujo",
+        total: 66851
+      },
+      {
+        configured: true,
+        emoji: "🔋",
+        entries: [{ entryId: "entry-3", quantity: 150, registeredAt: "2026-08-03T10:00:00.000Z", status: "confirmed" }],
+        itemId: "pilha",
+        name: "Pilha",
+        total: 150
+      }
+    ],
+    items: [],
+    pendingCount: 0,
+    periodEnd: "2026-08-08T12:00:00.000Z",
+    periodId: "period-1",
+    periodStart: "2026-08-01T12:00:00.000Z",
+    refusedCount: 0,
+    registeredName: "VILÃO",
+    result: "completed",
+    totalApprovedValue: 0,
+    totalPendingValue: 0,
+    totalRecords: 3,
+    userId: "111111111111111111"
+  } as any, "<@999999999999999999>", "<@111111111111111111>", "Manual");
+
+  assert.match(content, /Relatório Final — Meta/);
+  assert.match(content, /Dinheiro Sujo/);
+  assert.match(content, /• 29\.108/);
+  assert.match(content, /• 37\.743/);
+  assert.match(content, /Total: 66\.851/);
+  assert.match(content, /Pilha/);
+  assert.match(content, /Total: 150/);
+  assert.match(content, /Tipo: Manual/);
+});
+
+test("relatório final informa usuário sem registros sem criar valores zero", () => {
+  const guild = createGoalReportGuildMock();
+  const content = createFinalUserGoalReportContent(guild, {
+    approvedCount: 0,
+    channelId: "222222222222222222",
+    groupedItems: [],
+    items: [],
+    pendingCount: 0,
+    periodEnd: "2026-08-08T12:00:00.000Z",
+    periodId: "period-1",
+    periodStart: "2026-08-01T12:00:00.000Z",
+    refusedCount: 0,
+    registeredName: "Sem cadastro no Set",
+    result: "no_records",
+    totalApprovedValue: 0,
+    totalPendingValue: 0,
+    totalRecords: 0,
+    userId: "111111111111111111"
+  } as any, "Sistema", "<@111111111111111111>", "Automático");
+
+  assert.match(content, /Nenhum registro realizado neste período\./);
+  assert.match(content, /Tipo: Automático/);
+  assert.doesNotMatch(content, /Total: 0/);
 });
 
 test("canal de meta aprovado pelo set usa prefixo com nome e id in-game", () => {
@@ -233,6 +308,17 @@ function createGoalMessageMock(input: {
     id: input.id ?? `msg-${Math.random().toString(36).slice(2)}`,
     reply: input.reply ?? (async () => undefined)
   };
+}
+
+function createGoalReportGuildMock() {
+  return {
+    client: {
+      emojis: { cache: { find: () => null, get: () => null } },
+      guilds: { cache: { get: () => null } },
+      user: { displayAvatarURL: () => null }
+    },
+    emojis: { cache: { find: () => null, get: () => null } }
+  } as any;
 }
 
 test("aprovação remove vínculo antigo quando canal de farm salvo foi apagado", async () => {
