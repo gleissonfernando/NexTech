@@ -139,7 +139,10 @@ const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number
   "image-anti-spam": "safe-bot",
   "link-anti-spam": "safe-bot"
 };
-const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {};
+const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
+  "courses": ["police-courses"],
+  "police-courses": ["courses"]
+};
 const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "message-control", "visible-message"]);
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);

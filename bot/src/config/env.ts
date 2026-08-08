@@ -177,8 +177,10 @@ const enabledModules = new Set(
     .filter(Boolean)
 );
 const MODULE_ALIASES: Record<string, string[]> = {
+  "courses": ["courses", "police-courses"],
   "fivem-drugs": ["fivem-drugs"],
-  "fivem-washing": ["fivem-washing"]
+  "fivem-washing": ["fivem-washing"],
+  "police-courses": ["police-courses", "courses"]
 };
 let runtimeEnabledModules: Set<string> | null = null;
 let runtimeBotId = env.DASHBOARD_BOT_ID.trim() || null;

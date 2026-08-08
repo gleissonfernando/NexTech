@@ -168,7 +168,7 @@ const navItems: NavItem[] = [
   { id: "custom-bot-orders", label: "Pedidos de Bots", icon: Bot, moduleId: "custom-bot-orders" },
   { id: "price-tables", label: "Painel de Vendas", icon: TableProperties, moduleId: "price-tables" },
   { id: "panels", label: "Painéis", icon: ImageIcon, moduleId: "panels" },
-  { id: "courses", label: "Cursos", icon: BookOpen, moduleId: "courses" },
+  { id: "courses", label: "Cursos", icon: BookOpen, moduleIds: ["courses", "police-courses"] },
   { id: "rh-admin", label: "Departamento de RH", icon: ShieldCheck, moduleId: "rh-admin" },
   { id: "voice-recorder", label: "Voice Recorder", icon: Mic2, moduleId: "voice-recorder" },
   { id: "music", label: "Música", icon: Music2, moduleId: "music" },
@@ -320,6 +320,10 @@ function navSectionForItem(item: NavItem, enabledModuleSet: Set<string>): NavSec
   const releasedItemModuleIds = itemModuleIds.filter((moduleId) => enabledModuleSet.has(moduleId));
 
   if (item.id === "rh-admin") {
+    return "police";
+  }
+
+  if (releasedItemModuleIds.includes("police-courses")) {
     return "police";
   }
 

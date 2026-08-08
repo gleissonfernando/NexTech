@@ -918,6 +918,8 @@ const policeTranscriptViews = new Set<ViewId>([
   "police-subpoenas"
 ]);
 function moduleReleaseIds(moduleId: string) {
+  if (moduleId === "courses") return ["courses", "police-courses"];
+  if (moduleId === "police-courses") return ["police-courses", "courses"];
   return [moduleId];
 }
 
