@@ -706,13 +706,13 @@ async function handleCloseUserGoalConfirmation(interaction: ButtonInteraction, c
   }
   if (action !== "confirm") return;
 
+  await interaction.deferUpdate();
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
   if (!settings?.enabled || !(await canUseGoalCorrectionCommand(interaction, settings))) {
-    await interaction.reply({ content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.", ephemeral: true });
+    await interaction.editReply({ content: "❌ Acesso negado\n\nSomente os gerentes de metas autorizados podem fechar a meta de uma pessoa.", components: [] });
     return;
   }
 
-  await interaction.deferUpdate();
   const target = await interaction.guild.members.fetch(targetUserId).then((member) => member.user).catch(() => null);
   const result = await finalizeSingleUserGoal(interaction.guild, context, {
     actorId: interaction.user.id,
