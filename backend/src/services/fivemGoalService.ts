@@ -685,7 +685,8 @@ async function buildFivemGoalReportForPeriod(
       ? Promise.resolve(knownConfigs)
       : fivemGoalConfigs.find({ ...scopeQuery(guildId, botId), deletedAt: null }).sort({ order: 1, createdAt: 1 }).limit(100).toArray().then((rows) => rows.map((row) => toConfigDto(row)))
   ]);
-  return buildFivemGoalReport(rows, configs, period.startAt, period.endAt);
+  const cutoffs = await getFivemGoalUserClosureCutoffs(guildId, botId, period._id, [...new Set(rows.map((row) => row.userId))]);
+  return buildFivemGoalReport(rows.filter((row) => isRecordAfterUserClosure(row, cutoffs)), configs, period.startAt, period.endAt);
 }
 
 export async function getFivemGoalRankingRuntime(guildId: string, botId?: string | null): Promise<FivemGoalRankingRuntimeDto> {
@@ -2010,18 +2011,27 @@ export async function listFivemGoalSubmissions(guildId: string, botId?: string |
 
 export async function getFivemGoalUserRuntime(guildId: string, userId: string, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
-  const [configs, submissions] = await Promise.all([
+  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const { fivemGoalSubmissions } = await getMongoCollections();
+  const [configs, submissions, cutoffs] = await Promise.all([
     listFivemGoalConfigs(guildId, normalizedBotId, true),
-    listFivemGoalSubmissions(guildId, normalizedBotId)
+    fivemGoalSubmissions.find({
+      $and: [
+        scopeQuery(guildId, normalizedBotId),
+        periodRecordWindowQuery(period)
+      ]
+    }).sort({ createdAt: -1 }).limit(5000).toArray(),
+    getFivemGoalUserClosureCutoffs(guildId, normalizedBotId, period._id)
   ]);
-  const approved = submissions.filter((item) => item.status === "approved");
+  const activeSubmissions = submissions.filter((item) => isRecordAfterUserClosure(item, cutoffs)).map(toSubmissionDto);
+  const approved = activeSubmissions.filter((item) => item.status === "approved");
   const totals = new Map<string, number>();
   for (const item of approved) totals.set(item.userId, (totals.get(item.userId) ?? 0) + item.value);
   const ranking = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, WEEKLY_RANKING_LIMIT).map(([rankedUserId, total], index) => ({ rank: index + 1, total, userId: rankedUserId }));
   return {
     configs,
     ranking,
-    submissions: submissions.filter((item) => item.userId === userId),
+    submissions: activeSubmissions.filter((item) => item.userId === userId),
     userId
   };
 }
