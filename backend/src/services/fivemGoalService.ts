@@ -630,6 +630,43 @@ function periodRecordWindowQuery(period: Pick<MongoFivemGoalPeriod, "_id" | "sta
   };
 }
 
+function afterUserClosureRecordQuery(closedAt: Date) {
+  return {
+    $or: [
+      { registeredAt: { $gt: closedAt } },
+      { registeredAt: null, createdAt: { $gt: closedAt } },
+      { registeredAt: { $exists: false }, createdAt: { $gt: closedAt } }
+    ]
+  };
+}
+
+async function getFivemGoalUserClosureCutoffs(guildId: string, botId: string | null, periodId: string, userIds?: string[]) {
+  const { fivemGoalLogs } = await getMongoCollections();
+  const rows = await fivemGoalLogs.find({
+    action: "user.period.finalized",
+    ...scopeQuery(guildId, botId),
+    "details.closureStatus": "COMPLETED",
+    "details.periodId": periodId,
+    ...(userIds?.length ? { "details.targetUserId": { $in: userIds } } : {})
+  }).sort({ createdAt: 1 }).limit(10000).toArray();
+  const cutoffs = new Map<string, Date>();
+  for (const row of rows) {
+    const userId = typeof row.details?.targetUserId === "string" ? row.details.targetUserId : null;
+    const closedAtRaw = typeof row.details?.closedAt === "string" ? row.details.closedAt : null;
+    const closedAt = closedAtRaw ? new Date(closedAtRaw) : row.createdAt;
+    if (!userId || Number.isNaN(closedAt.getTime())) continue;
+    const current = cutoffs.get(userId);
+    if (!current || closedAt > current) cutoffs.set(userId, closedAt);
+  }
+  return cutoffs;
+}
+
+function isRecordAfterUserClosure(row: { createdAt: Date; registeredAt?: Date | null; userId: string }, cutoffs: Map<string, Date>) {
+  const cutoff = cutoffs.get(row.userId);
+  if (!cutoff) return true;
+  return (row.registeredAt ?? row.createdAt) > cutoff;
+}
+
 async function buildFivemGoalReportForPeriod(
   guildId: string,
   botId: string | null,
@@ -676,7 +713,9 @@ export async function getFivemGoalRankingRuntime(guildId: string, botId?: string
   const items = new Map(settings.items.map((item) => [item.id, item]));
   const targetValue = Math.max(1, settings.items.filter((item) => item.enabled !== false).reduce((sum, item) => sum + Math.max(0, item.requiredAmount || 0), 0));
   const members = new Map<string, Omit<FivemGoalRankingMemberDto, "rank">>();
+  const userClosureCutoffs = await getFivemGoalUserClosureCutoffs(guildId, normalizedBotId, period._id, [...new Set(entries.map((entry) => entry.userId))]);
   for (const entry of entries) {
+    if (!isRecordAfterUserClosure(entry, userClosureCutoffs)) continue;
     const quantity = typeof entry.quantity === "number" && Number.isFinite(entry.quantity) ? entry.quantity : 0;
     if (quantity <= 0) continue;
     const registeredAt = entry.registeredAt ?? entry.createdAt;
@@ -812,7 +851,8 @@ async function buildFivemGoalUserReportForPeriod(
   guildId: string,
   botId: string | null,
   period: Pick<MongoFivemGoalPeriod, "_id" | "startAt" | "endAt">,
-  userId: string
+  userId: string,
+  since?: Date | null
 ): Promise<FivemGoalUserReportDto> {
   const { fivemGoalEntries, fivemGoalSettings, fivemGoalSubmissions, fivemGoalUserChannels, manualRegistrationSubmissions } = await getMongoCollections();
   const scope = scopeQuery(guildId, botId);
@@ -821,6 +861,7 @@ async function buildFivemGoalUserReportForPeriod(
       $and: [
         scope,
         periodRecordWindowQuery(period),
+        ...(since ? [afterUserClosureRecordQuery(since)] : []),
         { userId }
       ]
     }).sort({ createdAt: -1 }).limit(5000).toArray(),
@@ -828,6 +869,7 @@ async function buildFivemGoalUserReportForPeriod(
       $and: [
         scope,
         periodRecordWindowQuery(period),
+        ...(since ? [afterUserClosureRecordQuery(since)] : []),
         { userId },
         { $or: [{ status: "confirmed" }, { status: "corrected" }, { status: { $exists: false } }] }
       ]
@@ -1008,13 +1050,41 @@ async function finalizeFivemGoalUserPeriodUnsafe(
         report: recoveredReport
       };
     }
-    const snapshot = existingSnapshot ?? await buildFivemGoalUserReportForPeriod(guildId, botId, period, userId);
+    const previousClosedAtRaw = typeof existingLog.details?.closedAt === "string" ? existingLog.details.closedAt : null;
+    const previousClosedAt = previousClosedAtRaw ? new Date(previousClosedAtRaw) : null;
+    const report = await buildFivemGoalUserReportForPeriod(guildId, botId, period, userId, previousClosedAt && !Number.isNaN(previousClosedAt.getTime()) ? previousClosedAt : null);
+    const completedAt = new Date();
+    await fivemGoalLogs.updateOne(
+      { _id: existingLog._id, action: "user.period.finalized", ...scope },
+      {
+        $set: {
+          details: {
+            ...existingLog.details,
+            actorId,
+            approvedCount: report.approvedCount,
+            closedAt: completedAt.toISOString(),
+            closureStatus: "COMPLETED",
+            items: report.items,
+            pendingCount: report.pendingCount,
+            periodEnd: report.periodEnd,
+            periodId: period._id,
+            periodStart: report.periodStart,
+            refusedCount: report.refusedCount,
+            report,
+            targetUserId: userId,
+            totalApprovedValue: report.totalApprovedValue,
+            totalPendingValue: report.totalPendingValue,
+            totalRecords: report.totalRecords
+          }
+        }
+      }
+    );
     return {
-      alreadyFinalized: true,
-      finalized: false,
+      alreadyFinalized: false,
+      finalized: true,
       logId: existingLog._id,
       period: toPeriodDto(period),
-      report: snapshot
+      report
     };
   }
 
@@ -1714,11 +1784,13 @@ export async function listCurrentFivemGoalCorrectionCandidates(guildId: string, 
   const normalizedBotId = normalizeBotId(botId);
   const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
   const { fivemGoalEntries } = await getMongoCollections();
+  const cutoffs = await getFivemGoalUserClosureCutoffs(guildId, normalizedBotId, period._id, [userId]);
   const rows = await fivemGoalEntries.find({
     ...scopeQuery(guildId, normalizedBotId),
     userId,
     $and: [
       periodRecordWindowQuery(period),
+      ...(cutoffs.get(userId) ? [afterUserClosureRecordQuery(cutoffs.get(userId)!)] : []),
       { $or: [{ status: "confirmed" }, { status: { $exists: false } }] }
     ]
   }).sort({ createdAt: -1 }).limit(25).toArray();

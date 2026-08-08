@@ -804,7 +804,7 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
   const groupedItems = buildFinalGoalReportGroups(report);
   const detailLines = groupedItems.length
     ? groupedItems.flatMap((item) => {
-      const emoji = item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
+      const emoji = finalGoalItemEmoji(item, guild);
       const lines = [`${emoji} **${item.name}**`];
       for (const entry of item.entries.slice(0, 25)) lines.push(`• ${formatGoalValue(entry.quantity)}`);
       if (item.entries.length > 25) lines.push(`• ... mais ${item.entries.length - 25} registro(s)`);
@@ -833,17 +833,31 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
 }
 
 function createFinalUserGoalReportPayload(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
+  const bannerUrl = goalReportBannerUrl(guild);
   return {
     allowedMentions: { parse: [] as never[] },
     components: [{
       type: 17,
       accent_color: 0x22c55e,
       components: [
+        ...(bannerUrl ? [{ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner do servidor" }] }] : []),
         { type: 10, content: replaceSystemEmojis(createFinalUserGoalReportContent(guild, report, actorLabel, targetLabel, finalizationType), guild, guild.client) }
       ]
     }],
     flags: MessageFlags.IsComponentsV2 as const
   };
+}
+
+function goalReportBannerUrl(guild: Guild) {
+  return guild.bannerURL({ extension: "png", size: 1024 })
+    ?? guild.iconURL({ extension: "png", size: 512 })
+    ?? guild.client.user?.displayAvatarURL({ extension: "png", size: 512 })
+    ?? null;
+}
+
+function finalGoalItemEmoji(item: { emoji: string | null; name: string }, guild: Guild) {
+  if (/dinheiro|sujo|euro|real|money/i.test(item.name)) return farmSystemEmojiText("dinheiro", guild, guild.client);
+  return item.emoji ? renderFarmConfiguredEmoji(item.emoji, guild, "caixa") : farmSystemEmojiText("caixa", guild, guild.client);
 }
 
 function buildFinalGoalReportGroups(report: FinalizedGoalUserReport) {
