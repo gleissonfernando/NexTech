@@ -105,6 +105,7 @@ check("contrato de token interno do bot", () => {
   const backendAuth = readProjectFile("backend/src/middleware/auth.ts");
   const botApiClient = readProjectFile("bot/src/services/apiClient.ts");
   const botSocketClient = readProjectFile("bot/src/websocket/socketClient.ts");
+  const botEntrypoint = readProjectFile("bot/src/index.ts");
 
   if (!backendAuth.includes('req.header("x-bot-token")')) {
     fail("backend precisa aceitar o header x-bot-token enviado pelo bot.");
@@ -120,6 +121,10 @@ check("contrato de token interno do bot", () => {
 
   if (!botSocketClient.includes("auth:") || !botSocketClient.includes("token: env.BOT_API_TOKEN")) {
     fail("bot socket client precisa autenticar com BOT_API_TOKEN.");
+  }
+
+  if (!botEntrypoint.includes("const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());")) {
+    fail("bot principal nao pode tratar BOT_API_TOKEN/BACKEND_API_URL como bot DEV gerenciado; isso habilita intents privilegiadas em producao.");
   }
 });
 
