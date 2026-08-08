@@ -310,6 +310,7 @@ export type ContractBillingDmEvent = {
     status: string;
   } | null;
   items: Array<{ name: string; quantity: number; status: string }>;
+  messageTemplate?: string | null;
   planName: string;
   serverId: string | null;
   serverName: string | null;

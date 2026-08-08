@@ -90,10 +90,12 @@ import {
   createMonthlyBillingCustomer,
   getMonthlyBillingCustomerHistory,
   listMonthlyBillingDashboard,
+  previewMonthlyBillingMessage,
   registerMonthlyBillingPayment,
   sendMonthlyBillingBulkCharges,
   sendMonthlyBillingCharge,
   setMonthlyBillingCustomerStatus,
+  updateMonthlyBillingSettings,
   updateMonthlyBillingCustomer
 } from "../services/monthlyBillingService";
 import {
@@ -205,6 +207,7 @@ const resendInvoiceDmSchema = z.object({
 });
 
 const monthlyCustomerSchema = z.object({
+  billingType: z.enum(["hosting", "monthly"]).optional(),
   discordUserId: z.string().regex(/^\d{5,32}$/),
   customerName: z.string().min(2).max(100),
   monthlyAmountInCents: z.coerce.number().int().min(0).max(100000000),
@@ -243,7 +246,29 @@ const monthlyStatusSchema = z.object({
 });
 
 const monthlyBulkChargeSchema = z.object({
-  customerIds: z.array(z.string().min(1).max(120)).min(1).max(500)
+  billingType: z.enum(["hosting", "monthly", "all"]).default("all"),
+  customerIds: z.array(z.string().min(1).max(120)).max(500).default([]),
+  period: z.enum(["today", "overdue_1", "overdue_3", "overdue_7", "overdue_15", "overdue_30_plus", "all"]).default("all"),
+  status: z.enum(["overdue", "due_today", "due_soon", "pending", "all"]).default("overdue")
+});
+
+const monthlyBillingTypeSettingsSchema = z.object({
+  defaultAmountInCents: z.coerce.number().int().min(0).max(100000000).nullable().optional(),
+  enabled: z.boolean().optional(),
+  messageTemplate: z.string().min(1).max(4000).optional(),
+  paymentDeadlineDays: z.coerce.number().int().min(0).max(90).nullable().optional(),
+  pixKey: z.string().max(1800).nullable().optional().or(z.literal("")),
+  pixQrCodeUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
+});
+
+const monthlyBillingSettingsSchema = z.object({
+  hosting: monthlyBillingTypeSettingsSchema.optional(),
+  monthly: monthlyBillingTypeSettingsSchema.optional()
+});
+
+const monthlyBillingPreviewSchema = z.object({
+  billingType: z.enum(["hosting", "monthly"]),
+  customerId: z.string().min(1).max(120).nullable().optional()
 });
 
 const registerPrimaryBotSchema = z.object({
@@ -505,6 +530,25 @@ devRouter.get("/monthly-billing", async (_req, res, next) => {
   }
 });
 
+devRouter.patch("/monthly-billing/settings", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyBillingSettingsSchema.parse(req.body ?? {});
+    return res.json(await updateMonthlyBillingSettings(input, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/preview", async (req, res, next) => {
+  try {
+    const input = monthlyBillingPreviewSchema.parse(req.body ?? {});
+    return res.json(await previewMonthlyBillingMessage(input));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 devRouter.post("/monthly-billing/bots/:botId/customers", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
@@ -561,7 +605,7 @@ devRouter.post("/monthly-billing/send-bulk-charges", async (req, res, next) => {
   try {
     const auth = res.locals.dashboardAuth as DashboardAuth;
     const input = monthlyBulkChargeSchema.parse(req.body ?? {});
-    return res.json(await sendMonthlyBillingBulkCharges(input.customerIds, auth.user));
+    return res.json(await sendMonthlyBillingBulkCharges(input.customerIds, auth.user, input));
   } catch (error) {
     return next(error);
   }

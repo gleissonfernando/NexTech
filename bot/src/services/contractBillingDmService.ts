@@ -39,6 +39,9 @@ async function sendContractBillingDm(client: Client<true>, context: BotContext, 
 
 function renderContractDm(payload: ContractBillingDmEvent) {
   const invoice = payload.invoice;
+  const configuredMessage = typeof payload.messageTemplate === "string" && payload.messageTemplate.trim()
+    ? payload.messageTemplate.trim().slice(0, 3500)
+    : null;
   const title = titleFor(payload.event);
   const userName = payload.user.discordDisplayName || payload.user.discordUsername || "cliente";
   const items = payload.items.length
@@ -51,7 +54,12 @@ function renderContractDm(payload: ContractBillingDmEvent) {
     : invoice?.pixExpiresAt
       ? "Este QR Code PIX possui validade limitada. Caso ele expire, acesse a dashboard para consultar ou gerar um novo código de pagamento."
       : "Use o QR Code PIX ou, se preferir, copie o código copia e cola abaixo.";
-  const content = [
+  const content = configuredMessage ? [
+    configuredMessage,
+    "",
+    payload.contractId ? `-# Contrato: ${payload.contractId}` : null,
+    invoice ? `-# Fatura: ${invoice.id}` : null
+  ].filter(Boolean).join("\n") : [
     `# ${title}`,
     "",
     `Olá, **${escapeMarkdown(userName)}**!`,

@@ -5280,12 +5280,15 @@ export type MongoMonthlyBillingCustomerStatus =
   | "cancelled"
   | "deleted";
 
+export type MongoMonthlyBillingType = "hosting" | "monthly";
+
 export type MongoMonthlyBillingChargeStatus = "pending" | "sent" | "failed";
 
 export type MongoMonthlyBillingCustomer = {
   _id: string;
   tenantId: string;
   botId: string;
+  billingType?: MongoMonthlyBillingType;
   discordUserId: string;
   customerName: string;
   planName: string;
@@ -5338,6 +5341,8 @@ export type MongoMonthlyBillingCharge = {
   _id: string;
   tenantId: string;
   botId: string;
+  billingType?: MongoMonthlyBillingType;
+  campaignId?: string | null;
   customerId: string;
   discordUserId: string;
   notificationType: string;
@@ -5351,6 +5356,24 @@ export type MongoMonthlyBillingCharge = {
   createdByName: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type MongoMonthlyBillingTypeSettings = {
+  enabled: boolean;
+  messageTemplate: string;
+  pixKey: string | null;
+  pixQrCodeUrl: string | null;
+  defaultAmountInCents: number | null;
+  paymentDeadlineDays: number | null;
+};
+
+export type MongoMonthlyBillingSettings = {
+  _id: string;
+  hosting: MongoMonthlyBillingTypeSettings;
+  monthly: MongoMonthlyBillingTypeSettings;
+  updatedAt: Date;
+  updatedBy: string | null;
+  updatedByName: string | null;
 };
 
 export type MongoMonthlyBillingLog = {
@@ -6233,6 +6256,7 @@ export async function getMongoCollections() {
     contractAuditLogs: db.collection<MongoContractAuditLog>("contract_audit_logs"),
     botBillingInvoices: db.collection<MongoBotBillingInvoice>("bot_billing_invoices"),
     monthlyBillingCustomers: db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers"),
+    monthlyBillingSettings: db.collection<MongoMonthlyBillingSettings>("monthly_billing_settings"),
     monthlyBillingPayments: db.collection<MongoMonthlyBillingPayment>("monthly_billing_payments"),
     monthlyBillingCharges: db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges"),
     monthlyBillingLogs: db.collection<MongoMonthlyBillingLog>("monthly_billing_logs"),
@@ -6736,6 +6760,7 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ status: 1, dueDate: 1 }),
     db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ tenantId: 1, botId: 1, discordUserId: 1, deletedAt: 1 }),
     db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ botId: 1, status: 1, fixedDueDay: 1 }),
+    db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ billingType: 1, status: 1, deletedAt: 1 }),
     db.collection<MongoMonthlyBillingPayment>("monthly_billing_payments").createIndex({ tenantId: 1, customerId: 1, paidAt: -1 }),
     db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges").createIndex({ tenantId: 1, customerId: 1, createdAt: -1 }),
     db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges").createIndex({ status: 1, createdAt: -1 }),

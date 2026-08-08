@@ -2288,6 +2288,7 @@ export async function getDevMonthlyContracts() {
 }
 
 export type SaveMonthlyBillingCustomerPayload = {
+  billingType?: "hosting" | "monthly";
   discordUserId: string;
   customerName: string;
   monthlyAmountInCents: number;
@@ -2333,7 +2334,22 @@ export async function sendMonthlyBillingCustomerCharge(customerId: string) {
 }
 
 export async function sendMonthlyBillingBulkCharges(customerIds: string[]) {
-  const { data } = await api.post<{ dashboard: MonthlyBillingDashboard; results: Array<{ customerId: string; ok: boolean; error?: string }> }>("/dev/monthly-billing/send-bulk-charges", { customerIds });
+  const { data } = await api.post<{ campaignId: string; dashboard: MonthlyBillingDashboard; results: Array<{ customerId: string; ok: boolean; error?: string }> }>("/dev/monthly-billing/send-bulk-charges", { customerIds });
+  return data;
+}
+
+export async function sendMonthlyBillingBulkChargesByFilter(payload: { billingType?: "hosting" | "monthly" | "all"; period?: string; status?: string }) {
+  const { data } = await api.post<{ campaignId: string; dashboard: MonthlyBillingDashboard; results: Array<{ customerId: string; ok: boolean; error?: string }> }>("/dev/monthly-billing/send-bulk-charges", { customerIds: [], ...payload });
+  return data;
+}
+
+export async function updateMonthlyBillingSettings(payload: Partial<MonthlyBillingDashboard["billingSettings"]>) {
+  const { data } = await api.patch<MonthlyBillingDashboard>("/dev/monthly-billing/settings", payload);
+  return data;
+}
+
+export async function previewMonthlyBillingMessage(payload: { billingType: "hosting" | "monthly"; customerId?: string | null }) {
+  const { data } = await api.post<{ message: string; pixKey: string | null; pixQrCodeUrl: string | null }>("/dev/monthly-billing/preview", payload);
   return data;
 }
 

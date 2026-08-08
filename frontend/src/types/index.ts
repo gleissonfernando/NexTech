@@ -5004,6 +5004,8 @@ export type MonthlyBillingCustomer = {
   id: string;
   tenantId: string;
   botId: string;
+  billingType: "hosting" | "monthly";
+  billingTypeLabel: string;
   botName: string;
   botAvatarUrl: string | null;
   projectName: string | null;
@@ -5051,6 +5053,13 @@ export type MonthlyBillingBot = {
 };
 
 export type MonthlyBillingDashboard = {
+  billingSettings: {
+    hosting: MonthlyBillingTypeSettings;
+    monthly: MonthlyBillingTypeSettings;
+    updatedAt: string;
+    updatedBy: string | null;
+    updatedByName: string | null;
+  };
   bots: MonthlyBillingBot[];
   summary: {
     totalCustomers: number;
@@ -5063,6 +5072,16 @@ export type MonthlyBillingDashboard = {
     suspendedServices: number;
     paymentsReceivedThisMonthInCents: number;
   };
+  variables: string[];
+};
+
+export type MonthlyBillingTypeSettings = {
+  defaultAmountInCents: number | null;
+  enabled: boolean;
+  messageTemplate: string;
+  paymentDeadlineDays: number | null;
+  pixKey: string | null;
+  pixQrCodeUrl: string | null;
 };
 
 export type MonthlyBillingHistory = {

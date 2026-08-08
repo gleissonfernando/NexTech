@@ -71,6 +71,7 @@ import {
   getMonthlyBillingDashboard,
   getSystemHealth,
   getSystemMetrics,
+  previewMonthlyBillingMessage,
   publishNexTechInvitePanel,
   replaceNexTechInviteUrl,
   sendMaintenanceAlert,
@@ -79,9 +80,11 @@ import {
   setMaintenanceMode,
   runDiscloudBotAction,
   sendMonthlyBillingBulkCharges,
+  sendMonthlyBillingBulkChargesByFilter,
   sendMonthlyBillingCustomerCharge,
   setMonthlyBillingCustomerStatus,
   updateMonthlyBillingCustomer,
+  updateMonthlyBillingSettings,
   updateDevBotModules,
   updateDevFivemModule,
   saveDevFivemExpenseRelease,
@@ -606,6 +609,9 @@ function DevMonthlyContractsPanel() {
   const [chargeCustomer, setChargeCustomer] = useState<MonthlyBillingCustomer | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<MonthlyBillingCustomer | null>(null);
   const [history, setHistory] = useState<MonthlyBillingHistory | null>(null);
+  const [settingsType, setSettingsType] = useState<"hosting" | "monthly">("hosting");
+  const [preview, setPreview] = useState<{ message: string; pixKey: string | null; pixQrCodeUrl: string | null } | null>(null);
+  const [bulkFilters, setBulkFilters] = useState({ billingType: "hosting", period: "all", status: "overdue" });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -638,6 +644,7 @@ function DevMonthlyContractsPanel() {
     setSaving(true);
     try {
       const nextDashboard = await createMonthlyBillingCustomer(customerFormBot.id, {
+        billingType: String(form.get("billingType") ?? "monthly") as "hosting" | "monthly",
         discordUserId: String(form.get("discordUserId") ?? ""),
         customerName: String(form.get("customerName") ?? ""),
         monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
@@ -692,6 +699,54 @@ function DevMonthlyContractsPanel() {
     }
   }
 
+  async function handleSendBulkByFilter() {
+    const allCustomers = dashboard?.bots.flatMap((bot) => bot.customers) ?? [];
+    const matches = allCustomers.filter((customer) => monthlyBulkFilterMatches(customer, bulkFilters));
+    const typeLabel = bulkFilters.billingType === "hosting" ? "Hospedagem" : bulkFilters.billingType === "monthly" ? "Mensalidade" : "Todos";
+    if (!window.confirm(`Confirmar envio em massa?\n\nClientes encontrados: ${matches.length}\nTipo: ${typeLabel}\nStatus: ${bulkFilters.status}\nPeríodo: ${bulkFilters.period}\n\nO backend validará pagamento, vencimento, tipo e Discord antes de enviar.`)) return;
+    setSendingId("bulk-filter");
+    try {
+      const result = await sendMonthlyBillingBulkChargesByFilter(bulkFilters as { billingType: "hosting" | "monthly" | "all"; period: string; status: string });
+      setDashboard(result.dashboard);
+      setSelectedCustomerIds([]);
+    } catch (sendError) {
+      setError(readRequestMessage(sendError) ?? "Não foi possível enviar as cobranças filtradas.");
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  async function handleSaveBillingSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dashboard) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    try {
+      const nextSettings = {
+        enabled: form.get("enabled") === "on",
+        messageTemplate: String(form.get("messageTemplate") ?? ""),
+        pixKey: String(form.get("pixKey") ?? ""),
+        pixQrCodeUrl: String(form.get("pixQrCodeUrl") ?? ""),
+        defaultAmountInCents: reaisToCents(String(form.get("defaultAmount") ?? "0")),
+        paymentDeadlineDays: Number(form.get("paymentDeadlineDays") ?? "0")
+      };
+      setDashboard(await updateMonthlyBillingSettings({ [settingsType]: nextSettings }));
+      setPreview(null);
+    } catch (saveError) {
+      setError(readRequestMessage(saveError) ?? "Não foi possível salvar a configuração de cobrança.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handlePreviewBillingMessage() {
+    try {
+      setPreview(await previewMonthlyBillingMessage({ billingType: settingsType }));
+    } catch (previewError) {
+      setError(readRequestMessage(previewError) ?? "Não foi possível gerar a prévia.");
+    }
+  }
+
   async function handleRegisterPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!paymentCustomer) return;
@@ -722,6 +777,7 @@ function DevMonthlyContractsPanel() {
     setSaving(true);
     try {
       setDashboard(await updateMonthlyBillingCustomer(editingCustomer.id, {
+        billingType: String(form.get("billingType") ?? editingCustomer.billingType) as "hosting" | "monthly",
         customerName: String(form.get("customerName") ?? ""),
         monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
         dueDate: String(form.get("dueDate") ?? ""),
@@ -784,6 +840,7 @@ function DevMonthlyContractsPanel() {
   }
 
   const selectedBot = dashboard?.bots.find((bot) => bot.id === selectedBotId) ?? dashboard?.bots[0] ?? null;
+  const billingTypeSettings = dashboard?.billingSettings[settingsType] ?? null;
   const filteredCustomers = (selectedBot?.customers ?? []).filter((customer) => {
     const text = `${customer.customerName} ${customer.discordUserId} ${customer.botName} ${customer.projectName ?? ""} ${customer.planName}`.toLowerCase();
     const statusOk = statusFilter === "all" || customer.status === statusFilter;
@@ -818,6 +875,85 @@ function DevMonthlyContractsPanel() {
             <MonthlyMetric label="Mensalidades vencidas" value={dashboard.summary.overdueMonths} />
             <MonthlyMetric label="Total a receber" value={formatCurrency(dashboard.summary.totalReceivableInCents)} />
           </div>
+
+          {billingTypeSettings ? (
+            <Card className="border-[#FFD500]/18 bg-zinc-950/85">
+              <CardHeader>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <CardTitle>Cobranças</CardTitle>
+                    <CardDescription>Mensagens, Pix e regras separados por Hospedagem e Mensalidade.</CardDescription>
+                  </div>
+                  <div className="flex rounded-lg border border-zinc-800 bg-black/35 p-1">
+                    <Button onClick={() => { setSettingsType("hosting"); setPreview(null); }} size="sm" type="button" variant={settingsType === "hosting" ? "default" : "ghost"}>Hospedagem</Button>
+                    <Button onClick={() => { setSettingsType("monthly"); setPreview(null); }} size="sm" type="button" variant={settingsType === "monthly" ? "default" : "ghost"}>Mensalidade</Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <form className="grid gap-3" onSubmit={handleSaveBillingSettings}>
+                  <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-black/35 p-3 text-sm font-semibold text-white">
+                    Envio ativo para {settingsType === "hosting" ? "hospedagem" : "mensalidade"}
+                    <input defaultChecked={billingTypeSettings.enabled} name="enabled" type="checkbox" />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+                    Mensagem da DM
+                    <textarea className="min-h-56 rounded-lg border border-zinc-800 bg-black/45 px-3 py-2 text-white outline-none focus:border-[#FFEA70]/60" defaultValue={billingTypeSettings.messageTemplate} name="messageTemplate" />
+                  </label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <MonthlyInput defaultValue={billingTypeSettings.pixKey ?? ""} label="Chave Pix / Copia e cola" name="pixKey" />
+                    <MonthlyInput defaultValue={billingTypeSettings.pixQrCodeUrl ?? ""} label="URL do QR Code Pix" name="pixQrCodeUrl" />
+                    <MonthlyInput defaultValue={billingTypeSettings.defaultAmountInCents ? (billingTypeSettings.defaultAmountInCents / 100).toFixed(2).replace(".", ",") : ""} label="Valor padrão (R$)" name="defaultAmount" />
+                    <MonthlyInput defaultValue={String(billingTypeSettings.paymentDeadlineDays ?? 0)} label="Prazo após vencimento (dias)" min="0" name="paymentDeadlineDays" type="number" />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {dashboard.variables.map((variable) => <code className="rounded border border-zinc-800 bg-black/45 px-2 py-1 text-xs text-[#FFEA70]" key={variable}>{variable}</code>)}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button onClick={() => void handlePreviewBillingMessage()} type="button" variant="outline"><EyeOff className="h-4 w-4" />Pré-visualizar</Button>
+                    <Button disabled={saving} type="submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings className="h-4 w-4" />}Salvar configuração</Button>
+                  </div>
+                </form>
+                <div className="grid gap-3">
+                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Pré-visualização</p>
+                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">{preview?.message ?? "Clique em pré-visualizar para ver a DM com variáveis substituídas."}</pre>
+                  </div>
+                  {preview?.pixQrCodeUrl ? <img alt="Prévia do QR Code Pix" className="max-h-56 rounded-lg border border-zinc-800 bg-white object-contain p-2" src={preview.pixQrCodeUrl} /> : null}
+                  <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
+                    <p className="text-sm font-semibold text-white">Enviar para todos por filtro</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, billingType: event.target.value }))} value={bulkFilters.billingType}>
+                        <option value="hosting">Hospedagem</option>
+                        <option value="monthly">Mensalidade</option>
+                        <option value="all">Todos</option>
+                      </select>
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, status: event.target.value }))} value={bulkFilters.status}>
+                        <option value="overdue">Vencidos</option>
+                        <option value="due_today">Vencendo hoje</option>
+                        <option value="due_soon">Vencendo em breve</option>
+                        <option value="pending">Pendentes</option>
+                        <option value="all">Todos</option>
+                      </select>
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, period: event.target.value }))} value={bulkFilters.period}>
+                        <option value="all">Todos períodos</option>
+                        <option value="today">Hoje</option>
+                        <option value="overdue_1">1 dia vencido</option>
+                        <option value="overdue_3">3 dias vencido</option>
+                        <option value="overdue_7">7 dias vencido</option>
+                        <option value="overdue_15">15 dias vencido</option>
+                        <option value="overdue_30_plus">30+ dias vencido</option>
+                      </select>
+                    </div>
+                    <Button className="mt-3 w-full" disabled={sendingId === "bulk-filter"} onClick={() => void handleSendBulkByFilter()} type="button" variant="outline">
+                      {sendingId === "bulk-filter" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                      Enviar para todos filtrados
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <div className="grid gap-3 xl:grid-cols-2">
             {dashboard.bots.map((bot) => (
@@ -876,6 +1012,7 @@ function DevMonthlyContractsPanel() {
                       <tr>
                         <th className="px-3 py-2">Sel.</th>
                         <th className="px-3 py-2">Cliente</th>
+                        <th className="px-3 py-2">Tipo</th>
                         <th className="px-3 py-2">Plano</th>
                         <th className="px-3 py-2">Valor</th>
                         <th className="px-3 py-2">Vencimento</th>
@@ -898,6 +1035,7 @@ function DevMonthlyContractsPanel() {
                               <div><p className="font-semibold text-white">{customer.customerName}</p><p className="text-xs text-zinc-500">{customer.discordUserId}</p></div>
                             </div>
                           </td>
+                          <td className="px-3 py-3"><Badge variant={customer.billingType === "hosting" ? "warning" : "muted"}>{customer.billingTypeLabel}</Badge></td>
                           <td className="px-3 py-3 text-zinc-300">{customer.planName}</td>
                           <td className="px-3 py-3 text-zinc-300">{formatCurrency(customer.monthlyAmountInCents)}</td>
                           <td className="px-3 py-3 text-zinc-300">Dia {customer.fixedDueDay}</td>
@@ -961,6 +1099,13 @@ function MonthlyCustomerModal({ bot, onClose, onSubmit, saving }: { bot: Monthly
     <MonthlyModal title={`Cadastrar cliente - ${bot.name}`} onClose={onClose}>
       <form className="grid gap-3" onSubmit={onSubmit}>
         <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+            Tipo de cobrança
+            <select className="h-10 rounded-lg border border-zinc-800 bg-black/45 px-3 text-white outline-none focus:border-[#FFEA70]/60" name="billingType">
+              <option value="monthly">Mensalidade</option>
+              <option value="hosting">Hospedagem</option>
+            </select>
+          </label>
           <MonthlyInput label="ID do usuário no Discord" name="discordUserId" required />
           <MonthlyInput label="Nome do cliente" name="customerName" required />
           <MonthlyInput label="Valor da mensalidade (R$)" name="monthlyAmount" placeholder="12,00" required />
@@ -1019,6 +1164,13 @@ function MonthlyEditCustomerModal({ customer, onClose, onSubmit, saving }: { cus
     <MonthlyModal title={`Editar cadastro - ${customer.customerName}`} onClose={onClose}>
       <form className="grid gap-3" onSubmit={onSubmit}>
         <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+            Tipo de cobrança
+            <select className="h-10 rounded-lg border border-zinc-800 bg-black/45 px-3 text-white outline-none focus:border-[#FFEA70]/60" defaultValue={customer.billingType} name="billingType">
+              <option value="monthly">Mensalidade</option>
+              <option value="hosting">Hospedagem</option>
+            </select>
+          </label>
           <MonthlyInput defaultValue={customer.customerName} label="Nome do cliente" name="customerName" required />
           <MonthlyInput defaultValue={(customer.monthlyAmountInCents / 100).toFixed(2).replace(".", ",")} label="Valor da mensalidade (R$)" name="monthlyAmount" required />
           <MonthlyInput defaultValue={customer.planName} label="Plano contratado" name="planName" required />
@@ -1134,6 +1286,31 @@ function MonthlyInput({ label, ...props }: InputHTMLAttributes<HTMLInputElement>
 function reaisToCents(value: string) {
   const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
   return Math.round((Number(normalized) || 0) * 100);
+}
+
+function monthlyBulkFilterMatches(customer: MonthlyBillingCustomer, filters: { billingType: string; period: string; status: string }) {
+  if (filters.billingType !== "all" && customer.billingType !== filters.billingType) return false;
+  const now = new Date();
+  const oldestDue = customer.oldestDueDate ? new Date(customer.oldestDueDate) : null;
+  const nextDue = new Date(customer.nextDueDate);
+  const daysOverdue = oldestDue ? Math.max(0, Math.floor((startOfLocalDay(now).getTime() - startOfLocalDay(oldestDue).getTime()) / 86400000)) : 0;
+  if (filters.status === "overdue" && customer.overdueMonths <= 0) return false;
+  if (filters.status === "due_today" && startOfLocalDay(nextDue).getTime() !== startOfLocalDay(now).getTime()) return false;
+  if (filters.status === "due_soon" && (customer.overdueMonths > 0 || nextDue.getTime() - now.getTime() > 3 * 86400000)) return false;
+  if (filters.status === "pending" && customer.totalDueInCents <= 0) return false;
+  if (filters.period === "today" && daysOverdue !== 0) return false;
+  if (filters.period === "overdue_1" && daysOverdue < 1) return false;
+  if (filters.period === "overdue_3" && daysOverdue < 3) return false;
+  if (filters.period === "overdue_7" && daysOverdue < 7) return false;
+  if (filters.period === "overdue_15" && daysOverdue < 15) return false;
+  if (filters.period === "overdue_30_plus" && daysOverdue < 30) return false;
+  return true;
+}
+
+function startOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
 type NexTechInviteForm = {
