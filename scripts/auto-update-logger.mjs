@@ -10,6 +10,7 @@ const draftMarkdownPath = path.join(historyDir, "auto-update-draft.md");
 const draftJsonPath = path.join(historyDir, "auto-update-draft.json");
 const releaseMetadataPath = path.join(root, ".nex-tech-release.json");
 const discordApi = "https://discord.com/api/v10";
+const changelogCollectionName = "system_update_changelogs";
 const isDryRun = process.argv.includes("--dry-run");
 const isSendRequested = process.argv.includes("--send") || process.env.AUTO_UPDATE_SEND === "true";
 const isForceSend = process.argv.includes("--force") || process.env.AUTO_UPDATE_ALWAYS_SEND === "true";
@@ -79,14 +80,16 @@ export async function runAutoUpdateLogger(options = {}) {
     summary: analysis.summary,
     files: analysis.files.slice(0, 250)
   };
+  const changelog = buildChangelogRecord({ analysis, release });
+  validateChangelogForPublish(changelog);
 
   if (isDryRun || options.dryRun) {
-    const payload = buildDiscordPayload({ analysis, bot: null, channelId, mode: panelMode, release });
+    const payload = buildDiscordPayload({ analysis, bot: null, channelId, changelog, mode: panelMode, release });
     console.log(JSON.stringify(payload, null, 2));
     return { release, skipped: true };
   }
 
-  const payload = buildDiscordPayload({ analysis, bot: null, channelId, mode: panelMode, release });
+  const payload = buildDiscordPayload({ analysis, bot: null, channelId, changelog, mode: panelMode, release });
 
   if (!sendEnabled) {
     writeReleaseDraft(release, payload);
@@ -96,6 +99,7 @@ export async function runAutoUpdateLogger(options = {}) {
       discordSkippedReason: "Atualização salva como rascunho; envio automático desativado."
     });
     writeHistory(history);
+    await persistChangelog(changelog, { discordChannelId: channelId || null, publishSkippedReason: "Atualização salva como rascunho; envio automático desativado." });
     console.log(`[auto-update] changelog ${version} salvo como rascunho; envio Discord desativado.`);
     return { release, skipped: true };
   }
@@ -108,14 +112,15 @@ export async function runAutoUpdateLogger(options = {}) {
       discordSkippedReason: "UPDATE_CHANNEL_ID ou DISCORD_BOT_TOKEN não configurado."
     });
     writeHistory(history);
+    await persistChangelog(changelog, { discordChannelId: channelId || null, publishSkippedReason: "UPDATE_CHANNEL_ID ou DISCORD_BOT_TOKEN não configurado." });
     console.log("[auto-update] UPDATE_CHANNEL_ID ou DISCORD_BOT_TOKEN não configurado; histórico salvo sem envio Discord.");
     return { release, skipped: true };
   }
 
   const bot = await fetchDiscordBot(token).catch(() => null);
-  const sendPayload = buildDiscordPayload({ analysis, bot, channelId, mode: panelMode, release });
+  const sendPayload = buildDiscordPayload({ analysis, bot, channelId, changelog, mode: panelMode, release });
 
-  if (!forceSend && await hasRecentDiscordRelease(token, channelId, currentCommit).catch(() => false)) {
+  if (!forceSend && await hasRecentDiscordRelease(token, channelId, currentCommit, version).catch(() => false)) {
     writeReleaseDraft(release, sendPayload);
     upsertHistoryRelease(history, {
       ...release,
@@ -123,6 +128,7 @@ export async function runAutoUpdateLogger(options = {}) {
       discordSkippedReason: "Atualização já encontrada nas mensagens recentes do canal."
     });
     writeHistory(history);
+    await persistChangelog(changelog, { discordChannelId: channelId, publishSkippedReason: "Atualização já encontrada nas mensagens recentes do canal." });
     console.log(`[auto-update] versão ${currentCommit.slice(0, 8)} já encontrada no canal; envio ignorado.`);
     return { release, skipped: true };
   }
@@ -136,6 +142,12 @@ export async function runAutoUpdateLogger(options = {}) {
     discordSkippedReason: null
   });
   writeHistory(history);
+  await persistChangelog(changelog, {
+    discordChannelId: channelId,
+    discordMessageId: message?.id ?? null,
+    discordSentAt: new Date().toISOString(),
+    publishSkippedReason: null
+  });
   console.log(`[auto-update] changelog ${version} enviado para o canal ${channelId}.`);
   return { release, skipped: false };
 }
@@ -379,39 +391,43 @@ function looksLikeModuleLabel(value) {
   return /(sistema|m[oó]dulo|dashboard|painel|five|pol[ií]cia|captcha|media|vídeo|video)/i.test(value);
 }
 
-function buildDiscordPayload({ analysis, bot, mode, release }) {
+function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#FFD500");
   const bannerUrl = readConfigValue("UPDATE_PANEL_BANNER_URL");
   const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
-  const footer = readConfigValue("UPDATE_PANEL_FOOTER") || `Atenciosamente, ${appName} 💜`;
-  const observation = readConfigValue("UPDATE_PANEL_OBSERVATION")
-    || "Atualização publicada automaticamente com correções, melhorias e ajustes gerais do sistema.";
+  const footer = readConfigValue("UPDATE_PANEL_FOOTER") || `${appName} - Todos os direitos reservados`;
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const compact = mode === "realtime-summary";
-  const sections = compact ? buildRealtimeSummarySections(release, analysis) : [
-    ["📌 O que mudou", buildReleaseChangeSummary(release, analysis)],
-    ["🔧 Correções", analysis.summary.correcoes],
-    ["🤖 Melhorias", analysis.summary.melhorias],
-    ["🆕 Novidades", [...analysis.summary.novidades, ...analysis.summary.recursos]],
-    ["🗑 Recursos Removidos", analysis.summary.removidos],
-    ...(showTechnical ? [["⚙️ Alterações Técnicas", analysis.summary.tecnicas]] : [])
-  ].map(([title, items]) => [title, unique(items).slice(0, 12)]).filter(([, items]) => items.length);
-
-  if (!sections.length) {
-    sections.push(["📌 O que mudou", ["Atualização publicada com alterações registradas no repositório."]]);
-  }
-
+  const sections = compact ? buildCompactChangelogSections(changelog) : buildFullChangelogSections(changelog, analysis, showTechnical);
+  const publishedAt = formatUpdateDateTime(date);
+  const restartText = changelog.restartRequired ? "Exige reinicialização informada no cadastro." : "Não exige nova configuração ou ação manual.";
+  const affected = changelog.affectedModules.length ? changelog.affectedModules.join(", ") : "Todos os sistemas contratados aplicáveis";
+  const technicalLine = showTechnical ? `\n-# Hash interno: ${release.commit.slice(0, 12)}` : "";
   const content = [
-    compact ? `## ATUALIZAÇÃO EM TEMPO REAL - ${formatUpdateDate(date)}` : `## ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    `# 🚀 ${escapeMarkdown(changelog.title).toUpperCase()}`,
+    `**Versão ${escapeMarkdown(changelog.version)} • ${formatUpdateDate(date)}**`,
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     "",
     ...sections.flatMap(([title, items]) => formatUpdateSection(title, items)),
     ...(compact ? [] : [
-      "📣 **Observação**",
-      `• ${escapeMarkdown(observation).slice(0, 260)}`,
+      "⚠️ **INFORMAÇÕES IMPORTANTES**",
+      ...changelog.importantInfo.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
+      `• ${escapeMarkdown(restartText)}`,
+      "",
+      "📦 **SISTEMAS AFETADOS**",
+      `• ${escapeMarkdown(affected).slice(0, 260)}`,
       ""
     ]),
-    `-# Versão ${escapeMarkdown(release.version)} • commit ${release.commit.slice(0, 8)}`,
+    "📊 **STATUS DA ATUALIZAÇÃO**",
+    `✅ ${escapeMarkdown(changelog.statusLabel)}`,
+    "🟢 Todos os serviços estão funcionando normalmente.",
+    "",
+    `**Versão:** ${escapeMarkdown(changelog.version)}`,
+    `**Publicado em:** ${publishedAt}`,
+    `**Responsável:** ${escapeMarkdown(changelog.responsible)}`,
+    technicalLine,
     `-# **${escapeMarkdown(footer)}**`
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
 
@@ -420,12 +436,186 @@ function buildDiscordPayload({ analysis, bot, mode, release }) {
     components.push({ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner da atualização" }] });
   }
   components.push({ type: 10, content });
+  const actionRow = buildUpdateActionRow(changelog);
+  if (actionRow) components.push(actionRow);
 
   return {
     allowed_mentions: { parse: [] },
     components: [{ type: 17, accent_color: color, components }],
     flags: 32768
   };
+}
+
+function buildChangelogRecord({ analysis, release }) {
+  const registered = readRegisteredChangelog();
+  const title = sanitizeSingleLine(registered.title || readConfigValue("UPDATE_TITLE") || "Atualização do Sistema");
+  const version = sanitizeSingleLine(registered.version || release.version);
+  const responsible = sanitizeSingleLine(registered.responsible || readConfigValue("UPDATE_RESPONSIBLE") || "Equipe NexTech");
+  const status = normalizePublicationStatus(registered.status || readConfigValue("UPDATE_PUBLICATION_STATUS") || "concluida");
+  const importantInfo = sanitizeItems([
+    ...toList(registered.importantInfo),
+    ...toList(readConfigValue("UPDATE_IMPORTANT_INFO"))
+  ]);
+  const affectedModules = sanitizeItems([
+    ...toList(registered.affectedModules),
+    ...toList(readConfigValue("UPDATE_AFFECTED_MODULES")),
+    ...analysis.modules
+  ]).slice(0, 12);
+  const categories = {
+    novidades: sanitizeItems([
+      ...toList(registered.novidades),
+      ...analysis.summary.novidades,
+      ...analysis.summary.recursos
+    ]),
+    melhorias: sanitizeItems([
+      ...toList(registered.melhorias),
+      ...analysis.summary.melhorias
+    ]),
+    correcoes: sanitizeItems([
+      ...toList(registered.correcoes),
+      ...analysis.summary.correcoes
+    ])
+  };
+  hydrateCategoriesFromCommit(categories, release);
+
+  return {
+    id: release.id,
+    internalIdentifier: `nextech-update-${version}-${release.commit.slice(0, 12)}`,
+    title,
+    version,
+    description: sanitizeSingleLine(registered.description || release.commitSubject || ""),
+    publishedAt: release.publishedAt,
+    responsible,
+    status,
+    statusLabel: statusLabel(status),
+    restartRequired: parseBoolean(registered.restartRequired ?? readConfigValue("UPDATE_RESTART_REQUIRED")),
+    affectedModules,
+    importantInfo: importantInfo.length ? importantInfo : [
+      "Nenhuma configuração existente foi removida.",
+      "Não é necessário configurar o sistema novamente.",
+      "As alterações já estão disponíveis automaticamente."
+    ],
+    categories,
+    commitHash: release.commit,
+    commitShort: release.commit.slice(0, 8),
+    commitSubject: release.commitSubject || null,
+    commitBody: release.commitBody || null,
+    changeCount: release.changeCount,
+    files: release.files
+  };
+}
+
+function buildFullChangelogSections(changelog, analysis, showTechnical) {
+  return [
+    ["🆕 NOVIDADES", changelog.categories.novidades],
+    ["✨ MELHORIAS", changelog.categories.melhorias],
+    ["🛠️ CORREÇÕES", changelog.categories.correcoes],
+    ...(showTechnical ? [["⚙️ ALTERAÇÕES TÉCNICAS", analysis.summary.tecnicas]] : [])
+  ].map(([title, items]) => [title, unique(items).slice(0, 12)]).filter(([, items]) => items.length);
+}
+
+function buildCompactChangelogSections(changelog) {
+  return [
+    ["🆕 NOVIDADES", changelog.categories.novidades.slice(0, 5)],
+    ["✨ MELHORIAS", changelog.categories.melhorias.slice(0, 5)],
+    ["🛠️ CORREÇÕES", changelog.categories.correcoes.slice(0, 5)]
+  ].filter(([, items]) => items.length);
+}
+
+function buildUpdateActionRow(changelog) {
+  const detailsUrl = updateUrl("UPDATE_DETAILS_URL", `/dev/maintenance?update=${encodeURIComponent(changelog.version)}`);
+  const historyUrl = updateUrl("UPDATE_HISTORY_URL", "/dev/maintenance?tab=versions");
+  const reportUrl = updateUrl("UPDATE_REPORT_PROBLEM_URL", `/dev/maintenance?report=${encodeURIComponent(changelog.version)}`);
+  const buttons = [
+    actionButton("Ver detalhes", detailsUrl, `nextech_update_details:${changelog.version}`, 1),
+    actionButton("Histórico de versões", historyUrl, "nextech_update_history", 2),
+    actionButton("Reportar problema", reportUrl, `nextech_update_report:${changelog.version}`, 4)
+  ];
+  return { type: 1, components: buttons };
+}
+
+function actionButton(label, url, customId, style) {
+  if (url) return { type: 2, label, style: 5, url };
+  return { type: 2, custom_id: customId.slice(0, 100), disabled: true, label, style };
+}
+
+function updateUrl(envKey, fallbackPath) {
+  const configured = readConfigValue(envKey);
+  if (isHttpUrl(configured)) return configured;
+  const base = readConfigValue("FRONTEND_URL") || readConfigValue("SITE_ORIGIN") || readConfigValue("BACKEND_URL");
+  if (!isHttpUrl(base)) return "";
+  return `${base.replace(/\/+$/, "")}${fallbackPath}`;
+}
+
+function validateChangelogForPublish(changelog) {
+  const detailedItems = [
+    ...changelog.categories.novidades,
+    ...changelog.categories.melhorias,
+    ...changelog.categories.correcoes
+  ].filter((item) => isDetailedChangelogItem(item));
+  if (!detailedItems.length) {
+    throw new Error("Changelog inválido: informe ao menos uma novidade, melhoria ou correção com descrição específica.");
+  }
+}
+
+function hydrateCategoriesFromCommit(categories, release) {
+  const commitItems = buildReleaseMessageItems(release).filter(isDetailedChangelogItem);
+  for (const item of commitItems) {
+    const target = looksLikeCorrection(item)
+      ? categories.correcoes
+      : looksLikeNews(item)
+        ? categories.novidades
+        : categories.melhorias;
+    target.push(item);
+  }
+  categories.novidades = unique(categories.novidades).filter(isDetailedChangelogItem).slice(0, 12);
+  categories.melhorias = unique(categories.melhorias).filter(isDetailedChangelogItem).slice(0, 12);
+  categories.correcoes = unique(categories.correcoes).filter(isDetailedChangelogItem).slice(0, 12);
+}
+
+function isDetailedChangelogItem(item) {
+  const normalized = String(item || "").trim();
+  if (normalized.length < 16) return false;
+  return !/^(painel atualizado|sistema atualizado|sistema melhorado|atualiza[cç][aã]o publicada|ajustes gerais|corre[cç][oõ]es gerais)$/i.test(normalized);
+}
+
+async function persistChangelog(changelog, publication) {
+  const uri = readConfigValue("MONGODB_URI") || readConfigValue("MONGO_URI") || readConfigValue("DATABASE_URL");
+  if (!uri || !/^mongodb(?:\+srv)?:\/\//i.test(uri)) return;
+  let MongoClient;
+  try {
+    ({ MongoClient } = await import("mongodb"));
+  } catch {
+    console.warn("[auto-update] mongodb indisponível; histórico permanente salvo apenas no arquivo local.");
+    return;
+  }
+
+  const client = new MongoClient(uri);
+  try {
+    await client.connect();
+    const db = client.db(databaseNameFromUri(uri));
+    const collection = db.collection(changelogCollectionName);
+    await collection.createIndex({ commitHash: 1 }, { unique: true });
+    await collection.createIndex({ publishedAt: -1 });
+    await collection.updateOne(
+      { commitHash: changelog.commitHash },
+      {
+        $set: {
+          ...changelog,
+          publication,
+          updatedAt: new Date().toISOString()
+        },
+        $setOnInsert: {
+          createdAt: new Date().toISOString()
+        }
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    console.warn("[auto-update] falha ao salvar changelog no Mongo:", error instanceof Error ? error.message : String(error));
+  } finally {
+    await client.close().catch(() => undefined);
+  }
 }
 
 function normalizeUpdatePanelMode(value) {
@@ -552,6 +742,17 @@ function formatUpdateDate(date) {
   });
 }
 
+function formatUpdateDateTime(date) {
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    year: "numeric"
+  });
+}
+
 async function fetchDiscordBot(token) {
   const response = await fetch(`${discordApi}/users/@me`, {
     headers: { Authorization: `Bot ${token}` }
@@ -576,22 +777,24 @@ async function sendDiscordMessage(token, channelId, payload) {
   return response.json().catch(() => null);
 }
 
-async function hasRecentDiscordRelease(token, channelId, commit) {
-  if (!commit) return false;
+async function hasRecentDiscordRelease(token, channelId, commit, version) {
+  if (!commit && !version) return false;
   const response = await fetch(`${discordApi}/channels/${encodeURIComponent(channelId)}/messages?limit=50`, {
     headers: { Authorization: `Bot ${token}` }
   });
   if (!response.ok) return false;
   const messages = await response.json().catch(() => []);
   if (!Array.isArray(messages)) return false;
-  const shortCommit = commit.slice(0, 8);
+  const shortCommit = commit ? commit.slice(0, 8) : "";
   return messages.some((message) => {
     const text = JSON.stringify({
       content: message?.content,
       components: message?.components,
       embeds: message?.embeds
     });
-    return text.includes(commit) || text.includes(shortCommit);
+    return (commit && text.includes(commit))
+      || (shortCommit && text.includes(shortCommit))
+      || (version && text.includes(version));
   });
 }
 
@@ -664,6 +867,51 @@ function readReleaseMetadata() {
   }
 }
 
+function readRegisteredChangelog() {
+  const fromEnv = parseJsonObject(readConfigValue("UPDATE_CHANGELOG_JSON"));
+  if (fromEnv) return normalizeRegisteredChangelog(fromEnv);
+
+  const configuredPath = readConfigValue("UPDATE_CHANGELOG_FILE");
+  const candidates = [
+    configuredPath ? path.resolve(root, configuredPath) : "",
+    path.join(historyDir, "update-changelog.json")
+  ].filter(Boolean);
+
+  for (const filePath of candidates) {
+    if (!existsSync(filePath)) continue;
+    const parsed = parseJsonObject(readFileSync(filePath, "utf8"));
+    if (parsed) return normalizeRegisteredChangelog(parsed);
+  }
+
+  return {};
+}
+
+function normalizeRegisteredChangelog(value) {
+  return {
+    title: value.title ?? value.titulo,
+    version: value.version ?? value.versao,
+    description: value.description ?? value.descricao,
+    responsible: value.responsible ?? value.responsavel,
+    status: value.status ?? value.publicationStatus ?? value.statusPublicacao,
+    restartRequired: value.restartRequired ?? value.reinicializacaoNecessaria,
+    affectedModules: value.affectedModules ?? value.modules ?? value.sistemasAfetados ?? value.modulosAfetados,
+    importantInfo: value.importantInfo ?? value.informacoesImportantes ?? value.avisos,
+    novidades: value.novidades ?? value.news,
+    melhorias: value.melhorias ?? value.improvements,
+    correcoes: value.correcoes ?? value["correções"] ?? value.fixes
+  };
+}
+
+function parseJsonObject(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function currentReleaseCommit(metadata) {
   return safeGit(["rev-parse", "HEAD"]).trim()
     || process.env.RELEASE_COMMIT?.trim()
@@ -703,6 +951,17 @@ function readDotEnvValue(key) {
   return "";
 }
 
+function databaseNameFromUri(uri) {
+  const configured = readConfigValue("MONGODB_DATABASE_NAME")
+    || readConfigValue("MONGODB_DB_NAME")
+    || readConfigValue("MONGODB_DB")
+    || readConfigValue("MONGO_DATABASE");
+  if (configured) return configured;
+  const rawName = uri.match(/^mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/i)?.[1] || "";
+  const decoded = rawName ? decodeURIComponent(rawName) : "";
+  return decoded || "nextech";
+}
+
 function git(args) {
   const result = spawnSync("git", args, { cwd: root, encoding: "utf8", shell: false });
   if (result.status !== 0) throw new Error(`git ${args.join(" ")} falhou: ${result.stderr}`);
@@ -735,6 +994,49 @@ function friendlyPath(filePath) {
 function parseColor(value) {
   const hex = value.trim().replace(/^#/, "");
   return /^[0-9a-f]{6}$/i.test(hex) ? Number.parseInt(hex, 16) : 0xffd500;
+}
+
+function normalizePublicationStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (/(gradual|libera[cç][aã]o)/i.test(normalized)) return "gradual";
+  if (/(rein[ií]cio|restart|reboot)/i.test(normalized)) return "restart_required";
+  if (/(instab|erro|falha|degrad)/i.test(normalized)) return "degraded";
+  return "completed";
+}
+
+function statusLabel(status) {
+  if (status === "gradual") return "Atualização sendo liberada gradualmente";
+  if (status === "restart_required") return "Atualização concluída; reinicialização necessária";
+  if (status === "degraded") return "Atualização publicada com instabilidade monitorada";
+  return "Atualização concluída com sucesso";
+}
+
+function sanitizeSingleLine(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function sanitizeItems(values) {
+  return unique(toList(values)
+    .map((item) => sanitizeSingleLine(item).replace(/^[-•*]\s+/, ""))
+    .filter(Boolean));
+}
+
+function toList(value) {
+  if (Array.isArray(value)) return value.flatMap(toList);
+  if (value === null || value === undefined) return [];
+  return String(value)
+    .split(/\r?\n|;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseBoolean(value) {
+  if (typeof value === "boolean") return value;
+  return /^(true|1|yes|sim|s)$/i.test(String(value || "").trim());
+}
+
+function isHttpUrl(value) {
+  return /^https?:\/\/[^\s]+$/i.test(String(value || "").trim());
 }
 
 function escapeMarkdown(value) {
