@@ -2564,7 +2564,7 @@ function departmentsPanel(departments: CourseDepartment[], message?: string, sel
     visibleDepartments.length ? new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(IDS.departmentSelect)
-        .setPlaceholder("Selecione uma DP para gerenciar")
+        .setPlaceholder("Selecione uma DP")
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(visibleDepartments.map((department) => ({
@@ -2575,10 +2575,10 @@ function departmentsPanel(departments: CourseDepartment[], message?: string, sel
         })))
     ) : null,
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(IDS.departmentAdd).setLabel("Cadastrar DP").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(selected ? `course_department_edit:${selected.id}` : "course_department_edit:none").setLabel("Editar").setStyle(ButtonStyle.Secondary).setDisabled(!selected),
-      new ButtonBuilder().setCustomId(selected ? `course_department_toggle:${selected.id}` : "course_department_toggle:none").setLabel(selected?.active ? "Desativar" : "Ativar").setStyle(ButtonStyle.Secondary).setDisabled(!selected),
-      new ButtonBuilder().setCustomId(selected ? `course_department_delete:${selected.id}` : "course_department_delete:none").setLabel("Excluir").setStyle(ButtonStyle.Danger).setDisabled(!selected)
+      new ButtonBuilder().setCustomId(IDS.departmentAdd).setLabel("Cadastrar DP").setStyle(ButtonStyle.Primary).setDisabled(true),
+      new ButtonBuilder().setCustomId(selected ? `course_department_edit:${selected.id}` : "course_department_edit:none").setLabel("Editar").setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId(selected ? `course_department_toggle:${selected.id}` : "course_department_toggle:none").setLabel(selected?.active ? "Desativar" : "Ativar").setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId(selected ? `course_department_delete:${selected.id}` : "course_department_delete:none").setLabel("Excluir").setStyle(ButtonStyle.Danger).setDisabled(true)
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(IDS.back).setEmoji(systemComponentEmoji("porta")).setLabel("Voltar").setStyle(ButtonStyle.Secondary)
@@ -2587,7 +2587,7 @@ function departmentsPanel(departments: CourseDepartment[], message?: string, sel
   return renderComponentsV2Panel({
     accentColor: 0x2563eb,
     actions,
-    description: "Gerencie as DPs disponíveis no agendamento de cursos.",
+    description: "DPs fixas disponíveis no agendamento de cursos.",
     fields,
     moduleId: "courses",
     title: "DPs dos Cursos"

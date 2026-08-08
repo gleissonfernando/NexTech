@@ -5,7 +5,7 @@ import { emitRealtime } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
 const DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS = 24;
-const DEFAULT_COURSE_DEPARTMENTS = ["DP Fronteira", "DP Pier", "DP Juniper"];
+const DEFAULT_COURSE_DEPARTMENTS = ["Dp aduana", "Dp Norte"];
 const COURSE_DEPARTMENT_NAME_MIN = 2;
 const COURSE_DEPARTMENT_NAME_MAX = 80;
 const COURSE_DUPLICATE_DAY_MESSAGE = "Já existe um curso em andamento nesta data. Aguarde a finalização do curso atual para agendar um novo curso.";
@@ -1208,26 +1208,40 @@ export async function getCourse(botId: string | null, guildId: string, courseId:
 export async function ensureDefaultCourseDepartments(botId: string | null, guildId: string) {
   const { courseDepartments } = await getMongoCollections();
   const now = new Date();
+  const defaultNormalizedNames = DEFAULT_COURSE_DEPARTMENTS.map(normalizeCourseDepartmentName);
   await Promise.all(DEFAULT_COURSE_DEPARTMENTS.map(async (name) => {
     const normalizedName = normalizeCourseDepartmentName(name);
     await courseDepartments.updateOne(
       { ...scope(botId, guildId), normalizedName },
       {
+        $set: {
+          active: true,
+          name,
+          updatedAt: now,
+          updatedBy: "system:default-dp-sync"
+        },
         $setOnInsert: {
           _id: randomUUID(),
           botId,
           guildId,
-          name,
           normalizedName,
-          active: true,
           createdBy: null,
-          createdAt: now,
-          updatedAt: now
+          createdAt: now
         }
       },
       { upsert: true }
     );
   }));
+  await courseDepartments.updateMany(
+    { ...scope(botId, guildId), active: true, normalizedName: { $nin: defaultNormalizedNames } },
+    {
+      $set: {
+        active: false,
+        updatedAt: now,
+        updatedBy: "system:default-dp-sync"
+      }
+    }
+  );
 }
 
 export async function listCourseDepartments(botId: string | null, guildId: string, activeOnly = false) {
@@ -1260,6 +1274,7 @@ export async function createCourseDepartment(botId: string | null, guildId: stri
   const name = sanitizeCourseDepartmentName(input.name);
   const normalizedName = normalizeCourseDepartmentName(name);
   if (!normalizedName) throw new CourseDepartmentError("invalid_name", "Nome de DP inválido.");
+  if (!isDefaultCourseDepartmentName(normalizedName)) throw new CourseDepartmentError("invalid_name", defaultCourseDepartmentErrorMessage());
   const duplicate = await courseDepartments.findOne({ ...scope(botId, guildId), normalizedName, active: true });
   if (duplicate) throw new CourseDepartmentError("duplicate", "Já existe uma DP ativa com esse nome.");
   const now = new Date();
@@ -1295,6 +1310,7 @@ export async function updateCourseDepartment(botId: string | null, guildId: stri
     const name = sanitizeCourseDepartmentName(input.name);
     const normalizedName = normalizeCourseDepartmentName(name);
     if (!normalizedName) throw new CourseDepartmentError("invalid_name", "Nome de DP inválido.");
+    if (!isDefaultCourseDepartmentName(normalizedName)) throw new CourseDepartmentError("invalid_name", defaultCourseDepartmentErrorMessage());
     const duplicate = await courseDepartments.findOne({ _id: { $ne: departmentId }, ...scope(botId, guildId), normalizedName, active: true });
     if (duplicate && input.active !== false) throw new CourseDepartmentError("duplicate", "Já existe uma DP ativa com esse nome.");
     patch.name = name;
@@ -1303,6 +1319,7 @@ export async function updateCourseDepartment(botId: string | null, guildId: stri
   if (typeof input.active === "boolean") {
     if (input.active) {
       const normalizedName = patch.normalizedName ?? current.normalizedName;
+      if (!isDefaultCourseDepartmentName(normalizedName)) throw new CourseDepartmentError("invalid_name", defaultCourseDepartmentErrorMessage());
       const duplicate = await courseDepartments.findOne({ _id: { $ne: departmentId }, ...scope(botId, guildId), normalizedName, active: true });
       if (duplicate) throw new CourseDepartmentError("duplicate", "Já existe uma DP ativa com esse nome.");
     }
@@ -2196,6 +2213,14 @@ function normalizeCourseDepartmentName(input: string) {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function isDefaultCourseDepartmentName(normalizedName: string) {
+  return DEFAULT_COURSE_DEPARTMENTS.some((name) => normalizeCourseDepartmentName(name) === normalizedName);
+}
+
+function defaultCourseDepartmentErrorMessage() {
+  return `O sistema de cursos permite somente as DPs: ${DEFAULT_COURSE_DEPARTMENTS.join(" e ")}.`;
 }
 
 function isDuplicateKeyError(error: unknown) {
