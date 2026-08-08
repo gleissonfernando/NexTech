@@ -322,6 +322,7 @@ export type DevBotDto = {
   billingAccess: BotBillingAccessDto | null;
   billingModel: "monthly" | "lifetime";
   contractAmountInCents: number | null;
+  billingRecipientUserIds: string[];
   billingOverride: {
     forceBotActive: boolean;
     forceDashboardAccess: boolean;
@@ -2788,6 +2789,7 @@ function toDevBotDto(
     billingAccess: null,
     billingModel: bot.billingModel ?? "monthly",
     contractAmountInCents: bot.contractAmountInCents ?? null,
+    billingRecipientUserIds: Array.isArray(bot.billingRecipientUserIds) ? bot.billingRecipientUserIds.filter((id) => /^\d{5,32}$/.test(id)) : [],
     billingOverride: bot.billingOverride ? {
       forceBotActive: bot.billingOverride.forceBotActive === true,
       forceDashboardAccess: bot.billingOverride.forceDashboardAccess === true,

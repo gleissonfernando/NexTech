@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import type { MongoBotBillingInvoice, MongoDevBot } from "../database/mongo";
-import { evaluateBotBillingShutdown } from "./botBillingService";
+import { evaluateBotBillingShutdown, normalizeBillingRecipientUserIds } from "./botBillingService";
 
 const now = new Date("2026-08-04T15:00:00.000Z");
 
@@ -53,11 +53,11 @@ function invoice(input: Partial<MongoBotBillingInvoice> = {}): MongoBotBillingIn
   };
 }
 
-test("não permite desligar bot com plano vitalício", () => {
+test("permite desligar bot vitalício quando a hospedagem está vencida", () => {
   const decision = evaluateBotBillingShutdown(bot({ billingModel: "lifetime" }), invoice(), null, now);
 
-  assert.equal(decision.allowed, false);
-  assert.equal(decision.reasonCode, "lifetime_plan");
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.reasonCode, "confirmed_overdue");
 });
 
 test("não permite desligar bot com liberação administrativa ativa", () => {
@@ -83,7 +83,7 @@ test("não permite desligar bot com liberação administrativa ativa", () => {
   assert.equal(decision.reasonCode, "administrative_override");
 });
 
-test("não permite desligar quando existe pagamento mais recente cobrindo a fatura", () => {
+test("pagamento mais recente não cobre fatura vencida anterior automaticamente", () => {
   const decision = evaluateBotBillingShutdown(
     bot(),
     invoice({ dueDate: new Date("2026-08-01T23:59:59.999Z") }),
@@ -97,8 +97,8 @@ test("não permite desligar quando existe pagamento mais recente cobrindo a fatu
     now
   );
 
-  assert.equal(decision.allowed, false);
-  assert.equal(decision.reasonCode, "covered_by_paid_invoice");
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.reasonCode, "confirmed_overdue");
 });
 
 test("permite desligar apenas fatura vencida confirmada fora da tolerância", () => {
@@ -118,4 +118,11 @@ test("mantém online durante período de tolerância após vencimento", () => {
 
   assert.equal(decision.allowed, false);
   assert.equal(decision.reasonCode, "within_grace_period");
+});
+
+test("normaliza destinatários de cobrança por DM", () => {
+  assert.deepEqual(
+    normalizeBillingRecipientUserIds([" 1426287249020158018 ", "<@1426287249020158018>", "abc", "1234", "987654321098765432"]),
+    ["1426287249020158018", "987654321098765432"]
+  );
 });

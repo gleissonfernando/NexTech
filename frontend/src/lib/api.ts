@@ -3473,6 +3473,21 @@ export async function clearDevBotBillingOverride(botId: string) {
   return data;
 }
 
+export async function updateDevBotBillingRecipients(botId: string, userIds: string[]) {
+  const { data } = await api.post<{ access: BotBillingAccess | null; bot: DevBot | null; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/recipients`,
+    { userIds }
+  );
+  return data;
+}
+
+export async function sendDevBotBillingRecipientDm(botId: string, userId: string) {
+  const { data } = await api.post<{ access: BotBillingAccess | null; invoice: BotBillingInvoice; invoices: BotBillingInvoice[] }>(
+    `/dev/bots/${encodeURIComponent(botId)}/billing/recipients/${encodeURIComponent(userId)}/send`
+  );
+  return data;
+}
+
 export async function generateDevBotInvoicePix(botId: string, invoiceId: string, cpfCnpj: string) {
   const { data } = await api.post<{ invoice: BotBillingInvoice }>(
     `/dev/bots/${encodeURIComponent(botId)}/billing/invoices/${encodeURIComponent(invoiceId)}/pix`,

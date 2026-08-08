@@ -5223,6 +5223,7 @@ export type MongoDevBot = {
   billingModel?: MongoBotBillingModel;
   billingPeriod?: MongoBotPlanPeriod;
   contractAmountInCents?: number | null;
+  billingRecipientUserIds?: string[];
   billingOverride?: MongoBotBillingOverride | null;
   createdBy: string;
   createdAt: Date;

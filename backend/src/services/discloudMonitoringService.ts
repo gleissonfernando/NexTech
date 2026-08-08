@@ -799,6 +799,7 @@ function devBotPlaceholder(appId: string, app: unknown): DevBotDto {
     billingAccess: null,
     billingModel: "monthly",
     contractAmountInCents: null,
+    billingRecipientUserIds: [],
     billingOverride: null,
     accessLevel: "admin",
     permissions: {

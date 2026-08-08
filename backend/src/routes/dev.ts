@@ -77,6 +77,8 @@ import {
   processBotBillingCycle,
   setBotBillingModel,
   setBotBillingOverride,
+  setBotBillingRecipients,
+  sendBotBillingRecipientDm,
   canStartBotByBilling
 } from "../services/botBillingService";
 import {
@@ -183,6 +185,9 @@ const botInvoicePixSchema = z.object({
 
 const manualInvoiceReleaseSchema = z.object({
   reason: z.string().min(3).max(1000)
+});
+const botBillingRecipientsSchema = z.object({
+  userIds: z.array(z.string().regex(/^\d{5,32}$/)).max(20).default([])
 });
 const resendInvoiceDmSchema = z.object({
   notificationType: z.enum(["invoice_created", "due_reminder", "due_today", "overdue", "payment_confirmed", "contract_activated", "upgrade_confirmed", "qr_expired", "payment_failed"]).default("invoice_created")
@@ -1320,6 +1325,46 @@ devRouter.delete("/bots/:botId/billing/override", async (req, res, next) => {
     const bot = await getDevBot(req.params.botId);
     return res.json({
       bot,
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/recipients", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = botBillingRecipientsSchema.parse(req.body ?? {});
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    await setBotBillingRecipients(req.params.botId, input.userIds, auth.user);
+    const bot = await getDevBot(req.params.botId);
+    return res.json({
+      bot,
+      access: await getBotBillingAccess(req.params.botId, auth.user),
+      invoices: await getBotBillingInvoices(req.params.botId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/bots/:botId/billing/recipients/:userId/send", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem acesso a este bot." });
+    }
+
+    const result = await sendBotBillingRecipientDm(req.params.botId, req.params.userId, auth.user);
+    return res.json({
+      ...result,
       access: await getBotBillingAccess(req.params.botId, auth.user),
       invoices: await getBotBillingInvoices(req.params.botId)
     });

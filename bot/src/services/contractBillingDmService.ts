@@ -3,6 +3,8 @@ import { currentRuntimeBotId, env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ContractBillingDmEvent } from "../websocket/socketClient";
 
+const NEXTECH_SUPPORT_INVITE_URL = "https://nextech.discloud.app/invite/nextech";
+
 export function startContractBillingDmService(client: Client<true>, context: BotContext) {
   context.socket.onContractBillingDm((payload) => {
     void sendContractBillingDm(client, context, payload);
@@ -46,7 +48,9 @@ function renderContractDm(payload: ContractBillingDmEvent) {
   const pixExpiresAt = invoice?.pixExpiresAt ? formatDateTime(new Date(invoice.pixExpiresAt)) : "validade limitada";
   const pixStatus = invoice?.pixExpiresAt && Date.parse(invoice.pixExpiresAt) <= Date.now()
     ? "QR Code expirado. Acesse a dashboard para consultar ou gerar um novo código."
-    : "Este QR Code PIX possui validade limitada. Caso ele expire, acesse a dashboard para consultar ou gerar um novo código de pagamento.";
+    : invoice?.pixExpiresAt
+      ? "Este QR Code PIX possui validade limitada. Caso ele expire, acesse a dashboard para consultar ou gerar um novo código de pagamento."
+      : "Use o QR Code PIX ou, se preferir, copie o código copia e cola abaixo.";
   const content = [
     `# ${title}`,
     "",
@@ -63,8 +67,14 @@ function renderContractDm(payload: ContractBillingDmEvent) {
     "## Recursos liberados ou cobrados",
     items,
     "",
-    invoice?.pixCopyPaste ? `## PIX Copia e Cola\n\`\`\`\n${invoice.pixCopyPaste.slice(0, 1800)}\n\`\`\`` : null,
-    invoice ? `## Aviso sobre QR Code\n${pixStatus}\nValidade: ${pixExpiresAt}` : null,
+    invoice?.pixCopyPaste ? `## PIX Copia e Cola\nSe preferir, use este código para pagar manualmente:\n\`\`\`\n${invoice.pixCopyPaste.slice(0, 1800)}\n\`\`\`` : null,
+    invoice ? `## Aviso sobre QR Code\n${pixStatus}${invoice.pixExpiresAt ? `\nValidade: ${pixExpiresAt}` : ""}` : null,
+    invoice && isChargeEvent(payload.event) ? [
+      "## Aviso de hospedagem",
+      "Se a hospedagem não for paga, o bot será desligado após a fatura ficar vencida.",
+      "Caso exista mais de uma fatura vencida, o bot só voltará a ligar quando todas as faturas vencidas forem pagas ou liberadas pela equipe.",
+      `Para liberar o bot por comprovante, entre no servidor da NexTech, abra um ticket e envie o comprovante: ${NEXTECH_SUPPORT_INVITE_URL}`
+    ].join("\n") : null,
     "",
     payload.contractId ? `-# Contrato: ${payload.contractId}` : null,
     invoice ? `-# Fatura: ${invoice.id}` : null
@@ -110,6 +120,10 @@ function descriptionFor(event: ContractBillingDmEvent["event"], serviceName: str
   if (event === "overdue") return "Existe uma fatura vencida relacionada ao seu contrato.";
   if (event === "qr_expired") return "O QR Code PIX anterior expirou. Consulte a dashboard para obter um código atualizado.";
   return "Uma cobrança foi gerada para o seu contrato.";
+}
+
+function isChargeEvent(event: ContractBillingDmEvent["event"]) {
+  return event === "invoice_created" || event === "due_reminder" || event === "due_today" || event === "overdue" || event === "qr_expired" || event === "payment_failed";
 }
 
 function colorFor(event: ContractBillingDmEvent["event"]) {

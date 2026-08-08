@@ -4674,6 +4674,7 @@ export type DevBot = {
   billingAccess: BotBillingAccess | null;
   billingModel: BotBillingModel;
   contractAmountInCents: number | null;
+  billingRecipientUserIds: string[];
   billingOverride: BotBillingOverride | null;
   accessLevel: DashboardAccessLevel;
   permissions: DashboardPermissionFlags;

@@ -15,6 +15,8 @@ import type { AuthSessionUser } from "../types/session";
 import type { PlanActor } from "./planService";
 
 const DEFAULT_DASHBOARD_URL = "/dashboard";
+const MANUAL_HOSTING_PIX_COPY_PASTE = "00020126330014br.gov.bcb.pix011105117656148520400005303986540512.005802BR5925GLEISSON FERNANDO CRUZ PE6007GOIANIA62070503***63043F2D";
+const MANUAL_HOSTING_PIX_AMOUNT_IN_CENTS = 1200;
 
 export type ContractDmPayload = {
   botId?: string | null;
@@ -270,24 +272,33 @@ export async function listDeveloperMonthlyContracts() {
   };
 }
 
-export async function emitContractInvoiceDm(invoiceId: string, notificationType: ContractDmPayload["event"], actor?: AuthSessionUser | PlanActor | null) {
+export async function emitContractInvoiceDm(
+  invoiceId: string,
+  notificationType: ContractDmPayload["event"],
+  actor?: AuthSessionUser | PlanActor | null,
+  options: { recipientUserId?: string | null } = {}
+) {
   const { botBillingInvoices, contractAuditLogs, contractItems, contracts, devBots, users } = await getMongoCollections();
   const invoice = await botBillingInvoices.findOne({ _id: invoiceId });
   if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { statusCode: 404 });
   const contract = await ensureContractForBotInvoice(invoice, `dm_${notificationType}`);
-  const userId = contract.billingContactUserId ?? contract.contractHolderUserId ?? invoice.userId;
-  const user = await users.findOne({ discordId: userId });
   const bot = await devBots.findOne({ _id: invoice.botId });
   const items = await contractItems.find({ contractId: contract._id }).sort({ createdAt: 1 }).toArray();
-  const payload = buildDmPayload(notificationType, contract, invoice, items, user, bot);
+  const recipientIds = resolveContractDmRecipientIds(bot, contract, invoice, options.recipientUserId);
+  const payloads = await Promise.all(recipientIds.map(async (userId) => {
+    const user = await users.findOne({ discordId: userId });
+    return buildDmPayload(notificationType, contract, invoice, items, user, bot, userId);
+  }));
   await botBillingInvoices.updateOne(
     { _id: invoiceId },
-    { $inc: { dmAttempts: 1 }, $set: { dmStatus: "pending", updatedAt: new Date() } }
+    { $inc: { dmAttempts: Math.max(1, payloads.length) }, $set: { dmStatus: "pending", updatedAt: new Date() } }
   );
-  emitRealtimeToRoom(devBotRealtimeRoom(invoice.botId), "contract-billing:send_dm", payload);
-  emitRealtime("contract-billing:send_dm", payload);
-  await contractAuditLogs.insertOne(auditLog("dm_requested", userId, contract._id, invoice.botId, actorId(actor), null, notificationType, null));
-  return payload;
+  for (const payload of payloads) {
+    emitRealtimeToRoom(devBotRealtimeRoom(invoice.botId), "contract-billing:send_dm", payload);
+    emitRealtime("contract-billing:send_dm", payload);
+    await contractAuditLogs.insertOne(auditLog("dm_requested", payload.user.discordUserId, contract._id, invoice.botId, actorId(actor), null, notificationType, null));
+  }
+  return payloads[0] ?? null;
 }
 
 export async function recordContractDmResult(input: ContractDmAck) {
@@ -362,9 +373,12 @@ function buildDmPayload(
   invoice: MongoBotBillingInvoice,
   items: MongoContractItem[],
   user: MongoUser | null,
-  bot: { name?: string; mainGuildName?: string } | null
+  bot: { name?: string; mainGuildName?: string } | null,
+  fallbackUserId?: string | null
 ): ContractDmPayload {
-  const holderId = contract.billingContactUserId ?? contract.contractHolderUserId ?? invoice.userId;
+  const holderId = fallbackUserId ?? contract.billingContactUserId ?? contract.contractHolderUserId ?? invoice.userId;
+  const pixCopyPaste = invoice.pixCopyPaste ?? invoice.pixCode ?? manualHostingPixCopyPaste(invoice);
+  const pixQrCode = invoice.pixQrCode ?? manualHostingPixQrCode(invoice);
   return {
     botId: invoice.botId,
     contractId: contract._id,
@@ -375,9 +389,9 @@ function buildDmPayload(
       currency: "BRL",
       dueDate: invoice.dueDate?.toISOString() ?? null,
       id: invoice._id,
-      pixCopyPaste: invoice.pixCopyPaste ?? invoice.pixCode ?? null,
+      pixCopyPaste,
       pixExpiresAt: invoice.pixExpiresAt?.toISOString() ?? null,
-      pixQrCode: invoice.pixQrCode ?? null,
+      pixQrCode,
       status: invoice.status
     },
     items: items.map(toItemDto),
@@ -387,6 +401,35 @@ function buildDmPayload(
     serviceName: invoice.botName ?? bot?.name ?? "Bot contratado",
     user: holderSummary(user, holderId)
   };
+}
+
+function manualHostingPixCopyPaste(invoice: MongoBotBillingInvoice) {
+  return shouldUseManualHostingPix(invoice) ? MANUAL_HOSTING_PIX_COPY_PASTE : null;
+}
+
+function manualHostingPixQrCode(invoice: MongoBotBillingInvoice) {
+  if (!shouldUseManualHostingPix(invoice)) return null;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=16&data=${encodeURIComponent(MANUAL_HOSTING_PIX_COPY_PASTE)}`;
+}
+
+function shouldUseManualHostingPix(invoice: MongoBotBillingInvoice) {
+  return invoice.amountInCents === MANUAL_HOSTING_PIX_AMOUNT_IN_CENTS && (invoice.status === "pending" || invoice.status === "overdue");
+}
+
+function resolveContractDmRecipientIds(
+  bot: { billingRecipientUserIds?: string[]; createdBy?: string; ownerId?: string } | null,
+  contract: MongoContract,
+  invoice: MongoBotBillingInvoice,
+  recipientUserId?: string | null
+) {
+  if (recipientUserId && /^\d{5,32}$/.test(recipientUserId)) {
+    return [recipientUserId];
+  }
+  const configured = Array.isArray(bot?.billingRecipientUserIds)
+    ? bot.billingRecipientUserIds.filter((id) => /^\d{5,32}$/.test(id))
+    : [];
+  const fallback = contract.billingContactUserId ?? contract.contractHolderUserId ?? bot?.createdBy ?? bot?.ownerId ?? invoice.userId;
+  return [...new Set(configured.length ? configured : [fallback].filter((id): id is string => Boolean(id)))];
 }
 
 function contractHolderSnapshot(order: MongoPaymentOrder, user: MongoUser | null) {

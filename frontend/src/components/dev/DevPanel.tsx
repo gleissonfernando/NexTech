@@ -87,6 +87,7 @@ import {
     saveSubscriptionPresenceSettings,
     saveSystemEmoji,
     searchDatabaseMaintenanceUsers,
+    sendDevBotBillingRecipientDm,
     startAllDevBots,
     stopAllDevBots,
     stopDevBot,
@@ -95,6 +96,7 @@ import {
     updateBotGuildConfig,
     updateDevBotBillingModel,
     updateDevBotBillingOverride,
+    updateDevBotBillingRecipients,
     updateDevBotModules,
     updateDevBotToken,
     updateNexTechProduct,
@@ -1792,6 +1794,7 @@ function ConnectedBotPanel({
   const [billingBusy, setBillingBusy] = useState<string | null>(null);
   const [billingDialog, setBillingDialog] = useState<BotBillingActionDialogState | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [billingRecipientsText, setBillingRecipientsText] = useState((bot.billingRecipientUserIds ?? []).join("\n"));
   const [channels, setChannels] = useState<{
     error: string | null;
     loading: boolean;
@@ -1812,6 +1815,7 @@ function ConnectedBotPanel({
     setNewTokenVisible(false);
     setBilling(null);
     setBillingMessage(null);
+    setBillingRecipientsText((bot.billingRecipientUserIds ?? []).join("\n"));
     void refreshBilling();
   }, [bot.id]);
 
@@ -1864,6 +1868,40 @@ function ConnectedBotPanel({
 
   async function releaseInvoice(invoice: BotBillingInvoice) {
     setBillingDialog({ invoice, kind: "release", reason: "" });
+  }
+
+  async function saveBillingRecipients() {
+    const userIds = parseBillingRecipientUserIds(billingRecipientsText);
+    setBillingMessage(null);
+    setBillingBusy("recipients");
+    try {
+      const result = await updateDevBotBillingRecipients(bot.id, userIds);
+      const savedIds = result.bot?.billingRecipientUserIds ?? userIds;
+      setBillingRecipientsText(savedIds.join("\n"));
+      setBillingMessage(savedIds.length
+        ? `Destinatarios de cobranca atualizados: ${savedIds.length}.`
+        : "Destinatarios removidos. A cobranca voltara para o dono do bot."
+      );
+      await refreshBilling();
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Nao foi possivel salvar os destinatarios.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function sendBillingRecipient(userId: string) {
+    setBillingMessage(null);
+    setBillingBusy(`recipient-send:${userId}`);
+    try {
+      await sendDevBotBillingRecipientDm(bot.id, userId);
+      setBillingMessage(`Cobrança enviada por DM para ${userId}.`);
+      await refreshBilling();
+    } catch (error) {
+      setBillingMessage(readRequestMessage(error) ?? "Nao foi possivel enviar a cobranca por DM.");
+    } finally {
+      setBillingBusy(null);
+    }
   }
 
   async function submitBillingDialog() {
@@ -2011,6 +2049,10 @@ function ConnectedBotPanel({
           onReleaseInvoice={(invoice) => void releaseInvoice(invoice)}
           onRemoveOverride={() => void removeOverride()}
           onSaveOverride={() => void saveOverride()}
+          onRecipientsChange={setBillingRecipientsText}
+          onSendRecipient={(userId) => void sendBillingRecipient(userId)}
+          onSaveRecipients={() => void saveBillingRecipients()}
+          recipientsText={billingRecipientsText}
         />
 
         <BotBillingActionDialog
@@ -2312,7 +2354,11 @@ function BotBillingPanel({
   onRefresh,
   onReleaseInvoice,
   onRemoveOverride,
-  onSaveOverride
+  onSaveOverride,
+  onRecipientsChange,
+  onSendRecipient,
+  onSaveRecipients,
+  recipientsText
 }: {
   billing: { access: BotBillingAccess | null; invoices: BotBillingInvoice[] } | null;
   bot: DevBot;
@@ -2324,9 +2370,16 @@ function BotBillingPanel({
   onReleaseInvoice: (invoice: BotBillingInvoice) => void;
   onRemoveOverride: () => void;
   onSaveOverride: () => void;
+  onRecipientsChange: (value: string) => void;
+  onSendRecipient: (userId: string) => void;
+  onSaveRecipients: () => void;
+  recipientsText: string;
 }) {
   const currentModel = billing?.access?.model ?? bot.billingModel;
   const latestInvoices = billing?.invoices.slice(0, 3) ?? [];
+  const billingRecipientUserIds = parseBillingRecipientUserIds(recipientsText);
+  const recipientCount = billingRecipientUserIds.length;
+  const hasChargeableInvoice = Boolean(billing?.invoices.some((invoice) => invoice.status === "pending" || invoice.status === "overdue"));
 
   return (
     <div className={`rounded-lg border p-4 ${billing?.access?.blocked ? "border-red-500/35 bg-red-500/[0.08]" : "border-[#FFD500]/20 bg-black/35"}`}>
@@ -2365,6 +2418,52 @@ function BotBillingPanel({
         </div>
       ) : null}
 
+      <div className="mt-3 rounded-lg border border-zinc-800 bg-black/30 p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-zinc-500">Destinatarios da cobranca por DM</p>
+            <p className="mt-1 text-xs font-medium text-zinc-400">
+              Cadastre IDs de usuarios do Discord. No dia da cobranca, a fatura de hospedagem sera enviada para esses usuarios.
+            </p>
+          </div>
+          <Badge variant="muted">{recipientCount || 1} destinatario{(recipientCount || 1) === 1 ? "" : "s"}</Badge>
+        </div>
+        <textarea
+          className="mt-3 min-h-20 w-full resize-y rounded-lg border border-[#FFD500]/20 bg-black/55 p-3 font-mono text-xs font-semibold text-white outline-none transition placeholder:text-zinc-600 focus:border-[#FFD500]/60 focus:ring-2 focus:ring-[#FFD500]/15"
+          onChange={(event) => onRecipientsChange(event.target.value)}
+          placeholder={`Ex: ${bot.ownerId}\nUm ID por linha, virgula ou espaco.`}
+          value={recipientsText}
+        />
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] font-medium text-zinc-500">
+            Se deixar vazio, o sistema usa o dono/contato atual do bot.
+          </p>
+          <Button disabled={busy === "recipients"} onClick={onSaveRecipients} size="sm" variant="outline">
+            {busy === "recipients" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+            Salvar destinatarios
+          </Button>
+        </div>
+        {billingRecipientUserIds.length ? (
+          <div className="mt-3 grid gap-2 border-t border-zinc-800 pt-3">
+            {billingRecipientUserIds.map((userId) => (
+              <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-black/35 p-2 sm:flex-row sm:items-center sm:justify-between" key={userId}>
+                <span className="break-all font-mono text-xs font-semibold text-zinc-200">{userId}</span>
+                <Button
+                  disabled={Boolean(busy) || !hasChargeableInvoice}
+                  onClick={() => onSendRecipient(userId)}
+                  size="sm"
+                  title={hasChargeableInvoice ? "Enviar cobrança real por DM" : "Nenhuma fatura pendente ou vencida para enviar"}
+                  variant="outline"
+                >
+                  {busy === `recipient-send:${userId}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                  Enviar cobrança
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-4 grid gap-2">
         {!billing ? <p className="text-xs text-zinc-500">Carregando faturas...</p> : null}
         {billing && !latestInvoices.length ? <p className="text-xs text-zinc-500">Nenhuma fatura gerada para este bot.</p> : null}
@@ -2393,6 +2492,10 @@ function BotBillingPanel({
       </div>
     </div>
   );
+}
+
+function parseBillingRecipientUserIds(value: string) {
+  return [...new Set(value.split(/[\s,;]+/).map((item) => item.replace(/\D/g, "")).filter((item) => /^\d{5,32}$/.test(item)))].slice(0, 20);
 }
 
 function BotChannelPreview({

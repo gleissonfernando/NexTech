@@ -32,9 +32,7 @@ export type BotBillingShutdownDecision = {
   reasonCode:
     | "invoice_not_overdue"
     | "bot_not_found"
-    | "lifetime_plan"
     | "administrative_override"
-    | "covered_by_paid_invoice"
     | "within_grace_period"
     | "confirmed_overdue";
 };
@@ -222,6 +220,7 @@ export async function ensureMonthlyBotInvoice(bot: MongoDevBot, date = new Date(
   try {
     await botBillingInvoices.insertOne(invoice);
     await ensureContractForBotInvoice(invoice, source);
+    await emitContractInvoiceDm(invoice._id, "invoice_created", null).catch(logBillingError);
     await writeBillingAudit(bot, "bot_invoice_created", null, model, source, invoice._id);
     return { created: true, invoice };
   } catch (error) {
@@ -247,11 +246,8 @@ export async function markOverdueBotInvoices(source = "overdue_job", options: Ma
   let stopped = 0;
 
   for (const invoice of invoices) {
-    const [bot, latestPaid] = await Promise.all([
-      devBots.findOne({ _id: invoice.botId }),
-      findLatestPaidBotBillingInvoice(invoice.botId)
-    ]);
-    const decision = evaluateBotBillingShutdown(bot, invoice, latestPaid, now);
+    const bot = await devBots.findOne({ _id: invoice.botId });
+    const decision = evaluateBotBillingShutdown(bot, invoice, null, now);
     const next = await botBillingInvoices.findOneAndUpdate(
       { _id: invoice._id, status: "pending" },
       {
@@ -325,7 +321,7 @@ export async function canStartBotByBilling(botId: string) {
   const { devBots } = await getMongoCollections();
   const bot = await devBots.findOne({ _id: botId });
   if (!bot) return { allowed: false, reason: "Bot não encontrado." };
-  if ((bot.billingModel ?? "monthly") === "lifetime" || hasValidBotOverride(bot, "bot")) {
+  if (hasValidBotOverride(bot, "bot")) {
     return { allowed: true, reason: null };
   }
   await markOverdueBotInvoices("bot_start_check", { botId, stopBots: false });
@@ -337,7 +333,7 @@ export async function canStartBotByBilling(botId: string) {
 export function evaluateBotBillingShutdown(
   bot: MongoDevBot | null,
   invoice: MongoBotBillingInvoice,
-  latestPaid: MongoBotBillingInvoice | null,
+  _latestPaid: MongoBotBillingInvoice | null,
   now = new Date()
 ): BotBillingShutdownDecision {
   if (!bot) {
@@ -348,27 +344,11 @@ export function evaluateBotBillingShutdown(
     };
   }
 
-  if ((bot.billingModel ?? invoice.billingModel) === "lifetime" || invoice.planPeriod === "lifetime") {
-    return {
-      allowed: false,
-      reason: "Bot possui plano vitalício.",
-      reasonCode: "lifetime_plan"
-    };
-  }
-
   if (hasValidBotOverride(bot, "bot")) {
     return {
       allowed: false,
       reason: "Bot possui liberação administrativa ativa.",
       reasonCode: "administrative_override"
-    };
-  }
-
-  if (latestPaid && latestPaid.dueDate.getTime() >= invoice.dueDate.getTime()) {
-    return {
-      allowed: false,
-      reason: "Existe pagamento/liberação mais recente cobrindo esta competência.",
-      reasonCode: "covered_by_paid_invoice"
     };
   }
 
@@ -518,6 +498,61 @@ export async function setBotBillingOverride(botId: string, input: BotBillingOver
   return updated;
 }
 
+export async function setBotBillingRecipients(botId: string, userIds: string[], actor: AuthSessionUser) {
+  const { devBots } = await getMongoCollections();
+  const bot = await devBots.findOne({ _id: botId });
+  if (!bot) throw Object.assign(new Error("Bot não encontrado."), { statusCode: 404 });
+  const recipients = normalizeBillingRecipientUserIds(userIds);
+  const updated = await devBots.findOneAndUpdate(
+    { _id: botId },
+    {
+      $set: {
+        billingRecipientUserIds: recipients,
+        updatedAt: new Date()
+      }
+    },
+    { returnDocument: "after" }
+  );
+  await writeBillingAudit(bot, "bot_billing_recipients_updated", null, bot.billingModel ?? "monthly", "admin", null, actor, {
+    recipientCount: recipients.length
+  });
+  emitRealtime("bot:billing_updated", { botId });
+  return updated;
+}
+
+export async function sendBotBillingRecipientDm(botId: string, userId: string, actor: AuthSessionUser) {
+  const normalizedUserId = normalizeBillingRecipientUserIds([userId])[0];
+  if (!normalizedUserId) throw Object.assign(new Error("ID de usuário inválido."), { statusCode: 400 });
+
+  const { botBillingInvoices, devBots } = await getMongoCollections();
+  const bot = await devBots.findOne({ _id: botId });
+  if (!bot) throw Object.assign(new Error("Bot não encontrado."), { statusCode: 404 });
+
+  const configuredRecipients = normalizeBillingRecipientUserIds(bot.billingRecipientUserIds ?? []);
+  if (!configuredRecipients.includes(normalizedUserId)) {
+    throw Object.assign(new Error("Usuário não está cadastrado como destinatário desta cobrança."), { statusCode: 400 });
+  }
+
+  const invoice = await findLatestChargeableBotInvoice(botId);
+  if (!invoice) {
+    throw Object.assign(new Error("Nenhuma fatura pendente ou vencida encontrada para enviar."), { statusCode: 404 });
+  }
+
+  const dm = await emitContractInvoiceDm(
+    invoice._id,
+    invoice.status === "overdue" ? "overdue" : "invoice_created",
+    actor,
+    { recipientUserId: normalizedUserId }
+  );
+  await writeBillingAudit(bot, "bot_invoice_dm_sent_manually", null, bot.billingModel ?? "monthly", "admin", invoice._id, actor, {
+    recipientUserId: normalizedUserId
+  });
+  return {
+    dm,
+    invoice: toBotBillingInvoiceDto(invoice, bot)
+  };
+}
+
 export async function clearBotBillingOverride(botId: string, actor: AuthSessionUser) {
   const { devBots } = await getMongoCollections();
   const bot = await devBots.findOne({ _id: botId });
@@ -564,9 +599,8 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
   if (BOT_BILLING_PAID_STATUSES.includes(invoice.status)) {
     const bot = await devBots.findOne({ _id: invoice.botId });
     if (bot) {
-      await settleCoveredBotBillingInvoices(bot, invoice, invoice.status, source);
       await ensureNextBotInvoiceAfterPayment(bot, invoice, source);
-      await ensurePaidBotOnline(bot);
+      await ensurePaidBotOnlineIfBillingAllows(bot);
     }
     return toBotBillingInvoiceDto(invoice, bot);
   }
@@ -587,9 +621,8 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
   const bot = await devBots.findOne({ _id: invoice.botId });
   if (bot) {
     const paidInvoice = updated ?? { ...invoice, status: paidStatus, paidAt: new Date() };
-    await settleCoveredBotBillingInvoices(bot, paidInvoice, paidStatus, source);
     await ensureNextBotInvoiceAfterPayment(bot, paidInvoice, source);
-    await ensurePaidBotOnline(bot);
+    await ensurePaidBotOnlineIfBillingAllows(bot);
     await writeBillingAudit(bot, source === "manual_admin" ? "bot_invoice_manually_released" : "bot_invoice_paid", null, bot.billingModel ?? "monthly", source, invoiceId, actor, { reason });
   }
   const paidInvoice = updated ?? invoice;
@@ -602,60 +635,21 @@ async function markBotInvoicePaid(invoiceId: string, source: string, actor: Auth
 
 async function findBlockingBotBillingInvoice(botId: string) {
   const { botBillingInvoices } = await getMongoCollections();
-  const latestPaid = await findLatestPaidBotBillingInvoice(botId);
   return botBillingInvoices.findOne(
     {
       botId,
-      status: "overdue",
-      ...(latestPaid ? { dueDate: { $gt: latestPaid.dueDate } } : {})
+      status: "overdue"
     },
     { sort: { dueDate: 1 } }
   );
 }
 
-async function findLatestPaidBotBillingInvoice(botId: string) {
+async function findLatestChargeableBotInvoice(botId: string) {
   const { botBillingInvoices } = await getMongoCollections();
   return botBillingInvoices.findOne(
-    { botId, status: { $in: BOT_BILLING_PAID_STATUSES } },
-    { sort: { dueDate: -1 } }
+    { botId, status: { $in: ["overdue", "pending"] } },
+    { sort: { status: 1, dueDate: -1 } }
   );
-}
-
-async function settleCoveredBotBillingInvoices(
-  bot: MongoDevBot,
-  paidInvoice: MongoBotBillingInvoice,
-  paidStatus: MongoBotBillingInvoiceStatus,
-  source: string
-) {
-  const { botBillingInvoices } = await getMongoCollections();
-  const now = new Date();
-  const coveredInvoices = await botBillingInvoices.find({
-    _id: { $ne: paidInvoice._id },
-    botId: bot._id,
-    dueDate: { $lte: paidInvoice.dueDate },
-    status: { $in: ["pending", "overdue"] }
-  }).toArray();
-
-  for (const invoice of coveredInvoices) {
-    const updated = await botBillingInvoices.findOneAndUpdate(
-      { _id: invoice._id, status: { $in: ["pending", "overdue"] } },
-      {
-        $set: {
-          notes: paidStatus === "manually_released"
-            ? "Liberada automaticamente por pagamento manual mais recente."
-            : "Quitada automaticamente por pagamento mais recente.",
-          paidAt: paidInvoice.paidAt ?? now,
-          status: paidStatus,
-          statusHistory: appendInvoiceHistory(invoice, paidStatus, `${source}_covered_invoice`),
-          updatedAt: now
-        }
-      },
-      { returnDocument: "after" }
-    );
-    if (updated) {
-      emitRealtime("bot:billing_updated", { botId: bot._id, invoice: toBotBillingInvoiceDto(updated, bot) });
-    }
-  }
 }
 
 async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: MongoBotBillingInvoice, source: string) {
@@ -712,7 +706,10 @@ async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: M
   }
 }
 
-async function ensurePaidBotOnline(bot: MongoDevBot) {
+async function ensurePaidBotOnlineIfBillingAllows(bot: MongoDevBot) {
+  if (!hasValidBotOverride(bot, "bot") && await findBlockingBotBillingInvoice(bot._id)) {
+    return;
+  }
   const { devBots } = await getMongoCollections();
   await devBots.updateOne({ _id: bot._id }, { $set: { desiredOnline: true, updatedAt: new Date() } });
   const { startDevBotProcess } = await import("./devBotRuntimeService.js");
@@ -892,4 +889,8 @@ function isDuplicateKeyError(error: unknown) {
 
 function logBillingError(error: unknown) {
   console.warn("[bot-billing] processamento falhou:", error instanceof Error ? error.message : error);
+}
+
+export function normalizeBillingRecipientUserIds(userIds: string[]) {
+  return [...new Set(userIds.map((id) => id.replace(/\D/g, "")).filter((id) => /^\d{5,32}$/.test(id)))].slice(0, 20);
 }
