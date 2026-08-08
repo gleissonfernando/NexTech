@@ -740,37 +740,31 @@ async function finalizeSingleUserGoal(
 
   const report = result.report;
   const periodText = `${formatBrazilDateTime(new Date(report.periodStart))} até ${formatBrazilDateTime(new Date(report.periodEnd))}`;
-  let delivered = false;
-  if (!result.alreadyFinalized) {
-    const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel, "Manual");
-    const member = await guild.members.fetch(input.targetUserId).catch(() => null);
-    delivered = Boolean(await member?.send({ content: finalReport, allowedMentions: { parse: [] } }).then(() => true).catch(() => false));
-    if (input.sendAdminLog) {
-      await sendGoalLog(guild, context, finalReport, {
-        deliveredToUser: delivered,
-        periodEnd: report.periodEnd,
-        periodId: report.periodId,
-        periodStart: report.periodStart,
-        targetUserId: input.targetUserId
-      });
-    }
+  const finalReport = createFinalUserGoalReportContent(guild, report, input.actorLabel, input.targetLabel, "Manual");
+  const delivery = await sendFinalGoalReportToUserChannel(guild, report.channelId ?? null, input.targetUserId, finalReport);
+  if (input.sendAdminLog) {
+    await sendGoalLog(guild, context, finalReport, {
+      deliveredToUser: delivery.ok,
+      deliveryError: delivery.error,
+      messageId: delivery.messageId,
+      periodEnd: report.periodEnd,
+      periodId: report.periodId,
+      periodStart: report.periodStart,
+      targetUserId: input.targetUserId
+    });
   }
 
   return {
     alreadyFinalized: result.alreadyFinalized,
-    delivered,
+    delivered: delivery.ok,
     message: [
-    result.alreadyFinalized ? "⚠️ A meta dessa pessoa já estava fechada neste período." : "✅ Meta da pessoa fechada neste período.",
+    result.alreadyFinalized ? "⚠️ A meta dessa pessoa já tinha fechamento salvo neste período." : "✅ Meta da pessoa fechada neste período.",
     "",
     `Pessoa: ${input.targetLabel}`,
     `Período: ${periodText}`,
-    `Registros: ${report.totalRecords}`,
-    `Aprovadas: ${report.approvedCount}`,
-    `Pendentes: ${report.pendingCount}`,
-    `Reprovadas: ${report.refusedCount}`,
-    `Total aprovado: ${formatGoalValue(report.totalApprovedValue)}`,
-    `DM enviada: ${delivered ? "sim" : "não"}`
-  ].join("\n")
+    `Relatório no canal individual: ${delivery.ok ? "enviado" : "falhou"}`,
+    delivery.error ? `Erro: ${delivery.error}` : null
+  ].filter((line): line is string => typeof line === "string").join("\n")
   };
 }
 
