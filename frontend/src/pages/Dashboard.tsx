@@ -8592,9 +8592,16 @@ function TicketPanelConfigurator({
           description: "Descreva este atendimento.",
           emoji: PANEL_EMOJIS.prancheta,
           enabled: true,
+          initialMessage: "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário.",
           label: `Atendimento ${current.ticketPanelOptions.length + 1}`,
+          logChannelId: null,
+          maxOpenTicketsPerUser: 1,
           mentionRoleId: null,
           moduleType: "default" as const,
+          openingHours: null,
+          position: current.ticketPanelOptions.length + 1,
+          priority: "normal" as const,
+          supportRoleIds: [],
           ticketType: "support",
           value: `atendimento-${current.ticketPanelOptions.length + 1}`
         }
@@ -8608,6 +8615,23 @@ function TicketPanelConfigurator({
       return {
         ...current,
         ticketPanelOptions: nextOptions.length ? nextOptions : ticketPanelDraft(null).ticketPanelOptions
+      };
+    });
+  }
+
+  function moveOption(index: number, direction: -1 | 1) {
+    setDraft((current) => {
+      const nextOptions = [...current.ticketPanelOptions];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= nextOptions.length) return current;
+      const currentOption = nextOptions[index];
+      const targetOption = nextOptions[targetIndex];
+      if (!currentOption || !targetOption) return current;
+      nextOptions[index] = targetOption;
+      nextOptions[targetIndex] = currentOption;
+      return {
+        ...current,
+        ticketPanelOptions: nextOptions.map((option, optionIndex) => normalizeTicketOptionDraft({ ...option, position: optionIndex + 1 }, optionIndex))
       };
     });
   }
@@ -8672,8 +8696,8 @@ function TicketPanelConfigurator({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2"><TicketIcon className="h-5 w-5 text-[#FFEA70]" /> Painel visual do ticket</CardTitle>
-            <CardDescription>Texto, cor, menu e emojis que aparecem no painel publicado pelo bot.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><TicketIcon className="h-5 w-5 text-[#FFEA70]" /> Gerenciar Categorias de Ticket</CardTitle>
+            <CardDescription>Cadastre, edite, ordene e direcione categorias usadas no select de abertura de ticket.</CardDescription>
           </div>
           <Button disabled={disabled} onClick={() => void save()} size="sm" type="button">
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
@@ -8738,18 +8762,39 @@ function TicketPanelConfigurator({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-white">Opções do menu</p>
-              <p className="text-xs text-zinc-500">Use emoji comum ou escolha um emoji da aplicacao do bot.</p>
+              <p className="text-sm font-semibold text-white">Categorias de atendimento</p>
+              <p className="text-xs text-zinc-500">Cada categoria pode ter canal, cargos, logs, mensagem inicial, prioridade e limite próprios.</p>
             </div>
             <Button disabled={disabled || draft.ticketPanelOptions.length >= 25} onClick={addOption} size="sm" type="button" variant="outline">Adicionar</Button>
           </div>
 
           {draft.ticketPanelOptions.map((option, index) => (
-            <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 lg:grid-cols-[1fr_1fr_180px_180px_120px_160px_auto]" key={`${option.value}-${index}`}>
-              <TicketField disabled={disabled} label="Nome" onChange={(value) => updateOption(index, { label: value, value: slugTicketOption(value, index) })} value={option.label} />
-              <TicketField disabled={disabled} label="Descrição" onChange={(value) => updateOption(index, { description: value })} value={option.description ?? ""} />
+            <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3" key={`${option.value}-${index}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">{option.emoji ? `${option.emoji} ` : ""}{option.label}</p>
+                  <p className="text-xs text-zinc-500">ID: {option.value}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button disabled={disabled || index === 0} onClick={() => moveOption(index, -1)} size="sm" type="button" variant="outline">Subir</Button>
+                  <Button disabled={disabled || index === draft.ticketPanelOptions.length - 1} onClick={() => moveOption(index, 1)} size="sm" type="button" variant="outline">Descer</Button>
+                  <label className="flex h-9 items-center gap-2 rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">
+                    <input checked={option.enabled} disabled={disabled} onChange={(event) => updateOption(index, { enabled: event.target.checked })} type="checkbox" />
+                    Ativa
+                  </label>
+                  <Button disabled={disabled || draft.ticketPanelOptions.length <= 1} onClick={() => removeOption(index)} size="icon" title="Excluir categoria" type="button" variant="outline">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-3">
+                <TicketField disabled={disabled} label="Nome" onChange={(value) => updateOption(index, { label: value, value: slugTicketOption(value, index) })} value={option.label} />
+                <TicketField disabled={disabled} label="Descrição" onChange={(value) => updateOption(index, { description: value })} value={option.description ?? ""} />
+                <TicketField disabled={disabled} label="Emoji" onChange={(value) => updateOption(index, { emoji: value })} value={option.emoji ?? ""} />
+              </div>
+              <div className="grid gap-3 lg:grid-cols-4">
               <label className="block text-xs font-medium text-zinc-400">
-                Categoria temporária
+                Categoria do Discord
                 <select
                   className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
                   disabled={disabled}
@@ -8766,7 +8811,7 @@ function TicketPanelConfigurator({
                 </select>
               </label>
               <label className="block text-xs font-medium text-zinc-400">
-                Cargo mencionado
+                Cargo principal
                 <select
                   className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
                   disabled={disabled}
@@ -8782,7 +8827,39 @@ function TicketPanelConfigurator({
                   ))}
                 </select>
               </label>
-              <TicketField disabled={disabled} label="Emoji" onChange={(value) => updateOption(index, { emoji: value })} value={option.emoji ?? ""} />
+              <label className="block text-xs font-medium text-zinc-400">
+                Canal de logs
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60"
+                  disabled={disabled}
+                  onChange={(event) => updateOption(index, { logChannelId: event.target.value || null })}
+                  value={option.logChannelId ?? ""}
+                >
+                  <option value="">Logs padrão</option>
+                  {option.logChannelId && !channels.some((channel) => channel.id === option.logChannelId) ? (
+                    <option value={option.logChannelId}>Canal atual ({option.logChannelId})</option>
+                  ) : null}
+                  {channels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>#{channel.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-zinc-400">
+                Prioridade padrão
+                <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100 outline-none disabled:opacity-60" disabled={disabled} onChange={(event) => updateOption(index, { priority: event.target.value as TicketPanelOption["priority"] })} value={option.priority ?? "normal"}>
+                  <option value="low">Baixa</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">Alta</option>
+                  <option value="urgent">Urgente</option>
+                </select>
+              </label>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_180px_1fr]">
+                <MultiRoleSelect compact disabled={disabled} label="Cargos responsáveis" onChange={(values) => updateOption(index, { supportRoleIds: values })} roles={roles.filter((role) => role.id !== guild?.id)} values={option.supportRoleIds ?? []} />
+                <TicketField disabled={disabled} label="Limite por usuário" onChange={(value) => updateOption(index, { maxOpenTicketsPerUser: Number.parseInt(value, 10) || 1 })} type="number" value={String(option.maxOpenTicketsPerUser ?? 1)} />
+                <TicketField disabled={disabled} label="Horário de atendimento" onChange={(value) => updateOption(index, { openingHours: value || null })} value={option.openingHours ?? ""} />
+              </div>
+              <TicketArea disabled={disabled} label="Mensagem inicial personalizada" onChange={(value) => updateOption(index, { initialMessage: value || null })} value={option.initialMessage ?? ""} />
               <label className="block text-xs font-medium text-zinc-400">
                 Emoji da Dashboard
                 <select
@@ -8799,15 +8876,6 @@ function TicketPanelConfigurator({
                   ))}
                 </select>
               </label>
-              <div className="flex items-end gap-2">
-                <label className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3 text-xs text-zinc-300">
-                  <input checked={option.enabled} disabled={disabled} onChange={(event) => updateOption(index, { enabled: event.target.checked })} type="checkbox" />
-                  Ativa
-                </label>
-                <Button disabled={disabled || draft.ticketPanelOptions.length <= 1} onClick={() => removeOption(index)} size="icon" title="Remover opção" type="button" variant="outline">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           ))}
         </div>
@@ -9340,18 +9408,17 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
     ticketPanelFooterText: settings?.ticketPanelFooterText ?? "",
     ticketPanelColor: settings?.ticketPanelColor ?? "#FFD500",
     ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione uma categoria de atendimento...",
-    ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : [{
-      categoryId: null,
-      description: "Abrir um atendimento com a equipe.",
-      emoji: PANEL_EMOJIS.prancheta,
-      enabled: true,
-      label: "Suporte",
-      mentionRoleId: null,
-      moduleType: "default" as const,
-      ticketType: "support",
-      value: "suporte"
-    }]).map(normalizeTicketOptionDraft)
+    ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : defaultTicketPanelOptions()).map(normalizeTicketOptionDraft)
   };
+}
+
+function defaultTicketPanelOptions(): TicketPanelOption[] {
+  return [
+    { categoryId: null, description: "Pagamentos, cobranças e mensalidades.", emoji: "💰", enabled: true, initialMessage: "Este ticket foi aberto no setor Financeiro. Envie os detalhes relacionados ao pagamento, mensalidade, cobrança ou plano contratado. Não compartilhe dados bancários sensíveis ou informações confidenciais.", label: "Financeiro", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 1, priority: "normal", supportRoleIds: [], ticketType: "financeiro", value: "financeiro" },
+    { categoryId: null, description: "Problemas técnicos, bot offline e configurações.", emoji: "🛠️", enabled: true, initialMessage: "Este ticket foi aberto no setor de Suporte. Explique o problema, informe quando ele começou e, se possível, envie imagens ou vídeos do erro.", label: "Suporte", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 2, priority: "normal", supportRoleIds: [], ticketType: "suporte", value: "suporte" },
+    { categoryId: null, description: "Perguntas gerais sobre planos, módulos e dashboard.", emoji: "❓", enabled: true, initialMessage: "Este ticket foi aberto para esclarecimento de dúvidas. Envie sua pergunta com o máximo de detalhes possível para que a equipe consiga orientar corretamente.", label: "Dúvidas", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 3, priority: "normal", supportRoleIds: [], ticketType: "duvidas", value: "duvidas" },
+    { categoryId: null, description: "Contratação, desenvolvimento personalizado e automações.", emoji: "📋", enabled: true, initialMessage: "Este ticket foi aberto para solicitação de orçamento. Explique o sistema desejado, as funcionalidades necessárias e informe se já possui algum projeto em funcionamento.", label: "Orçamento", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 4, priority: "normal", supportRoleIds: [], ticketType: "orcamento", value: "orcamento" }
+  ];
 }
 
 function hasTicketCategoryForEveryOption(draft: TicketPanelDraft) {
@@ -9365,10 +9432,17 @@ function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): T
     description: option.description?.trim() || null,
     emoji: option.emoji?.trim() || null,
     enabled: option.enabled !== false,
+    initialMessage: option.initialMessage?.trim() || null,
     label,
+    logChannelId: option.logChannelId?.trim() || null,
+    maxOpenTicketsPerUser: Math.min(Math.max(Number(option.maxOpenTicketsPerUser) || 1, 1), 10),
     mentionRoleId: option.mentionRoleId?.trim() || null,
     moduleType: option.moduleType === "police" ? "police" : "default",
-    ticketType: option.ticketType?.trim().toLowerCase() || (option.moduleType === "police" ? "police" : "support"),
+    openingHours: option.openingHours?.trim() || null,
+    position: Number(option.position) || index + 1,
+    priority: option.priority ?? "normal",
+    supportRoleIds: [...new Set(option.supportRoleIds ?? [])],
+    ticketType: option.ticketType?.trim().toLowerCase() || (option.moduleType === "police" ? "police" : slugTicketOption(label, index)),
     value: option.value?.trim() || slugTicketOption(label, index)
   };
 }
@@ -9397,7 +9471,7 @@ function TicketField({
   disabled: boolean;
   label: string;
   onChange: (value: string) => void;
-  type?: "color" | "text";
+  type?: "color" | "number" | "text";
   value: string;
 }) {
   return (

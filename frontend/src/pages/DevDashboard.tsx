@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
 import {
   Activity,
   BadgeCheck,
@@ -50,6 +50,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Switch } from "../components/ui/switch";
 import {
+  applyMonthlyBillingAdjustment,
   createNexTechInvite,
   createDevFivemModule,
   deleteNexTechInvite,
@@ -59,7 +60,6 @@ import {
   getDashboardMe,
   getDevAccessEntries,
   getDevBots,
-  getDevMonthlyContracts,
   getDiscloudBotLogs,
   getDiscloudMonitoring,
   getDevFivemModules,
@@ -67,23 +67,30 @@ import {
   getNexTechInviteDashboard,
   getMaintenanceState,
   getLogs,
+  getMonthlyBillingCustomerHistory,
+  getMonthlyBillingDashboard,
   getSystemHealth,
   getSystemMetrics,
   publishNexTechInvitePanel,
   replaceNexTechInviteUrl,
   sendMaintenanceAlert,
   saveDevAccessEntry,
-  resendDevInvoiceDm,
+  registerMonthlyBillingPayment,
   setMaintenanceMode,
   runDiscloudBotAction,
+  sendMonthlyBillingBulkCharges,
+  sendMonthlyBillingCustomerCharge,
+  setMonthlyBillingCustomerStatus,
+  updateMonthlyBillingCustomer,
   updateDevBotModules,
   updateDevFivemModule,
   saveDevFivemExpenseRelease,
-  updateNexTechInvite
+  updateNexTechInvite,
+  createMonthlyBillingCustomer
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DevMonthlyContract, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -589,16 +596,30 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
 }
 
 function DevMonthlyContractsPanel() {
-  const [contracts, setContracts] = useState<DevMonthlyContract[]>([]);
+  const [dashboard, setDashboard] = useState<MonthlyBillingDashboard | null>(null);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [customerFormBot, setCustomerFormBot] = useState<MonthlyBillingBot | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<MonthlyBillingCustomer | null>(null);
+  const [adjustCustomer, setAdjustCustomer] = useState<MonthlyBillingCustomer | null>(null);
+  const [paymentCustomer, setPaymentCustomer] = useState<MonthlyBillingCustomer | null>(null);
+  const [chargeCustomer, setChargeCustomer] = useState<MonthlyBillingCustomer | null>(null);
+  const [historyCustomer, setHistoryCustomer] = useState<MonthlyBillingCustomer | null>(null);
+  const [history, setHistory] = useState<MonthlyBillingHistory | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setContracts(await getDevMonthlyContracts());
+      const nextDashboard = await getMonthlyBillingDashboard();
+      setDashboard(nextDashboard);
+      setSelectedBotId((current) => current ?? nextDashboard.bots[0]?.id ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar mensalidades.");
     } finally {
@@ -610,23 +631,174 @@ function DevMonthlyContractsPanel() {
     void load();
   }, []);
 
-  async function handleResend(contract: DevMonthlyContract) {
-    if (!contract.latestInvoiceId) return;
-    setSendingId(contract.id);
+  async function handleCreateCustomer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!customerFormBot) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
     try {
-      await resendDevInvoiceDm(contract.latestInvoiceId, "invoice_created");
-      await load();
+      const nextDashboard = await createMonthlyBillingCustomer(customerFormBot.id, {
+        discordUserId: String(form.get("discordUserId") ?? ""),
+        customerName: String(form.get("customerName") ?? ""),
+        monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
+        dueDate: String(form.get("dueDate") ?? ""),
+        fixedDueDay: Number(form.get("fixedDueDay") ?? "1"),
+        subscriptionStartDate: String(form.get("subscriptionStartDate") ?? ""),
+        planName: String(form.get("planName") ?? ""),
+        notes: String(form.get("notes") ?? ""),
+        initialOverdueMonths: Number(form.get("initialOverdueMonths") ?? "0"),
+        paymentUrl: String(form.get("paymentUrl") ?? ""),
+        receiptUrl: String(form.get("receiptUrl") ?? ""),
+        supportUrl: String(form.get("supportUrl") ?? "")
+      });
+      setDashboard(nextDashboard);
+      setCustomerFormBot(null);
+    } catch (saveError) {
+      setError(readRequestMessage(saveError) ?? "Não foi possível cadastrar cliente.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSendCharge(customer: MonthlyBillingCustomer) {
+    setSendingId(customer.id);
+    try {
+      const result = await sendMonthlyBillingCustomerCharge(customer.id);
+      setDashboard(result.dashboard);
+      setChargeCustomer(null);
+    } catch (sendError) {
+      setError(readRequestMessage(sendError) ?? "Não foi possível enviar a cobrança.");
     } finally {
       setSendingId(null);
     }
   }
 
+  async function handleSendBulk(ids: string[]) {
+    if (!ids.length) return;
+    const scoped = dashboard?.bots.flatMap((bot) => bot.customers).filter((customer) => ids.includes(customer.id)) ?? [];
+    const total = scoped.reduce((sum, customer) => sum + customer.totalDueInCents, 0);
+    const bots = [...new Set(scoped.map((customer) => customer.botName))].join(", ");
+    const failed = scoped.filter((customer) => customer.lastChargeStatus === "failed").length;
+    if (!window.confirm(`Confirmar cobrança em massa?\n\nClientes: ${scoped.length}\nMensagens: ${ids.length}\nTotal em débito: ${formatCurrency(total)}\nBots: ${bots || "-"}\nClientes com última DM falha: ${failed}`)) return;
+    setSendingId("bulk");
+    try {
+      const result = await sendMonthlyBillingBulkCharges(ids);
+      setDashboard(result.dashboard);
+      setSelectedCustomerIds([]);
+    } catch (sendError) {
+      setError(readRequestMessage(sendError) ?? "Não foi possível enviar as cobranças em massa.");
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  async function handleRegisterPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!paymentCustomer) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    try {
+      setDashboard(await registerMonthlyBillingPayment(paymentCustomer.id, {
+        amountInCents: reaisToCents(String(form.get("amount") ?? "0")),
+        installmentsPaid: Number(form.get("installmentsPaid") ?? "1"),
+        paidAt: String(form.get("paidAt") ?? ""),
+        method: String(form.get("method") ?? ""),
+        transactionCode: String(form.get("transactionCode") ?? ""),
+        receiptUrl: String(form.get("receiptUrl") ?? ""),
+        notes: String(form.get("notes") ?? "")
+      }));
+      setPaymentCustomer(null);
+    } catch (paymentError) {
+      setError(readRequestMessage(paymentError) ?? "Não foi possível registrar o pagamento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleEditCustomer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCustomer) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    try {
+      setDashboard(await updateMonthlyBillingCustomer(editingCustomer.id, {
+        customerName: String(form.get("customerName") ?? ""),
+        monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
+        dueDate: String(form.get("dueDate") ?? ""),
+        fixedDueDay: Number(form.get("fixedDueDay") ?? "1"),
+        subscriptionStartDate: String(form.get("subscriptionStartDate") ?? ""),
+        planName: String(form.get("planName") ?? ""),
+        notes: String(form.get("notes") ?? ""),
+        paymentUrl: String(form.get("paymentUrl") ?? ""),
+        receiptUrl: String(form.get("receiptUrl") ?? ""),
+        supportUrl: String(form.get("supportUrl") ?? "")
+      }));
+      setEditingCustomer(null);
+    } catch (editError) {
+      setError(readRequestMessage(editError) ?? "Não foi possível editar o cliente.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAdjustment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!adjustCustomer) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    try {
+      setDashboard(await applyMonthlyBillingAdjustment(adjustCustomer.id, {
+        amountInCents: reaisToCents(String(form.get("amount") ?? "0")),
+        reason: String(form.get("reason") ?? ""),
+        type: String(form.get("type") ?? "manual_debit") as "manual_debit" | "discount" | "fine" | "interest"
+      }));
+      setAdjustCustomer(null);
+    } catch (adjustError) {
+      setError(readRequestMessage(adjustError) ?? "Não foi possível aplicar o ajuste.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStatus(customer: MonthlyBillingCustomer, action: "suspend" | "reactivate" | "cancel" | "delete") {
+    const label = { cancel: "cancelar assinatura", delete: "remover cadastro", reactivate: "reativar serviço", suspend: "suspender serviço" }[action];
+    if (!window.confirm(`Confirmar ação: ${label} para ${customer.customerName}?`)) return;
+    setSaving(true);
+    try {
+      setDashboard(await setMonthlyBillingCustomerStatus(customer.id, { action, reason: label }));
+    } catch (statusError) {
+      setError(readRequestMessage(statusError) ?? "Não foi possível alterar o status.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copyChargeText(customer: MonthlyBillingCustomer) {
+    await navigator.clipboard.writeText(customer.chargeText);
+  }
+
+  async function openHistory(customer: MonthlyBillingCustomer) {
+    setHistoryCustomer(customer);
+    setHistory(null);
+    setHistory(await getMonthlyBillingCustomerHistory(customer.id));
+  }
+
+  const selectedBot = dashboard?.bots.find((bot) => bot.id === selectedBotId) ?? dashboard?.bots[0] ?? null;
+  const filteredCustomers = (selectedBot?.customers ?? []).filter((customer) => {
+    const text = `${customer.customerName} ${customer.discordUserId} ${customer.botName} ${customer.projectName ?? ""} ${customer.planName}`.toLowerCase();
+    const statusOk = statusFilter === "all" || customer.status === statusFilter;
+    return statusOk && text.includes(query.trim().toLowerCase());
+  });
+  const overdueAll = dashboard?.bots.flatMap((bot) => bot.customers.filter((customer) => customer.overdueMonths > 0 && customer.rawStatus !== "cancelled")) ?? [];
+  const selectedCustomers = filteredCustomers.filter((customer) => selectedCustomerIds.includes(customer.id));
+
   return (
     <section className="grid gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-[#FFEA70]">Débitos → Mensalidades</p>
           <h1 className="text-2xl font-semibold text-white">Mensalidades</h1>
-          <p className="text-sm text-zinc-400">Contratos, responsáveis financeiros, faturas e status de DM.</p>
+          <p className="text-sm text-zinc-400">Clientes por bot, cobranças por DM, pagamentos parciais e histórico financeiro.</p>
         </div>
         <Button onClick={() => void load()} variant="outline">
           <RefreshCw className="h-4 w-4" />
@@ -637,47 +809,331 @@ function DevMonthlyContractsPanel() {
       {error ? <Card><CardContent className="p-4 text-sm text-red-300">{error}</CardContent></Card> : null}
       {loading ? <Card><CardContent className="flex items-center gap-2 p-4 text-sm text-zinc-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando mensalidades...</CardContent></Card> : null}
 
-      <div className="grid gap-3">
-        {contracts.map((contract) => (
-          <Card key={contract.id}>
-            <CardContent className="grid gap-3 p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-lg font-semibold text-white">{contract.botName ?? "Bot sem nome"}</h2>
-                    <Badge variant={contract.status === "active" ? "success" : contract.status === "pending_payment" ? "warning" : "muted"}>{contract.status}</Badge>
-                    <Badge variant={contract.dmStatus === "sent" ? "success" : contract.dmStatus === "failed" ? "danger" : "muted"}>DM {contract.dmStatus}</Badge>
+      {dashboard ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <MonthlyMetric label="Clientes" value={dashboard.summary.totalCustomers} />
+            <MonthlyMetric label="Em dia" value={dashboard.summary.paidCustomers} />
+            <MonthlyMetric label="Atrasados" value={dashboard.summary.overdueCustomers} />
+            <MonthlyMetric label="Mensalidades vencidas" value={dashboard.summary.overdueMonths} />
+            <MonthlyMetric label="Total a receber" value={formatCurrency(dashboard.summary.totalReceivableInCents)} />
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-2">
+            {dashboard.bots.map((bot) => (
+              <Card className={`border-[#FFD500]/18 bg-zinc-950/80 ${selectedBot?.id === bot.id ? "ring-1 ring-[#FFEA70]/45" : ""}`} key={bot.id}>
+                <CardContent className="grid gap-3 p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar fallback={bot.name.slice(0, 2).toUpperCase()} src={bot.avatarUrl} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-lg font-semibold text-white">{bot.name}</h2>
+                        <Badge variant={bot.status === "online" ? "success" : bot.status === "maintenance" ? "warning" : "muted"}>{bot.status}</Badge>
+                      </div>
+                      <p className="truncate text-sm text-zinc-400">{bot.projectName ?? "Projeto sem nome"}</p>
+                      <p className="truncate text-xs text-zinc-500">ID do bot: {bot.clientId}</p>
+                    </div>
+                    <Button onClick={() => setSelectedBotId(bot.id)} size="sm" type="button">Gerenciar</Button>
                   </div>
-                  <p className="text-sm text-zinc-400">
-                    Responsável: {contract.contractHolder.discordDisplayName || contract.contractHolder.discordUsername || "Sem nome"} ({contract.contractHolder.discordUserId || "sem Discord ID"})
-                  </p>
-                  <p className="text-sm text-zinc-500">
-                    Servidor: {contract.serverName ?? contract.serverId ?? "não vinculado"} • Bot {contract.isLifetimeBot ? "vitalício" : "mensal"} • Hospedagem {contract.hostingCharged ? "cobrada" : "não cobrada"}
-                  </p>
+                  <div className="grid gap-2 text-xs font-semibold text-zinc-300 sm:grid-cols-3">
+                    <span>{bot.customerCount} clientes</span>
+                    <span>{bot.overdueMonths} mensalidades atrasadas</span>
+                    <span>{formatCurrency(bot.totalPendingInCents)} pendente</span>
+                    <span>{bot.paidCustomers} em dia</span>
+                    <span>Próxima: {formatDateOrDash(bot.nextDueDate)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {selectedBot ? (
+            <Card className="border-[#FFD500]/18 bg-zinc-950/85">
+              <CardHeader>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <CardTitle>{selectedBot.name}</CardTitle>
+                    <CardDescription>{selectedBot.customerCount} clientes cadastrados neste bot.</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => setCustomerFormBot(selectedBot)} type="button"><Plus className="h-4 w-4" />Cadastrar cliente</Button>
+                    <Button disabled={sendingId === "bulk" || !selectedCustomers.length} onClick={() => void handleSendBulk(selectedCustomers.map((item) => item.id))} type="button" variant="outline"><MessageCircle className="h-4 w-4" />Enviar selecionados</Button>
+                    <Button disabled={sendingId === "bulk" || !overdueAll.length} onClick={() => void handleSendBulk(overdueAll.map((item) => item.id))} type="button" variant="outline">Todos atrasados</Button>
+                  </div>
                 </div>
-                <Button disabled={!contract.latestInvoiceId || sendingId === contract.id} onClick={() => void handleResend(contract)} variant="outline">
-                  {sendingId === contract.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                  Reenviar cobrança
-                </Button>
-              </div>
-              <div className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
-                <span>Valor mensal: {formatCurrency(contract.monthlyAmountInCents)}</span>
-                <span>Próximo vencimento: {formatDateOrDash(contract.nextDueDate)}</span>
-                <span>Último pagamento: {formatDateOrDash(contract.lastPaymentAt)}</span>
-                <span>Fatura: {contract.invoiceStatus ?? "sem fatura"}</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {contract.items.map((item) => (
-                  <Badge key={item.id} variant={item.status === "active" ? "success" : "muted"}>{item.name}</Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {!loading && !contracts.length ? <Card><CardContent className="p-4 text-sm text-zinc-400">Nenhum contrato encontrado.</CardContent></Card> : null}
-      </div>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <div className="grid gap-2 md:grid-cols-[1fr_220px]">
+                  <input className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white outline-none focus:border-[#FFEA70]/60" onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por cliente, ID, bot, servidor ou plano" value={query} />
+                  <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white outline-none focus:border-[#FFEA70]/60" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+                    <option value="all">Todos os status</option>
+                    {["Em dia", "Vence hoje", "Próximo do vencimento", "Atrasado", "Cobrança enviada", "Pagamento em análise", "Suspenso", "Cancelado"].map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                  <table className="min-w-[1180px] w-full text-left text-sm">
+                    <thead className="bg-black/45 text-xs uppercase text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2">Sel.</th>
+                        <th className="px-3 py-2">Cliente</th>
+                        <th className="px-3 py-2">Plano</th>
+                        <th className="px-3 py-2">Valor</th>
+                        <th className="px-3 py-2">Vencimento</th>
+                        <th className="px-3 py-2">Último pagamento</th>
+                        <th className="px-3 py-2">Próximo</th>
+                        <th className="px-3 py-2">Atrasos</th>
+                        <th className="px-3 py-2">Débito</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Última cobrança</th>
+                        <th className="px-3 py-2">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-900">
+                      {filteredCustomers.map((customer) => (
+                        <tr key={customer.id}>
+                          <td className="px-3 py-3"><input checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} type="checkbox" /></td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-2">
+                              <Avatar fallback={customer.customerName.slice(0, 2).toUpperCase()} src={customer.discordAvatarUrl} />
+                              <div><p className="font-semibold text-white">{customer.customerName}</p><p className="text-xs text-zinc-500">{customer.discordUserId}</p></div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-zinc-300">{customer.planName}</td>
+                          <td className="px-3 py-3 text-zinc-300">{formatCurrency(customer.monthlyAmountInCents)}</td>
+                          <td className="px-3 py-3 text-zinc-300">Dia {customer.fixedDueDay}</td>
+                          <td className="px-3 py-3 text-zinc-300">{formatDateOrDash(customer.lastPaymentAt)}</td>
+                          <td className="px-3 py-3 text-zinc-300">{formatDateOrDash(customer.nextDueDate)}</td>
+                          <td className="px-3 py-3 font-semibold text-[#FFEA70]">{customer.overdueMonths} {customer.overdueMonths === 1 ? "mensalidade" : "mensalidades"}</td>
+                          <td className="px-3 py-3 text-zinc-300">{formatCurrency(customer.totalDueInCents)}</td>
+                          <td className="px-3 py-3"><Badge variant={customer.overdueMonths > 0 ? "danger" : "success"}>{customer.status}</Badge></td>
+                          <td className="px-3 py-3 text-zinc-300">{customer.lastChargeStatus === "failed" ? customer.lastChargeError ?? "DM fechada" : formatDateOrDash(customer.lastChargeAt)}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button disabled={sendingId === customer.id} onClick={() => setChargeCustomer(customer)} size="sm" type="button" variant="outline"><MessageCircle className="h-4 w-4" />Enviar</Button>
+                              <Button onClick={() => setPaymentCustomer(customer)} size="sm" type="button" variant="outline">Pagamento</Button>
+                              <Button onClick={() => void openHistory(customer)} size="sm" type="button" variant="outline">Histórico</Button>
+                              <Button onClick={() => setEditingCustomer(customer)} size="sm" type="button" variant="outline">Editar</Button>
+                              <Button onClick={() => setAdjustCustomer(customer)} size="sm" type="button" variant="outline">Ajuste</Button>
+                              <Button onClick={() => void handleStatus(customer, customer.rawStatus === "suspended" ? "reactivate" : "suspend")} size="sm" type="button" variant="outline">{customer.rawStatus === "suspended" ? "Reativar" : "Suspender"}</Button>
+                              <Button onClick={() => void handleStatus(customer, "cancel")} size="sm" type="button" variant="outline">Cancelar</Button>
+                              <Button onClick={() => void handleStatus(customer, "delete")} size="sm" type="button" variant="outline">Remover</Button>
+                              {customer.lastChargeStatus === "failed" ? <Button onClick={() => void copyChargeText(customer)} size="sm" type="button" variant="outline">Copiar texto</Button> : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!filteredCustomers.length ? <p className="text-sm text-zinc-500">Nenhum cliente encontrado neste filtro.</p> : null}
+              </CardContent>
+            </Card>
+          ) : null}
+        </>
+      ) : null}
+
+      {customerFormBot ? <MonthlyCustomerModal bot={customerFormBot} onClose={() => setCustomerFormBot(null)} onSubmit={handleCreateCustomer} saving={saving} /> : null}
+      {editingCustomer ? <MonthlyEditCustomerModal customer={editingCustomer} onClose={() => setEditingCustomer(null)} onSubmit={handleEditCustomer} saving={saving} /> : null}
+      {adjustCustomer ? <MonthlyAdjustmentModal customer={adjustCustomer} onClose={() => setAdjustCustomer(null)} onSubmit={handleAdjustment} saving={saving} /> : null}
+      {paymentCustomer ? <MonthlyPaymentModal customer={paymentCustomer} onClose={() => setPaymentCustomer(null)} onSubmit={handleRegisterPayment} saving={saving} /> : null}
+      {chargeCustomer ? (
+        <MonthlyChargeConfirm customer={chargeCustomer} onClose={() => setChargeCustomer(null)} onConfirm={() => void handleSendCharge(chargeCustomer)} sending={sendingId === chargeCustomer.id} />
+      ) : null}
+      {historyCustomer ? <MonthlyHistoryModal customer={historyCustomer} history={history} onClose={() => { setHistoryCustomer(null); setHistory(null); }} /> : null}
     </section>
   );
+}
+
+function MonthlyMetric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <Card className="border-[#FFD500]/18 bg-black/35">
+      <CardContent className="p-4">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+        <p className="mt-2 text-2xl font-bold text-white">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MonthlyCustomerModal({ bot, onClose, onSubmit, saving }: { bot: MonthlyBillingBot; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <MonthlyModal title={`Cadastrar cliente - ${bot.name}`} onClose={onClose}>
+      <form className="grid gap-3" onSubmit={onSubmit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MonthlyInput label="ID do usuário no Discord" name="discordUserId" required />
+          <MonthlyInput label="Nome do cliente" name="customerName" required />
+          <MonthlyInput label="Valor da mensalidade (R$)" name="monthlyAmount" placeholder="12,00" required />
+          <MonthlyInput label="Plano contratado" name="planName" required />
+          <MonthlyInput defaultValue={today} label="Data de vencimento" name="dueDate" required type="date" />
+          <MonthlyInput defaultValue="8" label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" required type="number" />
+          <MonthlyInput defaultValue={today} label="Início da assinatura" name="subscriptionStartDate" required type="date" />
+          <MonthlyInput defaultValue="0" label="Mensalidades atrasadas iniciais" min="0" name="initialOverdueMonths" type="number" />
+        </div>
+        <MonthlyInput label="Link de pagamento" name="paymentUrl" placeholder="https://nextech.discloud.app/planos" />
+        <MonthlyInput label="Link para comprovante" name="receiptUrl" placeholder="https://nextech.discloud.app/invite/nextech" />
+        <MonthlyInput label="Link de suporte" name="supportUrl" placeholder="https://nextech.discloud.app/invite/nextech" />
+        <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+          Observação
+          <textarea className="min-h-20 rounded-lg border border-zinc-800 bg-black/45 px-3 py-2 text-white outline-none focus:border-[#FFEA70]/60" name="notes" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Cadastrar</Button>
+        </div>
+      </form>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyPaymentModal({ customer, onClose, onSubmit, saving }: { customer: MonthlyBillingCustomer; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+  return (
+    <MonthlyModal title={`Registrar pagamento - ${customer.customerName}`} onClose={onClose}>
+      <form className="grid gap-3" onSubmit={onSubmit}>
+        <div className="rounded-lg border border-[#FFD500]/20 bg-[#FFD500]/10 p-3 text-sm text-zinc-200">
+          Débito atual: <strong>{formatCurrency(customer.totalDueInCents)}</strong> em {customer.overdueMonths} mensalidade(s).
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MonthlyInput defaultValue={(customer.monthlyAmountInCents / 100).toFixed(2).replace(".", ",")} label="Valor pago (R$)" name="amount" required />
+          <MonthlyInput defaultValue="1" label="Mensalidades quitadas" min="1" name="installmentsPaid" required type="number" />
+          <MonthlyInput defaultValue={new Date().toISOString().slice(0, 10)} label="Data do pagamento" name="paidAt" required type="date" />
+          <MonthlyInput label="Forma de pagamento" name="method" placeholder="Pix" required />
+          <MonthlyInput label="Código/Transação" name="transactionCode" />
+          <MonthlyInput label="Anexo ou link do comprovante" name="receiptUrl" />
+        </div>
+        <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+          Observação
+          <textarea className="min-h-20 rounded-lg border border-zinc-800 bg-black/45 px-3 py-2 text-white outline-none focus:border-[#FFEA70]/60" name="notes" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}Registrar</Button>
+        </div>
+      </form>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyEditCustomerModal({ customer, onClose, onSubmit, saving }: { customer: MonthlyBillingCustomer; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+  return (
+    <MonthlyModal title={`Editar cadastro - ${customer.customerName}`} onClose={onClose}>
+      <form className="grid gap-3" onSubmit={onSubmit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MonthlyInput defaultValue={customer.customerName} label="Nome do cliente" name="customerName" required />
+          <MonthlyInput defaultValue={(customer.monthlyAmountInCents / 100).toFixed(2).replace(".", ",")} label="Valor da mensalidade (R$)" name="monthlyAmount" required />
+          <MonthlyInput defaultValue={customer.planName} label="Plano contratado" name="planName" required />
+          <MonthlyInput defaultValue={customer.dueDate.slice(0, 10)} label="Data de vencimento" name="dueDate" required type="date" />
+          <MonthlyInput defaultValue={String(customer.fixedDueDay)} label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" required type="number" />
+          <MonthlyInput defaultValue={customer.subscriptionStartDate.slice(0, 10)} label="Início da assinatura" name="subscriptionStartDate" required type="date" />
+        </div>
+        <MonthlyInput defaultValue={customer.paymentUrl ?? ""} label="Link de pagamento" name="paymentUrl" />
+        <MonthlyInput defaultValue={customer.receiptUrl ?? ""} label="Link para comprovante" name="receiptUrl" />
+        <MonthlyInput defaultValue={customer.supportUrl ?? ""} label="Link de suporte" name="supportUrl" />
+        <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+          Observação
+          <textarea className="min-h-20 rounded-lg border border-zinc-800 bg-black/45 px-3 py-2 text-white outline-none focus:border-[#FFEA70]/60" defaultValue={customer.notes ?? ""} name="notes" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}Salvar</Button>
+        </div>
+      </form>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyAdjustmentModal({ customer, onClose, onSubmit, saving }: { customer: MonthlyBillingCustomer; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+  return (
+    <MonthlyModal title={`Ajuste financeiro - ${customer.customerName}`} onClose={onClose}>
+      <form className="grid gap-3" onSubmit={onSubmit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+            Tipo de ajuste
+            <select className="h-10 rounded-lg border border-zinc-800 bg-black/45 px-3 text-white outline-none focus:border-[#FFEA70]/60" name="type">
+              <option value="manual_debit">Adicionar débito manual</option>
+              <option value="discount">Aplicar desconto</option>
+              <option value="fine">Aplicar multa</option>
+              <option value="interest">Aplicar juros</option>
+            </select>
+          </label>
+          <MonthlyInput label="Valor (R$)" name="amount" placeholder="0,00" required />
+        </div>
+        <MonthlyInput label="Motivo" name="reason" required />
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}Aplicar</Button>
+        </div>
+      </form>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyChargeConfirm({ customer, onClose, onConfirm, sending }: { customer: MonthlyBillingCustomer; onClose: () => void; onConfirm: () => void; sending: boolean }) {
+  return (
+    <MonthlyModal title="Confirmar envio de cobrança" onClose={onClose}>
+      <div className="grid gap-3 text-sm text-zinc-300">
+        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-black/35 p-3">
+          <span>Cliente: <strong className="text-white">{customer.customerName}</strong></span>
+          <span>Bot responsável: <strong className="text-white">{customer.botName}</strong></span>
+          <span>Atrasos: <strong className="text-[#FFEA70]">{customer.overdueMonths}</strong></span>
+          <span>Total: <strong className="text-white">{formatCurrency(customer.totalDueInCents)}</strong></span>
+        </div>
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-800 bg-black/45 p-3 text-xs text-zinc-200">{customer.chargeText}</pre>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={sending} onClick={onConfirm} type="button">{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}Confirmar envio</Button>
+        </div>
+      </div>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyHistoryModal({ customer, history, onClose }: { customer: MonthlyBillingCustomer; history: MonthlyBillingHistory | null; onClose: () => void }) {
+  return (
+    <MonthlyModal title={`Histórico - ${customer.customerName}`} onClose={onClose}>
+      {!history ? <div className="flex items-center gap-2 text-sm text-zinc-400"><Loader2 className="h-4 w-4 animate-spin" />Carregando histórico...</div> : (
+        <div className="grid max-h-[70vh] gap-3 overflow-y-auto pr-1">
+          {history.logs.map((log, index) => (
+            <div className="rounded-lg border border-zinc-800 bg-black/35 p-3 text-sm" key={`${log.createdAt}-${index}`}>
+              <p className="font-semibold text-white">{log.message}</p>
+              <p className="text-xs text-zinc-500">{formatDateOrDash(log.createdAt)} • {log.actorName ?? "Sistema"} • {log.action}</p>
+            </div>
+          ))}
+          {!history.logs.length ? <p className="text-sm text-zinc-500">Nenhum histórico registrado.</p> : null}
+        </div>
+      )}
+    </MonthlyModal>
+  );
+}
+
+function MonthlyModal({ children, onClose, title }: { children: ReactNode; onClose: () => void; title: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <Card className="max-h-[92vh] w-full max-w-3xl overflow-y-auto border-[#FFD500]/25 bg-zinc-950">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>{title}</CardTitle>
+            <Button onClick={onClose} size="sm" type="button" variant="outline">Fechar</Button>
+          </div>
+        </CardHeader>
+        <CardContent>{children}</CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MonthlyInput({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <label className="grid gap-1 text-sm font-semibold text-zinc-300">
+      {label}
+      <input className="h-10 rounded-lg border border-zinc-800 bg-black/45 px-3 text-white outline-none focus:border-[#FFEA70]/60" {...props} />
+    </label>
+  );
+}
+
+function reaisToCents(value: string) {
+  const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
+  return Math.round((Number(normalized) || 0) * 100);
 }
 
 type NexTechInviteForm = {

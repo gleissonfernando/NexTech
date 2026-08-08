@@ -186,9 +186,16 @@ export type TicketPanelOption = {
   description: string | null;
   emoji: string | null;
   enabled: boolean;
+  initialMessage?: string | null;
   label: string;
+  logChannelId?: string | null;
+  maxOpenTicketsPerUser?: number | null;
   mentionRoleId?: string | null;
   moduleType?: "default" | "police";
+  openingHours?: string | null;
+  position?: number;
+  priority?: "low" | "normal" | "high" | "urgent";
+  supportRoleIds?: string[];
   ticketType?: string | null;
   value: string;
 };

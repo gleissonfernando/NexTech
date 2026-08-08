@@ -107,9 +107,16 @@ export type MongoGuildSettings = {
     description?: string | null;
     emoji?: string | null;
     enabled?: boolean;
+    initialMessage?: string | null;
     label: string;
+    logChannelId?: string | null;
+    maxOpenTicketsPerUser?: number | null;
     mentionRoleId?: string | null;
     moduleType?: "default" | "police" | string;
+    openingHours?: string | null;
+    position?: number;
+    priority?: "low" | "normal" | "high" | "urgent" | string;
+    supportRoleIds?: string[];
     ticketType?: string | null;
     value: string;
   }>;
@@ -224,6 +231,7 @@ export type MongoTicket = {
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  isClient?: boolean | null;
   moduleType?: "default" | "police" | string;
   ticketType?: string | null;
   migrationStatus?: "ok" | "pending_review" | string;
@@ -5265,6 +5273,100 @@ export type MongoBotBillingInvoice = {
   userId: string;
 };
 
+export type MongoMonthlyBillingCustomerStatus =
+  | "active"
+  | "payment_review"
+  | "suspended"
+  | "cancelled"
+  | "deleted";
+
+export type MongoMonthlyBillingChargeStatus = "pending" | "sent" | "failed";
+
+export type MongoMonthlyBillingCustomer = {
+  _id: string;
+  tenantId: string;
+  botId: string;
+  discordUserId: string;
+  customerName: string;
+  planName: string;
+  monthlyAmountInCents: number;
+  fixedDueDay: number;
+  firstDueDate: Date;
+  subscriptionStartDate: Date;
+  initialOverdueMonths: number;
+  paidInstallments: number;
+  discountInCents: number;
+  fineInCents: number;
+  interestInCents: number;
+  notes: string | null;
+  supportUrl: string | null;
+  paymentUrl: string | null;
+  receiptUrl: string | null;
+  status: MongoMonthlyBillingCustomerStatus;
+  suspendedAt: Date | null;
+  cancelledAt: Date | null;
+  deletedAt: Date | null;
+  lastChargeAt: Date | null;
+  lastChargeStatus: MongoMonthlyBillingChargeStatus | null;
+  lastChargeError: string | null;
+  lastPaymentAt: Date | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoMonthlyBillingPayment = {
+  _id: string;
+  tenantId: string;
+  botId: string;
+  customerId: string;
+  discordUserId: string;
+  amountInCents: number;
+  installmentsPaid: number;
+  paidAt: Date;
+  method: string;
+  transactionCode: string | null;
+  receiptUrl: string | null;
+  notes: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: Date;
+};
+
+export type MongoMonthlyBillingCharge = {
+  _id: string;
+  tenantId: string;
+  botId: string;
+  customerId: string;
+  discordUserId: string;
+  notificationType: string;
+  overdueMonths: number;
+  totalDueInCents: number;
+  oldestDueDate: Date | null;
+  status: MongoMonthlyBillingChargeStatus;
+  error: string | null;
+  sentAt: Date | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoMonthlyBillingLog = {
+  _id: string;
+  tenantId: string;
+  botId: string;
+  customerId: string | null;
+  discordUserId: string | null;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  message: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+};
+
 export type MongoBotGuildModuleConfig = {
   enabled?: boolean;
   channelId?: string | null;
@@ -6130,6 +6232,10 @@ export async function getMongoCollections() {
     invoiceNotifications: db.collection<MongoInvoiceNotification>("invoice_notifications"),
     contractAuditLogs: db.collection<MongoContractAuditLog>("contract_audit_logs"),
     botBillingInvoices: db.collection<MongoBotBillingInvoice>("bot_billing_invoices"),
+    monthlyBillingCustomers: db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers"),
+    monthlyBillingPayments: db.collection<MongoMonthlyBillingPayment>("monthly_billing_payments"),
+    monthlyBillingCharges: db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges"),
+    monthlyBillingLogs: db.collection<MongoMonthlyBillingLog>("monthly_billing_logs"),
     devBots: db.collection<MongoDevBot>("Bot"),
     botGuildConfigs: db.collection<MongoBotGuildConfig>("BotGuildConfig"),
     antiBanConfigs: db.collection<MongoAntiBanConfig>("anti_ban_configs"),
@@ -6628,6 +6734,13 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ userId: 1, status: 1, dueDate: 1 }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ paymentProvider: 1, providerPaymentId: 1 }, { sparse: true }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ status: 1, dueDate: 1 }),
+    db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ tenantId: 1, botId: 1, discordUserId: 1, deletedAt: 1 }),
+    db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ botId: 1, status: 1, fixedDueDay: 1 }),
+    db.collection<MongoMonthlyBillingPayment>("monthly_billing_payments").createIndex({ tenantId: 1, customerId: 1, paidAt: -1 }),
+    db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges").createIndex({ tenantId: 1, customerId: 1, createdAt: -1 }),
+    db.collection<MongoMonthlyBillingCharge>("monthly_billing_charges").createIndex({ status: 1, createdAt: -1 }),
+    db.collection<MongoMonthlyBillingLog>("monthly_billing_logs").createIndex({ tenantId: 1, customerId: 1, createdAt: -1 }),
+    db.collection<MongoMonthlyBillingLog>("monthly_billing_logs").createIndex({ tenantId: 1, botId: 1, createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ actorId: 1, createdAt: -1 }),
     db.collection<MongoPlanAuditLog>("plan_audit_logs").createIndex({ targetType: 1, targetId: 1, createdAt: -1 })

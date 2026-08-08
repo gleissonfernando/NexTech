@@ -290,6 +290,11 @@ export type PaymentApprovedEvent = {
 };
 
 export type ContractBillingDmEvent = {
+  actionLinks?: {
+    paymentUrl?: string | null;
+    receiptUrl?: string | null;
+    supportUrl?: string | null;
+  };
   botId?: string | null;
   contractId: string | null;
   dashboardUrl: string;

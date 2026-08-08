@@ -414,9 +414,16 @@ export type TicketPanelOption = {
   description: string | null;
   emoji: string | null;
   enabled: boolean;
+  initialMessage?: string | null;
   label: string;
+  logChannelId?: string | null;
+  maxOpenTicketsPerUser?: number | null;
   mentionRoleId: string | null;
   moduleType?: "default" | "police";
+  openingHours?: string | null;
+  position?: number;
+  priority?: "low" | "normal" | "high" | "urgent";
+  supportRoleIds?: string[];
   ticketType?: string | null;
   value: string;
 };
@@ -4991,6 +4998,77 @@ export type DevMonthlyContract = {
   serverId: string | null;
   serverName: string | null;
   status: string;
+};
+
+export type MonthlyBillingCustomer = {
+  id: string;
+  tenantId: string;
+  botId: string;
+  botName: string;
+  botAvatarUrl: string | null;
+  projectName: string | null;
+  discordUserId: string;
+  discordAvatarUrl: string | null;
+  discordUsername: string | null;
+  customerName: string;
+  planName: string;
+  monthlyAmountInCents: number;
+  dueDate: string;
+  fixedDueDay: number;
+  subscriptionStartDate: string;
+  lastPaymentAt: string | null;
+  nextDueDate: string;
+  oldestDueDate: string | null;
+  overdueMonths: number;
+  totalDueInCents: number;
+  status: "Em dia" | "Vence hoje" | "Próximo do vencimento" | "Atrasado" | "Cobrança enviada" | "Pagamento em análise" | "Suspenso" | "Cancelado";
+  rawStatus: string;
+  lastChargeAt: string | null;
+  lastChargeStatus: "pending" | "sent" | "failed" | null;
+  lastChargeError: string | null;
+  notes: string | null;
+  supportUrl: string | null;
+  paymentUrl: string | null;
+  receiptUrl: string | null;
+  chargeText: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MonthlyBillingBot = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  projectName: string | null;
+  clientId: string;
+  status: "online" | "offline" | "maintenance";
+  customerCount: number;
+  overdueMonths: number;
+  paidCustomers: number;
+  totalPendingInCents: number;
+  nextDueDate: string | null;
+  customers: MonthlyBillingCustomer[];
+};
+
+export type MonthlyBillingDashboard = {
+  bots: MonthlyBillingBot[];
+  summary: {
+    totalCustomers: number;
+    paidCustomers: number;
+    overdueCustomers: number;
+    overdueMonths: number;
+    totalReceivableInCents: number;
+    chargesSentThisMonth: number;
+    dmFailuresThisMonth: number;
+    suspendedServices: number;
+    paymentsReceivedThisMonthInCents: number;
+  };
+};
+
+export type MonthlyBillingHistory = {
+  charges: Array<Record<string, unknown>>;
+  logs: Array<{ action: string; actorName: string | null; createdAt: string; message: string; metadata: Record<string, unknown> }>;
+  payments: Array<Record<string, unknown>>;
 };
 
 export type NexTechInviteStatus = "active" | "paused" | "expired" | "cancelled";

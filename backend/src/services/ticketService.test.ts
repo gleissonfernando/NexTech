@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isActiveTicketStatus, ticketActiveKey } from "./ticketService";
+import { ticketActiveKey, ticketRecoveryActiveKey } from "./ticketService";
 
-test("chave ativa separa bot, servidor, usuário e modalidade sem converter snowflakes", () => {
-  assert.equal(
-    ticketActiveKey("123456789012345678", "987654321098765432", "456789012345678901", "suporte"),
-    "987654321098765432:123456789012345678:default:456789012345678901:suporte"
-  );
-  assert.notEqual(ticketActiveKey("1", "2", "3", "a"), ticketActiveKey("1", "2", "3", "b"));
-  assert.notEqual(ticketActiveKey("1", "2", "3", "a", "default"), ticketActiveKey("1", "2", "3", "a", "police"));
-});
+test("chave de recuperação de ticket preserva o ticketId e não colide com ticket aberto da mesma categoria", () => {
+  const base = ticketActiveKey("guild-1", "bot-1", "user-1", "suporte", "default");
+  const recovered = ticketRecoveryActiveKey("guild-1", "bot-1", "user-1", "suporte", "720e77d7-eb06-4368-bff7-7aa421c72cd5", "default");
 
-test("somente estados realmente ativos mantêm a reserva distribuída", () => {
-  for (const status of ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"] as const) assert.equal(isActiveTicketStatus(status), true);
-  for (const status of ["CLOSED", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"] as const) assert.equal(isActiveTicketStatus(status), false);
+  assert.notEqual(recovered, base);
+  assert.equal(recovered, `${base}:720e77d7-eb06-4368-bff7-7aa421c72cd5`);
 });

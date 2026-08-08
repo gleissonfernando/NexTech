@@ -85,9 +85,13 @@ function renderContractDm(payload: ContractBillingDmEvent) {
     components.push({ type: 12, items: [{ media: { url: invoice.pixQrCode }, description: "QR Code PIX" }] });
   }
   components.push({ type: 10, content });
+  const paymentUrl = payload.actionLinks?.paymentUrl || payload.dashboardUrl;
+  const receiptUrl = payload.actionLinks?.receiptUrl || payload.dashboardUrl;
+  const supportUrl = payload.actionLinks?.supportUrl || payload.dashboardUrl;
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setLabel("Abrir dashboard").setStyle(ButtonStyle.Link).setURL(absoluteDashboardUrl(payload.dashboardUrl)),
-    new ButtonBuilder().setLabel("Verificar pagamento").setStyle(ButtonStyle.Link).setURL(absoluteDashboardUrl(payload.dashboardUrl))
+    new ButtonBuilder().setLabel("Realizar pagamento").setStyle(ButtonStyle.Link).setURL(absoluteDashboardUrl(paymentUrl)),
+    new ButtonBuilder().setLabel("Enviar comprovante").setStyle(ButtonStyle.Link).setURL(absoluteDashboardUrl(receiptUrl)),
+    new ButtonBuilder().setLabel("Abrir suporte").setStyle(ButtonStyle.Link).setURL(absoluteDashboardUrl(supportUrl))
   ));
 
   return {

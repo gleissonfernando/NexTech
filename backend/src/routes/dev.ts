@@ -86,6 +86,17 @@ import {
   listDeveloperMonthlyContracts
 } from "../services/contractBillingService";
 import {
+  applyMonthlyBillingAdjustment,
+  createMonthlyBillingCustomer,
+  getMonthlyBillingCustomerHistory,
+  listMonthlyBillingDashboard,
+  registerMonthlyBillingPayment,
+  sendMonthlyBillingBulkCharges,
+  sendMonthlyBillingCharge,
+  setMonthlyBillingCustomerStatus,
+  updateMonthlyBillingCustomer
+} from "../services/monthlyBillingService";
+import {
   deleteNexTechPaymentProvider,
   deleteNexTechProduct,
   deleteScopedNexTechSalesPlan,
@@ -191,6 +202,48 @@ const botBillingRecipientsSchema = z.object({
 });
 const resendInvoiceDmSchema = z.object({
   notificationType: z.enum(["invoice_created", "due_reminder", "due_today", "overdue", "payment_confirmed", "contract_activated", "upgrade_confirmed", "qr_expired", "payment_failed"]).default("invoice_created")
+});
+
+const monthlyCustomerSchema = z.object({
+  discordUserId: z.string().regex(/^\d{5,32}$/),
+  customerName: z.string().min(2).max(100),
+  monthlyAmountInCents: z.coerce.number().int().min(0).max(100000000),
+  dueDate: z.coerce.date(),
+  fixedDueDay: z.coerce.number().int().min(1).max(28),
+  subscriptionStartDate: z.coerce.date(),
+  planName: z.string().min(1).max(120),
+  notes: z.string().max(1000).nullable().optional().or(z.literal("")),
+  initialOverdueMonths: z.coerce.number().int().min(0).max(60).default(0),
+  supportUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  paymentUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  receiptUrl: z.string().url().max(2048).nullable().optional().or(z.literal(""))
+});
+
+const monthlyPaymentSchema = z.object({
+  amountInCents: z.coerce.number().int().min(0).max(100000000),
+  installmentsPaid: z.coerce.number().int().min(1).max(60),
+  paidAt: z.coerce.date(),
+  method: z.string().min(1).max(80),
+  transactionCode: z.string().max(160).nullable().optional().or(z.literal("")),
+  receiptUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
+  notes: z.string().max(1000).nullable().optional().or(z.literal(""))
+});
+
+const monthlyCustomerPatchSchema = monthlyCustomerSchema.partial();
+
+const monthlyAdjustmentSchema = z.object({
+  type: z.enum(["manual_debit", "discount", "fine", "interest"]),
+  amountInCents: z.coerce.number().int().min(0).max(100000000),
+  reason: z.string().min(3).max(500)
+});
+
+const monthlyStatusSchema = z.object({
+  action: z.enum(["suspend", "reactivate", "cancel", "delete"]),
+  reason: z.string().max(500).nullable().optional().or(z.literal(""))
+});
+
+const monthlyBulkChargeSchema = z.object({
+  customerIds: z.array(z.string().min(1).max(120)).min(1).max(500)
 });
 
 const registerPrimaryBotSchema = z.object({
@@ -439,6 +492,94 @@ devRouter.get("/modules", (_req, res) => {
 devRouter.get("/monthly-contracts", async (_req, res, next) => {
   try {
     return res.json(await listDeveloperMonthlyContracts());
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/monthly-billing", async (_req, res, next) => {
+  try {
+    return res.json(await listMonthlyBillingDashboard());
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/bots/:botId/customers", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    if (!(await canManageDevBot(auth.user, req.params.botId))) {
+      return res.status(403).json({ message: "Você não tem permissão para cadastrar clientes neste bot." });
+    }
+    const input = monthlyCustomerSchema.parse(req.body ?? {});
+    return res.status(201).json(await createMonthlyBillingCustomer(req.params.botId, input, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.patch("/monthly-billing/customers/:customerId", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyCustomerPatchSchema.parse(req.body ?? {});
+    return res.json(await updateMonthlyBillingCustomer(req.params.customerId, input, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/customers/:customerId/send-charge", async (_req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    return res.json(await sendMonthlyBillingCharge(_req.params.customerId, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/customers/:customerId/adjustments", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyAdjustmentSchema.parse(req.body ?? {});
+    return res.json(await applyMonthlyBillingAdjustment(req.params.customerId, input, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/customers/:customerId/status", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyStatusSchema.parse(req.body ?? {});
+    return res.json(await setMonthlyBillingCustomerStatus(req.params.customerId, input.action, auth.user, input.reason));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/send-bulk-charges", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyBulkChargeSchema.parse(req.body ?? {});
+    return res.json(await sendMonthlyBillingBulkCharges(input.customerIds, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/monthly-billing/customers/:customerId/payments", async (req, res, next) => {
+  try {
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const input = monthlyPaymentSchema.parse(req.body ?? {});
+    return res.json(await registerMonthlyBillingPayment(req.params.customerId, input, auth.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.get("/monthly-billing/customers/:customerId/history", async (req, res, next) => {
+  try {
+    return res.json(await getMonthlyBillingCustomerHistory(req.params.customerId));
   } catch (error) {
     return next(error);
   }

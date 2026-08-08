@@ -12,6 +12,7 @@ import type {
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
+import { updateMonthlyBillingChargeResult } from "./monthlyBillingService";
 import type { PlanActor } from "./planService";
 
 const DEFAULT_DASHBOARD_URL = "/dashboard";
@@ -22,6 +23,11 @@ export type ContractDmPayload = {
   botId?: string | null;
   contractId: string | null;
   dashboardUrl: string;
+  actionLinks?: {
+    paymentUrl?: string | null;
+    receiptUrl?: string | null;
+    supportUrl?: string | null;
+  };
   event: "invoice_created" | "due_reminder" | "due_today" | "overdue" | "payment_confirmed" | "contract_activated" | "upgrade_confirmed" | "qr_expired" | "payment_failed";
   invoice: {
     amountInCents: number;
@@ -318,6 +324,9 @@ export async function recordContractDmResult(input: ContractDmAck) {
       },
       { returnDocument: "after" }
     );
+    if (!invoice && await updateMonthlyBillingChargeResult(invoiceId, input.ok, input.error ?? null)) {
+      return;
+    }
     await invoiceNotifications.updateOne(
       {
         channel: "dm",

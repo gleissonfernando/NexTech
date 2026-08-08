@@ -15,6 +15,7 @@ import {
   TextInputStyle,
   type ChatInputCommandInteraction,
   type Guild,
+  type GuildMember,
   type Interaction,
   type InteractionEditReplyOptions,
   type InteractionReplyOptions,
@@ -45,7 +46,10 @@ const OPEN_BUTTON_ID = "ticket_open_button";
 const OPEN_CATEGORY_PREFIX = "ticket_open_category:";
 const OPEN_CLIENT_PREFIX = "ticket_open_client:";
 const OPEN_CONTINUE_PREFIX = "ticket_open_continue:";
+const OPEN_CANCEL_PREFIX = "ticket_open_cancel:";
 const TICKET_MEMBER_MODAL_PREFIX = "ticket_member:";
+const TICKET_RENAME_MODAL_PREFIX = "ticket_rename:";
+const TICKET_CATEGORY_CHANGE_PREFIX = "ticket_category_change:";
 let ticketPanelServiceStarted = false;
 const panelPublicationLocks = new Map<string, Promise<string | null>>();
 const openTicketSessions = new Map<string, { botId: string | null; clientStatus: "yes" | "no" | null; createdAt: number; guildId: string; optionValue: string | null; userId: string }>();
@@ -189,6 +193,11 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(OPEN_CANCEL_PREFIX)) {
+    await handleTicketOpenCancel(interaction);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(TICKET_ACTION_PREFIX)) {
     await handleTicketAction(interaction, context);
     return true;
@@ -204,6 +213,11 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return true;
   }
 
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(TICKET_CATEGORY_CHANGE_PREFIX)) {
+    await handleTicketCategoryChange(interaction, context);
+    return true;
+  }
+
   if (interaction.isModalSubmit() && interaction.customId.startsWith(CLOSE_MODAL_PREFIX)) {
     await handleTicketCloseModal(interaction, context);
     return true;
@@ -216,6 +230,11 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_MEMBER_MODAL_PREFIX)) {
     await handleTicketMemberModal(interaction, context);
+    return true;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_RENAME_MODAL_PREFIX)) {
+    await handleTicketRenameModal(interaction, context);
     return true;
   }
 
@@ -319,6 +338,20 @@ async function handleTicketOpenContinue(interaction: ButtonInteraction, context:
   await interaction.showModal(createOpenTicketModal(token));
 }
 
+async function handleTicketOpenCancel(interaction: ButtonInteraction) {
+  const token = interaction.customId.slice(OPEN_CANCEL_PREFIX.length);
+  const session = getOpenTicketSession(token);
+  if (session && isOpenTicketSessionForInteraction(session, interaction)) {
+    openTicketSessions.delete(token);
+  }
+  await interaction.update({
+    components: [],
+    content: "Abertura de ticket cancelada."
+  }).catch(async () => {
+    await interaction.reply({ content: "Abertura de ticket cancelada.", flags: MessageFlags.Ephemeral }).catch(() => null);
+  });
+}
+
 async function handleTicketOpenModal(interaction: ModalSubmitInteraction, context: BotContext) {
   if (!interaction.guild) return;
 
@@ -330,10 +363,9 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   }
 
   const subject = normalizeTicketSubject(interaction.fields.getTextInputValue("subject"));
-  const details = interaction.fields.getTextInputValue("details")?.trim() || null;
   const clientLabel = session.clientStatus === "yes" ? "Sim" : "Não";
   if (!subject) {
-    await interaction.reply({ content: "Informe um assunto com pelo menos 10 caracteres.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: "O assunto do ticket precisa conter pelo menos três palavras. Descreva resumidamente o motivo do atendimento.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -356,7 +388,7 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
     return;
   }
 
-  const creation = createTicketForInteraction(interaction, context, settings, option, subject, details, clientLabel)
+  const creation = createTicketForInteraction(interaction, context, settings, option, subject, clientLabel)
     .finally(() => {
       if (ticketCreationLocks.get(lockKey) === creation) {
         ticketCreationLocks.delete(lockKey);
@@ -371,7 +403,7 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
 export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, rawSubject: string) {
   if (!interaction.guild) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const subject = normalizeTicketSubject(rawSubject.padEnd(10, " ")) ?? "Atendimento geral";
+  const subject = normalizeTicketSubject(rawSubject) ?? "Atendimento geral Nextech";
   const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
     logTicketTechnical("settings_load_failed", interaction, { error });
     return null;
@@ -387,7 +419,7 @@ export async function openTicketFromCommand(interaction: ChatInputCommandInterac
     await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
     return;
   }
-  const creation = createTicketForInteraction(interaction, context, settings, option, subject, null, "Não informado")
+  const creation = createTicketForInteraction(interaction, context, settings, option, subject, "Não informado")
     .finally(() => {
       if (ticketCreationLocks.get(lockKey) === creation) ticketCreationLocks.delete(lockKey);
     });
@@ -401,7 +433,6 @@ async function createTicketForInteraction(
   settings: GuildSettings,
   option: TicketPanelOption,
   subject: string,
-  details: string | null,
   clientLabel: string
 ) {
   const guild = interaction.guild;
@@ -418,76 +449,81 @@ async function createTicketForInteraction(
     return;
   }
 
+  let prerequisiteInfo: Awaited<ReturnType<typeof validateTicketChannelPrerequisites>>;
   try {
-    await validateTicketChannelPrerequisites(guild, settings, option);
+    prerequisiteInfo = await validateTicketChannelPrerequisites(guild, settings, option);
   } catch (error) {
     logTicketTechnical("prerequisite_check_failed", interaction, { error });
     await interaction.editReply(ticketUserFacingError(error));
     return;
   }
 
-  const categoryId = option.categoryId ?? settings.ticketCategoryId;
-  const orphanChannel = guild.channels.cache.find((channel): channel is TextChannel => {
-    if (channel.type !== ChannelType.GuildText || channel.parentId !== categoryId) return false;
-    const metadata = parseTicketChannelTopic(channel.topic);
-    return metadata?.openerId === interaction.user.id
-      && metadata.categoryId === option.value
-      && metadata.moduleType === moduleType
-      && (!metadata.botId || metadata.botId === interaction.client.user?.id);
-  }) ?? null;
-  if (orphanChannel) {
-    const recovered = await recoverTicketRecord(orphanChannel, context);
-    if (recovered?.channelId === orphanChannel.id && ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(recovered.status)) {
-      logTicketTechnical("orphan_channel_recovered", interaction, { channelId: orphanChannel.id, ticketId: recovered.id });
-      await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${orphanChannel.id}>`);
-      return;
-    }
-  }
-
-  const databaseStartedAt = performance.now();
-  const existing = await context.api.getOpenTicket({
-    categoryId: option.value,
-    guildId: guild.id,
-    moduleType,
-    openerId: interaction.user.id
-  }).catch((error) => {
-    logTicketTechnical("duplicate_check_failed", interaction, { categoryId: option.value, error });
-    throw error;
-  });
-  logTicketTechnical("duplicate_check_completed", interaction, { databaseMs: elapsed(databaseStartedAt), existingTicketId: existing?.id ?? null });
-
-  if (existing) {
-    const existingChannel = existing.channelId
-      ? await guild.channels.fetch(existing.channelId).catch(() => null)
-      : null;
-
-    if (existingChannel) {
-      await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${existing.channelId}>`);
-      return;
+  if ((option.maxOpenTicketsPerUser ?? 1) <= 1) {
+    const categoryId = option.categoryId ?? settings.ticketCategoryId;
+    const orphanChannel = guild.channels.cache.find((channel): channel is TextChannel => {
+      if (channel.type !== ChannelType.GuildText || channel.parentId !== categoryId) return false;
+      const metadata = parseTicketChannelTopic(channel.topic);
+      return metadata?.openerId === interaction.user.id
+        && metadata.categoryId === option.value
+        && metadata.moduleType === moduleType
+        && (!metadata.botId || metadata.botId === interaction.client.user?.id);
+    }) ?? null;
+    if (orphanChannel) {
+      const recovered = await recoverTicketRecord(orphanChannel, context);
+      if (recovered?.channelId === orphanChannel.id && ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(recovered.status)) {
+        logTicketTechnical("orphan_channel_recovered", interaction, { channelId: orphanChannel.id, ticketId: recovered.id });
+        await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${orphanChannel.id}>`);
+        return;
+      }
     }
 
-    if (existing.status === "PENDING" && isPendingTicketLeaseActive(existing.createdAt)) {
-      await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
-      return;
-    }
-
-    const invalidated = await context.api.updateTicketStatus(existing.id, {
-      isIncomplete: true,
-      status: "INCOMPLETE"
+    const databaseStartedAt = performance.now();
+    const existing = await context.api.getOpenTicket({
+      categoryId: option.value,
+      guildId: guild.id,
+      moduleType,
+      openerId: interaction.user.id
+    }).catch((error) => {
+      logTicketTechnical("duplicate_check_failed", interaction, { categoryId: option.value, error });
+      throw error;
     });
-    if (!invalidated) throw new Error(`Ticket inconsistente ${existing.id} não pôde ser invalidado.`);
-    logTicketTechnical("stale_ticket_invalidated", interaction, { staleTicketId: existing.id });
+    logTicketTechnical("duplicate_check_completed", interaction, { databaseMs: elapsed(databaseStartedAt), existingTicketId: existing?.id ?? null });
+
+    if (existing) {
+      const existingChannel = existing.channelId
+        ? await guild.channels.fetch(existing.channelId).catch(() => null)
+        : null;
+
+      if (existingChannel) {
+        await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${existing.channelId}>`);
+        return;
+      }
+
+      if (existing.status === "PENDING" && isPendingTicketLeaseActive(existing.createdAt)) {
+        await interaction.editReply("Já existe uma solicitação de ticket em andamento para esta categoria. Aguarde alguns segundos.");
+        return;
+      }
+
+      const invalidated = await context.api.updateTicketStatus(existing.id, {
+        isIncomplete: true,
+        status: "INCOMPLETE"
+      });
+      if (!invalidated) throw new Error(`Ticket inconsistente ${existing.id} não pôde ser invalidado.`);
+      logTicketTechnical("stale_ticket_invalidated", interaction, { staleTicketId: existing.id });
+    }
   }
 
   const ticket = await context.api.createTicket({
+    allowedRoleIds: prerequisiteInfo.staffRoleIds,
     channelId: null,
     categoryId: option.value,
     categoryName: option.label,
     guildId: guild.id,
+    isClient: clientLabel === "Sim" ? true : clientLabel === "Não" ? false : null,
     moduleType,
     openerId: interaction.user.id,
     panelId: option.value,
-    responsibleRoleId: option.mentionRoleId ?? null,
+    responsibleRoleId: prerequisiteInfo.staffRoleIds[0] ?? null,
     status: "PENDING",
     subject,
     ticketType
@@ -509,7 +545,7 @@ async function createTicketForInteraction(
   let channel: TextChannel | null = null;
   try {
     const channelStartedAt = performance.now();
-    channel = await createTicketChannel(guild, settings, interaction.user.id, option, subject, ticket.ticket.id);
+    channel = await createTicketChannel(guild, settings, opener, option, subject, ticket.ticket.id);
     logTicketTechnical("channel_created", interaction, { channelId: channel.id, channelMs: elapsed(channelStartedAt), ticketId: ticket.ticket.id });
     const linked = await context.api.updateTicketChannel(ticket.ticket.id, channel.id);
     if (!linked?.channelId) throw new Error("A API não confirmou o vínculo entre ticket e canal.");
@@ -540,7 +576,19 @@ async function createTicketForInteraction(
   }
 
   try {
-    await channel.send(createOpenTicketPayload(ticket.ticket.id, option.label, interaction.user.id, null, "Aguardando atendimento", option.mentionRoleId ?? null, subject, details, guild, clientLabel));
+    await channel.send(createOpenTicketPayload({
+      category: option.label,
+      clientLabel,
+      guild,
+      initialMessage: option.initialMessage ?? null,
+      mentionRoleId: prerequisiteInfo.staffRoleIds[0] ?? null,
+      openerId: interaction.user.id,
+      priority: option.priority ?? "normal",
+      responsibleUserId: null,
+      status: "Aguardando atendimento",
+      subject,
+      ticketId: ticket.ticket.id
+    }));
     const opened = await context.api.updateTicketStatus(ticket.ticket.id, { status: "OPEN" });
     if (!opened) throw new Error("A API não confirmou a ativação do ticket.");
   } catch (error) {
@@ -560,14 +608,13 @@ async function createTicketForInteraction(
       categoryName: option.label,
       channelId: channel.id,
       client: clientLabel,
-      details,
       moduleType,
       panelId: option.value,
       subject
     }
   }).catch(() => null);
 
-  await sendTicketOpeningLog(guild, settings, interaction.user.id, option, channel.id, ticket.ticket.id, subject).catch((error) => {
+  await sendTicketOpeningLog(guild, settings, interaction.user.id, option, channel.id, ticket.ticket.id, subject, clientLabel).catch((error) => {
     logTicketTechnical("opening_log_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
   });
 
@@ -620,6 +667,16 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     return;
   }
 
+  if (action === "rename") {
+    await interaction.showModal(createTicketRenameModal(ticketId, interaction.guildId, interaction.client.user?.id ?? null));
+    return;
+  }
+
+  if (action === "category") {
+    await handleTicketCategoryButton(interaction, context, ticketId);
+    return;
+  }
+
   if (action !== "claim") {
     await interaction.reply({ content: "Ação ainda não configurada para este painel.", flags: MessageFlags.Ephemeral });
     return;
@@ -652,17 +709,17 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     eventType: "ticket.claimed",
     guildId: interaction.guildId!
   }).catch(() => null);
-  await interaction.message.edit(createOpenTicketPayload(
-    ticketId,
-    updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
-    updatedTicket?.openerId ?? ticket.openerId,
-    interaction.user.id,
-    "Em análise",
-    updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
-    updatedTicket?.subject ?? ticket.subject,
-    null,
-    interaction.guild
-  )).catch(() => null);
+  await interaction.message.edit(createOpenTicketPayload({
+    category: updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
+    clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
+    guild: interaction.guild,
+    mentionRoleId: updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
+    openerId: updatedTicket?.openerId ?? ticket.openerId,
+    responsibleUserId: interaction.user.id,
+    status: "Em análise",
+    subject: updatedTicket?.subject ?? ticket.subject,
+    ticketId
+  })).catch(() => null);
 }
 
 async function handleTicketStatus(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -695,17 +752,17 @@ async function handleTicketStatus(interaction: StringSelectMenuInteraction, cont
     eventType: "ticket.status_changed",
     guildId: interaction.guildId!
   }).catch(() => null);
-  await interaction.message.edit(createOpenTicketPayload(
-    ticketId,
-    updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
-    updatedTicket?.openerId ?? ticket.openerId,
-    updatedTicket?.responsibleUserId ?? ticket.responsibleUserId ?? null,
-    label,
-    updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
-    updatedTicket?.subject ?? ticket.subject,
-    null,
-    interaction.guild
-  ));
+  await interaction.message.edit(createOpenTicketPayload({
+    category: updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
+    clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
+    guild: interaction.guild,
+    mentionRoleId: updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
+    openerId: updatedTicket?.openerId ?? ticket.openerId,
+    responsibleUserId: updatedTicket?.responsibleUserId ?? ticket.responsibleUserId ?? null,
+    status: label,
+    subject: updatedTicket?.subject ?? ticket.subject,
+    ticketId
+  }));
 }
 
 async function handleTicketMemberModal(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -796,6 +853,172 @@ function createTicketMemberModal(action: "add" | "remove" | "transfer", ticketId
         .setMinLength(5)
         .setMaxLength(32)
     ));
+}
+
+function createTicketRenameModal(ticketId: string, guildId: string | null, botId: string | null) {
+  return new ModalBuilder()
+    .setCustomId(scopedComponentId(TICKET_RENAME_MODAL_PREFIX, "rename", guildId, botId, ticketId))
+    .setTitle("Renomear Ticket")
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("subject")
+        .setLabel("Novo assunto do ticket")
+        .setPlaceholder("Informe o novo assunto com pelo menos três palavras")
+        .setRequired(true)
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(3)
+        .setMaxLength(100)
+    ));
+}
+
+async function handleTicketRenameModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  const parsed = parseScopedComponentId(interaction.customId, TICKET_RENAME_MODAL_PREFIX, "rename");
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+    await interaction.editReply("Ticket inválido.");
+    return;
+  }
+  const ticket = await getTicketOrRecover(interaction, context, parsed.targetId);
+  if (!ticket || !interaction.guild || interaction.channel?.type !== ChannelType.GuildText) {
+    await interaction.editReply("Não consegui localizar o canal ou o registro deste ticket.");
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.editReply("Você não possui permissão da equipe para renomear este ticket.");
+    return;
+  }
+  const subject = normalizeTicketSubject(interaction.fields.getTextInputValue("subject"));
+  if (!subject) {
+    await interaction.editReply("O assunto do ticket precisa conter pelo menos três palavras. Descreva resumidamente o motivo do atendimento.");
+    return;
+  }
+
+  const oldSubject = ticket.subject;
+  const updated = await context.api.updateTicketStatus(ticket.id, { subject });
+  const categorySlug = slugTicketChannelName(ticket.ticketType ?? ticket.categoryId ?? ticket.categoryName ?? "ticket");
+  const opener = await interaction.guild.members.fetch(ticket.openerId).catch(() => null);
+  const userSlug = slugTicketChannelName(opener?.displayName || opener?.user.username || ticket.openerId).slice(0, 32);
+  await interaction.channel.setName(`${categorySlug}-${userSlug}-${ticket.openerId.slice(-4)}`.slice(0, 96), `Ticket ${ticket.id} renomeado por ${interaction.user.id}`).catch(() => null);
+  await editTicketPanelMessage(interaction.channel, ticket.id, createOpenTicketPayload({
+    category: updated?.categoryName ?? ticket.categoryName ?? "Atendimento",
+    clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
+    guild: interaction.guild,
+    mentionRoleId: updated?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
+    openerId: ticket.openerId,
+    responsibleUserId: updated?.responsibleUserId ?? ticket.responsibleUserId ?? null,
+    status: STATUS_OPTIONS.find((item) => item.value === (updated?.status ?? ticket.status))?.label ?? updated?.status ?? ticket.status,
+    subject,
+    ticketId: ticket.id
+  }));
+  await context.api.recordTicketEvent(ticket.id, {
+    authorId: interaction.user.id,
+    content: `Ticket renomeado de "${oldSubject}" para "${subject}".`,
+    eventType: "ticket.renamed",
+    guildId: interaction.guild.id,
+    metadata: { newSubject: subject, oldSubject }
+  }).catch(() => null);
+  await interaction.editReply("Ticket renomeado.");
+}
+
+async function handleTicketCategoryButton(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
+  if (!ticket || !interaction.guild) {
+    await interaction.editReply("Ticket não encontrado.");
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.editReply("Você não possui permissão da equipe para alterar a categoria deste ticket.");
+    return;
+  }
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const options = activeTicketOptions(settings).filter((option) => option.value !== ticket.categoryId);
+  if (!settings?.ticketEnabled || !options.length) {
+    await interaction.editReply("Não existem outras categorias ativas para este ticket.");
+    return;
+  }
+  await interaction.editReply({
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(scopedComponentId(TICKET_CATEGORY_CHANGE_PREFIX, "category", interaction.guildId, interaction.client.user?.id ?? null, ticketId))
+          .setPlaceholder("Selecione a nova categoria do ticket")
+          .addOptions(options.map(toSelectOption))
+      )
+    ],
+    content: "Selecione a nova categoria."
+  } as InteractionEditReplyOptions);
+}
+
+async function handleTicketCategoryChange(interaction: StringSelectMenuInteraction, context: BotContext) {
+  const parsed = parseScopedComponentId(interaction.customId, TICKET_CATEGORY_CHANGE_PREFIX, "category");
+  await interaction.deferUpdate();
+  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+    await interaction.followUp({ content: "Ticket inválido.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const ticket = await getTicketOrRecover(interaction, context, parsed.targetId);
+  if (!ticket || !interaction.guild || interaction.channel?.type !== ChannelType.GuildText) {
+    await interaction.followUp({ content: "Não consegui localizar o canal ou o registro deste ticket.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.followUp({ content: "Você não possui permissão da equipe para alterar a categoria deste ticket.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const option = settings?.ticketPanelOptions.find((item) => item.enabled && item.value === interaction.values[0]);
+  if (!settings?.ticketEnabled || !option) {
+    await interaction.followUp({ content: "Categoria indisponível.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const prerequisites = await validateTicketChannelPrerequisites(interaction.guild, settings, option).catch((error) => {
+    void interaction.followUp({ content: ticketUserFacingError(error), flags: MessageFlags.Ephemeral });
+    return null;
+  });
+  if (!prerequisites) return;
+
+  const oldCategory = ticket.categoryName ?? ticket.categoryId ?? "Atendimento";
+  await interaction.channel.setParent(prerequisites.categoryId, { lockPermissions: false, reason: `Ticket ${ticket.id} alterado para ${option.label} por ${interaction.user.id}` });
+  await applyTicketCategoryPermissions(interaction.channel, interaction.guild, ticket.openerId, settings, option, prerequisites.staffRoleIds);
+  const updated = await context.api.updateTicketStatus(ticket.id, {
+    categoryId: option.value,
+    categoryName: option.label,
+    panelId: option.value,
+    responsibleRoleId: prerequisites.staffRoleIds[0] ?? null,
+    ticketType: resolveTicketType(option, resolveTicketModuleType(option))
+  });
+  await interaction.channel.setTopic(createTicketChannelTopic({
+    botId: interaction.client.user?.id ?? null,
+    categoryId: option.value,
+    guildId: interaction.guild.id,
+    moduleType: resolveTicketModuleType(option),
+    openerId: ticket.openerId,
+    panelId: option.value,
+    ticketId: ticket.id,
+    ticketType: resolveTicketType(option, resolveTicketModuleType(option))
+  })).catch(() => null);
+  await editTicketPanelMessage(interaction.channel, ticket.id, createOpenTicketPayload({
+    category: option.label,
+    clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
+    guild: interaction.guild,
+    initialMessage: option.initialMessage ?? null,
+    mentionRoleId: prerequisites.staffRoleIds[0] ?? null,
+    openerId: ticket.openerId,
+    priority: option.priority ?? "normal",
+    responsibleUserId: updated?.responsibleUserId ?? ticket.responsibleUserId ?? null,
+    status: STATUS_OPTIONS.find((item) => item.value === (updated?.status ?? ticket.status))?.label ?? updated?.status ?? ticket.status,
+    subject: updated?.subject ?? ticket.subject,
+    ticketId: ticket.id
+  }));
+  await context.api.recordTicketEvent(ticket.id, {
+    authorId: interaction.user.id,
+    content: `Categoria alterada de ${oldCategory} para ${option.label}.`,
+    eventType: "ticket.category_changed",
+    guildId: interaction.guild.id,
+    metadata: { newCategoryId: option.value, newCategoryName: option.label, oldCategory }
+  }).catch(() => null);
+  await interaction.editReply({ components: [], content: `Categoria alterada para ${option.label}.` }).catch(() => null);
 }
 
 function createTicketCloseModal(ticketId: string, guildId: string | null, botId: string | null) {
@@ -1038,12 +1261,14 @@ function cleanupOpenTicketSessions() {
 
 function normalizeTicketSubject(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim().slice(0, 100);
-  return normalized.length >= 10 ? normalized : null;
+  const words = normalized.split(" ").filter(Boolean);
+  return words.length >= 3 ? normalized : null;
 }
 
 function activeTicketOptions(settings: GuildSettings | null | undefined) {
   return (settings?.ticketPanelOptions ?? [])
     .filter((option) => option.enabled)
+    .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
     .slice(0, 25);
 }
 
@@ -1056,20 +1281,11 @@ function createOpenTicketModal(token: string) {
         new TextInputBuilder()
           .setCustomId("subject")
           .setLabel("Assunto do Ticket")
-          .setPlaceholder("Descreva resumidamente o motivo do seu ticket.")
+          .setPlaceholder("Descreva resumidamente o motivo do atendimento com pelo menos três palavras.")
           .setRequired(true)
           .setStyle(TextInputStyle.Short)
-          .setMinLength(10)
+          .setMinLength(3)
           .setMaxLength(100)
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("details")
-          .setLabel("Detalhes")
-          .setPlaceholder("Não compartilhe senhas, tokens ou dados confidenciais.")
-          .setRequired(false)
-          .setStyle(TextInputStyle.Paragraph)
-          .setMaxLength(900)
       )
     );
 }
@@ -1130,38 +1346,42 @@ function ticketPreOpenComponents(
 ) {
   const options = activeTicketOptions(settings);
   const selectedOption = options.find((option) => option.value === session?.optionValue) ?? null;
-  const selectedClient = session?.clientStatus === "yes" ? "Sim, sou cliente" : session?.clientStatus === "no" ? "Não sou cliente" : null;
+  const selectedClient = session?.clientStatus === "yes" ? "Sim, já sou cliente" : session?.clientStatus === "no" ? "Não, ainda não sou cliente" : null;
   const canContinue = Boolean(selectedOption && selectedClient);
   const categorySelect = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`${OPEN_CATEGORY_PREFIX}${token}`)
-      .setPlaceholder("Selecione a categoria do ticket")
+      .setPlaceholder("Selecione a Categoria do Ticket")
       .addOptions(options.map((option) => toSelectOption(option).setDefault(option.value === session?.optionValue)))
   );
   const clientSelect = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`${OPEN_CLIENT_PREFIX}${token}`)
-      .setPlaceholder("Você é cliente?")
+      .setPlaceholder("Você já é cliente da Nextech?")
       .addOptions(
         new StringSelectMenuOptionBuilder()
           .setEmoji(systemStatusEmoji("success", guild))
-          .setLabel("Sim, sou cliente")
+          .setLabel("Sim, já sou cliente")
           .setValue("yes")
           .setDescription("Já sou cliente e preciso de atendimento.")
           .setDefault(session?.clientStatus === "yes"),
         new StringSelectMenuOptionBuilder()
           .setEmoji(systemStatusEmoji("danger", guild))
-          .setLabel("Não sou cliente")
+          .setLabel("Não, ainda não sou cliente")
           .setValue("no")
           .setDescription("Ainda não sou cliente ou quero conhecer os serviços.")
           .setDefault(session?.clientStatus === "no")
       )
   );
-  const continueButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const actionButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${OPEN_CANCEL_PREFIX}${token}`)
+      .setLabel("Cancelar")
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${OPEN_CONTINUE_PREFIX}${token}`)
       .setEmoji(systemActionEmojiCompat("open", guild))
-      .setLabel("Continuar")
+      .setLabel("Abrir Ticket")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!canContinue)
   );
@@ -1171,7 +1391,7 @@ function ticketPreOpenComponents(
       type: 10,
       content: [
         `## ${systemEmojiText("prancheta", guild)} Abrir Novo Ticket`,
-        `${systemStatusEmoji("warning", guild)} Este formulário será enviado para a equipe de suporte. Não compartilhe senhas ou informações confidenciais.`,
+        `${systemStatusEmoji("warning", guild)} Selecione corretamente a categoria e informe um assunto com pelo menos três palavras. As informações serão utilizadas para direcionar o atendimento.`,
         "",
         `**Categoria:** ${selectedOption ? `${selectedOption.emoji ? `${selectedOption.emoji} ` : ""}${selectedOption.label}` : "Não selecionada"}`,
         `**Cliente:** ${selectedClient ?? "Não informado"}`,
@@ -1181,7 +1401,7 @@ function ticketPreOpenComponents(
     { type: 14, divider: true, spacing: 1 },
     categorySelect,
     clientSelect,
-    continueButton
+    actionButtons
   ];
 }
 
@@ -1238,29 +1458,22 @@ async function publishConfiguredTicketPanelUnlocked(client: Client, context: Bot
   return panelMessage.id;
 }
 
-async function createTicketChannel(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, subject: string, ticketId: string) {
+async function createTicketChannel(guild: Guild, settings: GuildSettings, opener: GuildMember, option: TicketPanelOption, subject: string, ticketId: string) {
   const { categoryId, me, staffRoleIds } = await validateTicketChannelPrerequisites(guild, settings, option);
-  const mentionRoleId = option.mentionRoleId && staffRoleIds.includes(option.mentionRoleId) ? option.mentionRoleId : null;
   const moduleType = resolveTicketModuleType(option);
   const ticketType = resolveTicketType(option, moduleType);
-
-  const safeName = subject
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40) || "ticket";
+  const categorySlug = slugTicketChannelName(option.ticketType ?? option.value ?? option.label);
+  const userSlug = slugTicketChannelName(opener.displayName || opener.user.username || opener.id).slice(0, 32);
 
   return guild.channels.create({
-    name: `ticket-${safeName}-${openerId.slice(-4)}`,
+    name: `${categorySlug}-${userSlug}-${opener.id.slice(-4)}`.slice(0, 96),
     parent: categoryId,
     topic: createTicketChannelTopic({
       botId: guild.client.user?.id ?? null,
       categoryId: option.value,
       guildId: guild.id,
       moduleType,
-      openerId,
+      openerId: opener.id,
       panelId: option.value,
       ticketId,
       ticketType
@@ -1271,7 +1484,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
         deny: [PermissionFlagsBits.ViewChannel]
       },
       {
-        id: openerId,
+        id: opener.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
       },
       {
@@ -1283,7 +1496,7 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
       }))
     ],
-    reason: `Ticket aberto por ${openerId}: ${option.label} - ${subject}`,
+    reason: `Ticket aberto por ${opener.id}: ${option.label} - ${subject}`,
     type: ChannelType.GuildText
   }).then((channel) => channel as TextChannel);
 }
@@ -1311,19 +1524,83 @@ async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildS
 
   const staffRoleIds = [...new Set([
     option.mentionRoleId,
+    ...(option.supportRoleIds ?? []),
     ...(settings.reportSystem?.adminRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId && guild.roles.cache.has(roleId) && roleId !== guild.roles.everyone.id)))];
   return { categoryId, me, staffRoleIds };
 }
 
-async function sendTicketOpeningLog(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, channelId: string, ticketId: string, subject: string) {
-  const logChannelId = settings.logChannelId || settings.reportSystem?.logChannelId;
+async function applyTicketCategoryPermissions(channel: TextChannel, guild: Guild, openerId: string, settings: GuildSettings, option: TicketPanelOption, staffRoleIds: string[]) {
+  await channel.permissionOverwrites.edit(guild.roles.everyone.id, { ViewChannel: false }).catch(() => null);
+  await channel.permissionOverwrites.edit(openerId, {
+    AttachFiles: true,
+    EmbedLinks: true,
+    ReadMessageHistory: true,
+    SendMessages: true,
+    UseApplicationCommands: true,
+    ViewChannel: true
+  }).catch(() => null);
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (me) {
+    await channel.permissionOverwrites.edit(me.id, {
+      AttachFiles: true,
+      EmbedLinks: true,
+      ManageChannels: true,
+      ManageMessages: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      UseApplicationCommands: true,
+      ViewChannel: true
+    }).catch(() => null);
+  }
+  const allConfiguredRoleIds = new Set((settings.ticketPanelOptions ?? []).flatMap((item) => [item.mentionRoleId, ...(item.supportRoleIds ?? [])]).filter((roleId): roleId is string => Boolean(roleId)));
+  const allowedRoleIds = new Set(staffRoleIds);
+  for (const roleId of allConfiguredRoleIds) {
+    if (!allowedRoleIds.has(roleId)) await channel.permissionOverwrites.delete(roleId, `Ticket ${channel.id}: cargo removido ao alterar categoria`).catch(() => null);
+  }
+  for (const roleId of allowedRoleIds) {
+    await channel.permissionOverwrites.edit(roleId, {
+      AttachFiles: true,
+      EmbedLinks: true,
+      ManageMessages: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+      UseApplicationCommands: true,
+      ViewChannel: true
+    }, { reason: `Ticket ${channel.id}: permissões da categoria ${option.label}` }).catch(() => null);
+  }
+}
+
+async function editTicketPanelMessage(channel: TextChannel, ticketId: string, payload: MessageEditOptions) {
+  const messages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+  const panel = messages?.find((message) => (
+    message.author.id === channel.client.user?.id
+    && (
+      message.content.includes(ticketId)
+      || JSON.stringify(message.components.map((component) => component.toJSON())).includes(ticketId)
+    )
+  ));
+  if (panel) {
+    await panel.edit(payload).catch(() => null);
+  }
+}
+
+async function sendTicketOpeningLog(guild: Guild, settings: GuildSettings, openerId: string, option: TicketPanelOption, channelId: string, ticketId: string, subject: string, clientLabel = "Não informado") {
+  const logChannelId = option.logChannelId || settings.logChannelId || settings.reportSystem?.logChannelId;
   if (!logChannelId) return;
   const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
   if (!logChannel?.isTextBased() || !("send" in logChannel)) throw new Error("Canal de logs de tickets indisponível.");
+  const roleIds = [...new Set([option.mentionRoleId, ...(option.supportRoleIds ?? [])].filter(Boolean))];
   await logChannel.send({
     allowedMentions: { parse: [] },
-    content: `[SafeBot][TicketCreate][Handler:main] Ticket ${ticketId} aberto por ${openerId} em <#${channelId}>. Categoria: ${option.label}. Assunto: ${subject}`
+    content: [
+      `[SafeBot][TicketCreate][Handler:main] Ticket ${ticketId} aberto por ${openerId} em <#${channelId}>.`,
+      `Categoria: ${option.label}.`,
+      `Assunto: ${subject}.`,
+      `Cliente: ${clientLabel}.`,
+      `Prioridade: ${priorityLabel(option.priority ?? "normal")}.`,
+      roleIds.length ? `Cargos responsáveis: ${roleIds.map((roleId) => `<@&${roleId}>`).join(", ")}.` : "Cargos responsáveis: não configurados."
+    ].join(" ")
   });
 }
 
@@ -1367,7 +1644,7 @@ async function getTicketOrRecover(
   context: BotContext,
   ticketId: string
 ) {
-  const ticket = await context.api.getTicket(ticketId);
+  const ticket = await context.api.getTicket(ticketId).catch(() => null);
   if (ticket) {
     const currentBotId = interaction.client.user?.id ?? null;
     if (ticket.guildId !== interaction.guildId || (ticket.botId && currentBotId && ticket.botId !== currentBotId)) {
@@ -1382,7 +1659,9 @@ async function getTicketOrRecover(
     }
     return ticket;
   }
-  if (interaction.channel?.type !== ChannelType.GuildText) return ticket;
+  if (interaction.channel?.type !== ChannelType.GuildText) return null;
+  const channelTicket = await context.api.getTicketByChannel(interaction.channel.id, interaction.guildId ?? undefined).catch(() => null);
+  if (channelTicket && channelTicket.id === ticketId) return channelTicket;
   return recoverTicketRecord(interaction.channel, context, ticketId);
 }
 
@@ -1406,7 +1685,17 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
     const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
     const hasInitialPanel = recent?.some((message) => message.author.id === context.client.user?.id && JSON.stringify(message.components.map((component) => component.toJSON())).includes(existing.id));
     if (!hasInitialPanel) {
-      await channel.send(createOpenTicketPayload(existing.id, existing.categoryName ?? metadata.categoryId, existing.openerId, existing.responsibleUserId ?? null, "Aguardando atendimento", existing.responsibleRoleId ?? null, existing.subject, null, channel.guild));
+      await channel.send(createOpenTicketPayload({
+        category: existing.categoryName ?? metadata.categoryId,
+        clientLabel: existing.isClient === true ? "Sim" : existing.isClient === false ? "Não" : null,
+        guild: channel.guild,
+        mentionRoleId: existing.responsibleRoleId ?? null,
+        openerId: existing.openerId,
+        responsibleUserId: existing.responsibleUserId ?? null,
+        status: "Aguardando atendimento",
+        subject: existing.subject,
+        ticketId: existing.id
+      }));
     }
     return await context.api.updateTicketStatus(existing.id, { status: "OPEN" }) ?? existing;
   }
@@ -1639,6 +1928,23 @@ function sanitizeTopicToken(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "default";
 }
 
+function slugTicketChannelName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "ticket";
+}
+
+function priorityLabel(value: TicketPanelOption["priority"] | string | null | undefined) {
+  if (value === "low") return "Baixa";
+  if (value === "high") return "Alta";
+  if (value === "urgent") return "Urgente";
+  return "Normal";
+}
+
 export function isPendingTicketLeaseActive(createdAt: string, now = Date.now()) {
   const createdAtMs = Date.parse(createdAt);
   return Number.isFinite(createdAtMs) && now - createdAtMs >= 0 && now - createdAtMs < PENDING_TICKET_LEASE_MS;
@@ -1668,15 +1974,43 @@ async function canManageSensitiveTicketLogAction(interaction: ButtonInteraction)
   ));
 }
 
-function createOpenTicketPayload(ticketId: string, category: string, openerId: string, responsibleUserId: string | null = null, status = "Aguardando atendimento", mentionRoleId: string | null = null, subject = category, details: string | null = null, guild: Guild | null = null, clientLabel: string | null = null): MessageCreateOptions & MessageEditOptions {
+function createOpenTicketPayload(input: {
+  category: string;
+  clientLabel?: string | null;
+  guild?: Guild | null;
+  initialMessage?: string | null;
+  mentionRoleId?: string | null;
+  openerId: string;
+  priority?: TicketPanelOption["priority"] | null;
+  responsibleUserId?: string | null;
+  status?: string;
+  subject: string;
+  ticketId: string;
+}): MessageCreateOptions & MessageEditOptions {
+  const {
+    category,
+    clientLabel = null,
+    guild = null,
+    initialMessage = null,
+    mentionRoleId = null,
+    openerId,
+    priority = "normal",
+    responsibleUserId = null,
+    status = "Aguardando atendimento",
+    subject,
+    ticketId
+  } = input;
   const guildId = guild?.id ?? null;
   const botId = guild?.client.user?.id ?? null;
-  const actions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const firstActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "claim", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("homem", guild)).setLabel("Assumir Ticket").setStyle(ButtonStyle.Primary).setDisabled(Boolean(responsibleUserId)),
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "add", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Adicionar Usuário").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "remove", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("porta", guild)).setLabel("Remover Usuário").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "transfer", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("acessar", guild)).setLabel("Transferir").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "close", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Finalizar Ticket").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "rename", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Renomear Ticket").setStyle(ButtonStyle.Secondary)
+  );
+  const secondActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "category", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Alterar Categoria").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "close", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
   );
   const statusMenu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
@@ -1689,20 +2023,21 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
 
   const content = [
       mentionLine,
-      "## Ticket Aberto",
+      "## TICKET ABERTO",
+      `Usuário: <@${openerId}>`,
+      `ID: ${openerId}`,
       `Categoria: ${category}`,
       `Assunto: ${subject}`,
       `Cliente: ${clientLabel ?? "Não informado"}`,
-      `Autor: <@${openerId}>`,
-      `ID do usuário: ${openerId}`,
       `Servidor: ${guild?.name ?? "Não informado"}`,
       `Data: ${formatTicketDate(createdAt)}`,
       `Hora: ${formatTicketTime(createdAt)}`,
       `Responsável atual: ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum"}`,
       `Status: ${status}`,
+      `Prioridade: ${priorityLabel(priority ?? "normal")}`,
       `ID do Ticket: #${ticketId}`,
       "",
-      details ? `Detalhes iniciais:\n${details}` : "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
+      initialMessage ?? "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
     ].filter(Boolean).join("\n");
 
   return componentsV2Payload({
@@ -1711,7 +2046,8 @@ function createOpenTicketPayload(ticketId: string, category: string, openerId: s
     components: [
       { type: 10, content },
       { type: 14, divider: true, spacing: 1 },
-      actions,
+      firstActions,
+      secondActions,
       statusMenu
     ],
     footer: null,

@@ -178,6 +178,7 @@ export type TicketRecord = {
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  isClient?: boolean | null;
   migrationStatus?: string | null;
   moduleType: string;
   ticketType: string | null;
@@ -2785,6 +2786,7 @@ export class ApiClient {
     categoryName?: string | null;
     guildId: string;
     channelId?: string | null;
+    isClient?: boolean | null;
     moduleType?: "default" | "police";
     openerId: string;
     panelId?: string | null;

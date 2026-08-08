@@ -165,9 +165,16 @@ export type TicketPanelOptionDto = {
   description: string | null;
   emoji: string | null;
   enabled: boolean;
+  initialMessage: string | null;
   label: string;
+  logChannelId: string | null;
+  maxOpenTicketsPerUser: number | null;
   mentionRoleId: string | null;
   moduleType: "default" | "police";
+  openingHours: string | null;
+  position: number;
+  priority: "low" | "normal" | "high" | "urgent";
+  supportRoleIds: string[];
   ticketType: string | null;
   value: string;
 };
@@ -610,14 +617,75 @@ const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione uma categoria de atendimento
 const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
   {
     categoryId: null,
-    description: "Abrir um atendimento com a equipe.",
-    emoji: fixedSystemEmojiText("prancheta"),
+    description: "Pagamentos, cobranças e mensalidades.",
+    emoji: fixedSystemEmojiText("caixa"),
     enabled: true,
-    label: "Suporte",
+    initialMessage: "Este ticket foi aberto no setor Financeiro. Envie os detalhes relacionados ao pagamento, mensalidade, cobrança ou plano contratado. Não compartilhe dados bancários sensíveis ou informações confidenciais.",
+    label: "Financeiro",
+    logChannelId: null,
+    maxOpenTicketsPerUser: 1,
     mentionRoleId: null,
     moduleType: "default",
-    ticketType: "support",
+    openingHours: null,
+    position: 1,
+    priority: "normal",
+    supportRoleIds: [],
+    ticketType: "financeiro",
+    value: "financeiro"
+  },
+  {
+    categoryId: null,
+    description: "Problemas técnicos, bot offline e configurações.",
+    emoji: fixedSystemEmojiText("engrenagem"),
+    enabled: true,
+    initialMessage: "Este ticket foi aberto no setor de Suporte. Explique o problema, informe quando ele começou e, se possível, envie imagens ou vídeos do erro.",
+    label: "Suporte",
+    logChannelId: null,
+    maxOpenTicketsPerUser: 1,
+    mentionRoleId: null,
+    moduleType: "default",
+    openingHours: null,
+    position: 2,
+    priority: "normal",
+    supportRoleIds: [],
+    ticketType: "suporte",
     value: "suporte"
+  },
+  {
+    categoryId: null,
+    description: "Perguntas gerais sobre planos, módulos e dashboard.",
+    emoji: fixedSystemEmojiText("interrogacao"),
+    enabled: true,
+    initialMessage: "Este ticket foi aberto para esclarecimento de dúvidas. Envie sua pergunta com o máximo de detalhes possível para que a equipe consiga orientar corretamente.",
+    label: "Dúvidas",
+    logChannelId: null,
+    maxOpenTicketsPerUser: 1,
+    mentionRoleId: null,
+    moduleType: "default",
+    openingHours: null,
+    position: 3,
+    priority: "normal",
+    supportRoleIds: [],
+    ticketType: "duvidas",
+    value: "duvidas"
+  },
+  {
+    categoryId: null,
+    description: "Contratação, desenvolvimento personalizado e automações.",
+    emoji: fixedSystemEmojiText("prancheta"),
+    enabled: true,
+    initialMessage: "Este ticket foi aberto para solicitação de orçamento. Explique o sistema desejado, as funcionalidades necessárias e informe se já possui algum projeto em funcionamento.",
+    label: "Orçamento",
+    logChannelId: null,
+    maxOpenTicketsPerUser: 1,
+    mentionRoleId: null,
+    moduleType: "default",
+    openingHours: null,
+    position: 4,
+    priority: "normal",
+    supportRoleIds: [],
+    ticketType: "orcamento",
+    value: "orcamento"
   }
 ];
 const REPORT_BUTTON_KEYS: ReportSystemButtonKey[] = ["claim", "reply", "status", "requestEvidence", "addMember", "removeMember", "transcript", "close", "reopen", "delete"];
@@ -1889,15 +1957,30 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
 
       if (!label || seen.has(value)) return null;
       seen.add(value);
+      const supportRoleIds = Array.isArray(record.supportRoleIds)
+        ? [...new Set(record.supportRoleIds.map((roleId) => normalizeSnowflake(String(roleId ?? ""))).filter((roleId): roleId is string => Boolean(roleId)))]
+        : [];
+      const mentionRoleId = normalizeSnowflake(String(record.mentionRoleId ?? ""));
+      const priority = ["low", "normal", "high", "urgent"].includes(String(record.priority))
+        ? String(record.priority) as TicketPanelOptionDto["priority"]
+        : "normal";
+      const maxOpenTickets = Number(record.maxOpenTicketsPerUser);
 
       return {
         categoryId: normalizeSnowflake(String(record.categoryId ?? "")),
         description: normalizeNullableText(record.description, 100),
         emoji: normalizeNullableSystemEmojiText(record.emoji),
         enabled: record.enabled !== false,
+        initialMessage: normalizeNullableText(record.initialMessage, 1000),
         label,
-        mentionRoleId: normalizeSnowflake(String(record.mentionRoleId ?? "")),
+        logChannelId: normalizeSnowflake(String(record.logChannelId ?? "")),
+        maxOpenTicketsPerUser: Number.isFinite(maxOpenTickets) && maxOpenTickets > 0 ? Math.min(Math.trunc(maxOpenTickets), 10) : null,
+        mentionRoleId,
         moduleType: record.moduleType === "police" ? "police" : "default",
+        openingHours: normalizeNullableText(record.openingHours, 120),
+        position: Number.isFinite(Number(record.position)) ? Math.max(1, Math.trunc(Number(record.position))) : seen.size,
+        priority,
+        supportRoleIds: mentionRoleId ? [...new Set([mentionRoleId, ...supportRoleIds])] : supportRoleIds,
         ticketType: normalizeTicketType(record.ticketType, record.moduleType === "police" ? "police" : "default", value),
         value
       };
@@ -1905,7 +1988,13 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
     .filter((item): item is TicketPanelOptionDto => Boolean(item))
     .slice(0, 25);
 
-  return options.length ? options : DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
+  if (!options.length) return DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
+  for (const defaultOption of DEFAULT_TICKET_PANEL_OPTIONS) {
+    if (seen.has(defaultOption.value)) continue;
+    options.push({ ...defaultOption });
+    seen.add(defaultOption.value);
+  }
+  return options.sort((a, b) => a.position - b.position).slice(0, 25);
 }
 
 function normalizeTicketType(value: unknown, moduleType: "default" | "police", fallback: string) {

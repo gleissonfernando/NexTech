@@ -18,6 +18,7 @@ const ticketSchema = z.object({
   allowedRoleIds: z.array(z.string()).optional(),
   categoryId: z.string().optional().nullable(),
   categoryName: z.string().optional().nullable(),
+  isClient: z.boolean().optional().nullable(),
   moduleType: z.enum(["default", "police"]).optional().default("default"),
   panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
@@ -26,14 +27,20 @@ const ticketSchema = z.object({
 });
 
 const ticketStatusSchema = z.object({
+  categoryId: z.string().optional().nullable(),
+  categoryName: z.string().optional().nullable(),
   closeReason: z.string().optional().nullable(),
   closedAt: z.string().datetime().optional().nullable(),
   closedById: z.string().optional().nullable(),
   finalResult: z.string().optional().nullable(),
   internalNotes: z.string().optional().nullable(),
   isIncomplete: z.boolean().optional(),
+  panelId: z.string().optional().nullable(),
+  responsibleRoleId: z.string().optional().nullable(),
   responsibleUserId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional()
+  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  subject: z.string().min(1).max(120).optional(),
+  ticketType: z.string().min(1).max(80).optional().nullable()
 });
 
 const ticketEventSchema = z.object({

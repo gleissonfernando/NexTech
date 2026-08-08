@@ -96,6 +96,8 @@ import {
     type ManualRegistrationDashboard,
     type ManualRegistrationSettings,
     type ManualRegistrationSubmission,
+    type MonthlyBillingDashboard,
+    type MonthlyBillingHistory,
     type MercadoPagoConnectionTest,
     type MessageControlDashboard,
     type MessageControlSettings,
@@ -2283,6 +2285,76 @@ export async function getDevPlansDashboard() {
 export async function getDevMonthlyContracts() {
   const { data } = await api.get<{ contracts: DevMonthlyContract[] }>("/dev/monthly-contracts");
   return data.contracts;
+}
+
+export type SaveMonthlyBillingCustomerPayload = {
+  discordUserId: string;
+  customerName: string;
+  monthlyAmountInCents: number;
+  dueDate: string;
+  fixedDueDay: number;
+  subscriptionStartDate: string;
+  planName: string;
+  notes?: string | null;
+  initialOverdueMonths?: number;
+  supportUrl?: string | null;
+  paymentUrl?: string | null;
+  receiptUrl?: string | null;
+};
+
+export type RegisterMonthlyBillingPaymentPayload = {
+  amountInCents: number;
+  installmentsPaid: number;
+  paidAt: string;
+  method: string;
+  transactionCode?: string | null;
+  receiptUrl?: string | null;
+  notes?: string | null;
+};
+
+export async function getMonthlyBillingDashboard() {
+  const { data } = await api.get<MonthlyBillingDashboard>("/dev/monthly-billing");
+  return data;
+}
+
+export async function createMonthlyBillingCustomer(botId: string, payload: SaveMonthlyBillingCustomerPayload) {
+  const { data } = await api.post<MonthlyBillingDashboard>(`/dev/monthly-billing/bots/${encodeURIComponent(botId)}/customers`, payload);
+  return data;
+}
+
+export async function updateMonthlyBillingCustomer(customerId: string, payload: Partial<SaveMonthlyBillingCustomerPayload>) {
+  const { data } = await api.patch<MonthlyBillingDashboard>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}`, payload);
+  return data;
+}
+
+export async function sendMonthlyBillingCustomerCharge(customerId: string) {
+  const { data } = await api.post<{ chargeId: string; dashboard: MonthlyBillingDashboard }>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}/send-charge`);
+  return data;
+}
+
+export async function sendMonthlyBillingBulkCharges(customerIds: string[]) {
+  const { data } = await api.post<{ dashboard: MonthlyBillingDashboard; results: Array<{ customerId: string; ok: boolean; error?: string }> }>("/dev/monthly-billing/send-bulk-charges", { customerIds });
+  return data;
+}
+
+export async function applyMonthlyBillingAdjustment(customerId: string, payload: { amountInCents: number; reason: string; type: "manual_debit" | "discount" | "fine" | "interest" }) {
+  const { data } = await api.post<MonthlyBillingDashboard>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}/adjustments`, payload);
+  return data;
+}
+
+export async function setMonthlyBillingCustomerStatus(customerId: string, payload: { action: "suspend" | "reactivate" | "cancel" | "delete"; reason?: string | null }) {
+  const { data } = await api.post<MonthlyBillingDashboard>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}/status`, payload);
+  return data;
+}
+
+export async function registerMonthlyBillingPayment(customerId: string, payload: RegisterMonthlyBillingPaymentPayload) {
+  const { data } = await api.post<MonthlyBillingDashboard>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}/payments`, payload);
+  return data;
+}
+
+export async function getMonthlyBillingCustomerHistory(customerId: string) {
+  const { data } = await api.get<MonthlyBillingHistory>(`/dev/monthly-billing/customers/${encodeURIComponent(customerId)}/history`);
+  return data;
 }
 
 export async function resendDevInvoiceDm(invoiceId: string, notificationType = "invoice_created") {

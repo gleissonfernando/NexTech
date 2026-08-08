@@ -12,6 +12,7 @@ export type TicketDto = {
   subject: string;
   categoryId?: string | null;
   categoryName?: string | null;
+  isClient?: boolean | null;
   moduleType: string;
   ticketType: string | null;
   migrationStatus?: string | null;
@@ -32,6 +33,7 @@ type CreateTicketInput = Pick<TicketDto, "guildId" | "channelId" | "openerId" | 
   botId?: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  isClient?: boolean | null;
   moduleType?: string | null;
   panelId?: string | null;
   responsibleRoleId?: string | null;
@@ -43,9 +45,14 @@ type CreateTicketInput = Pick<TicketDto, "guildId" | "channelId" | "openerId" | 
 export async function createTicket(input: CreateTicketInput) {
   const normalizedBotId = normalizeBotId(input.botId);
   const moduleType = normalizeModuleType(input.moduleType);
-  const existing = await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
-  if (existing) {
-    return { created: false, ticket: existing };
+  if (input.ticketId) {
+    const exact = await getTicketById(input.ticketId, normalizedBotId);
+    if (exact) return { created: false, ticket: exact };
+  } else {
+    const existing = await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
+    if (existing) {
+      return { created: false, ticket: existing };
+    }
   }
 
   const ticket: TicketDto = {
@@ -59,6 +66,7 @@ export async function createTicket(input: CreateTicketInput) {
     subject: input.subject,
     categoryId: input.categoryId ?? null,
     categoryName: input.categoryName ?? null,
+    isClient: input.isClient ?? null,
     moduleType,
     ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
     migrationStatus: "ok",
@@ -78,7 +86,9 @@ export async function createTicket(input: CreateTicketInput) {
     const { tickets } = await getMongoCollections();
     const doc: MongoTicket = {
       _id: input.ticketId ?? randomUUID(),
-      activeKey: ticketActiveKey(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType),
+      activeKey: input.ticketId
+        ? ticketRecoveryActiveKey(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, input.ticketId, moduleType)
+        : ticketActiveKey(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType),
       botId: normalizedBotId,
       guildId: input.guildId,
       channelId: input.channelId ?? null,
@@ -88,6 +98,7 @@ export async function createTicket(input: CreateTicketInput) {
       subject: input.subject,
       categoryId: input.categoryId ?? null,
       categoryName: input.categoryName ?? null,
+      isClient: input.isClient ?? null,
       moduleType,
       ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
       migrationStatus: "ok",
@@ -121,7 +132,9 @@ export async function createTicket(input: CreateTicketInput) {
     };
   } catch (error) {
     if (isDuplicateKeyError(error)) {
-      const concurrent = await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
+      const concurrent = input.ticketId
+        ? await getTicketById(input.ticketId, normalizedBotId)
+        : await findOpenTicket(input.guildId, normalizedBotId, input.openerId, input.categoryId ?? null, moduleType);
       if (concurrent) return { created: false, ticket: concurrent };
     }
     throw error;
@@ -180,6 +193,7 @@ export async function listTickets(guildId?: string, botId?: string | null) {
       subject: ticket.subject,
       categoryId: ticket.categoryId ?? null,
       categoryName: ticket.categoryName ?? null,
+      isClient: ticket.isClient ?? null,
       moduleType: normalizeModuleType(ticket.moduleType),
       ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
       migrationStatus: ticket.migrationStatus ?? null,
@@ -221,7 +235,7 @@ export async function getTicketById(ticketId: string, botId?: string | null) {
   }
 }
 
-export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete">>) {
+export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "responsibleRoleId" | "categoryId" | "categoryName" | "panelId" | "subject" | "ticketType" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete">>) {
   const { tickets } = await getMongoCollections();
   const $set: Partial<MongoTicket> = {};
   for (const [key, value] of Object.entries(input) as Array<[keyof typeof input, unknown]>) {
@@ -317,6 +331,7 @@ function toDto(ticket: MongoTicket): TicketDto {
     subject: ticket.subject,
     categoryId: ticket.categoryId ?? null,
     categoryName: ticket.categoryName ?? null,
+    isClient: ticket.isClient ?? null,
     moduleType: normalizeModuleType(ticket.moduleType),
     ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
     migrationStatus: ticket.migrationStatus ?? null,
@@ -357,6 +372,10 @@ function scopedQuery(guildId: string | undefined, botId: string | null) {
 
 export function ticketActiveKey(guildId: string, botId: string | null, openerId: string, categoryId: string | null, moduleType = "default") {
   return [botId ?? "primary", guildId, normalizeModuleType(moduleType), openerId, categoryId ?? "default"].join(":");
+}
+
+export function ticketRecoveryActiveKey(guildId: string, botId: string | null, openerId: string, categoryId: string | null, ticketId: string, moduleType = "default") {
+  return `${ticketActiveKey(guildId, botId, openerId, categoryId, moduleType)}:${ticketId}`;
 }
 
 export function isActiveTicketStatus(status: MongoTicket["status"]) {

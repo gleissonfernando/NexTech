@@ -110,9 +110,16 @@ const settingsSchema = z.object({
     description: z.string().max(100).nullable().optional().default(null),
     emoji: z.string().max(80).nullable().optional().default(null),
     enabled: z.boolean().optional().default(true),
+    initialMessage: z.string().max(1000).nullable().optional().default(null),
     label: z.string().min(1).max(80),
+    logChannelId: z.string().nullable().optional().default(null),
+    maxOpenTicketsPerUser: z.number().int().min(1).max(10).nullable().optional().default(null),
     mentionRoleId: z.string().regex(/^\d{5,32}$/).nullable().optional().default(null),
     moduleType: z.enum(["default", "police"]).optional().default("default"),
+    openingHours: z.string().max(120).nullable().optional().default(null),
+    position: z.number().int().min(1).max(999).optional().default(1),
+    priority: z.enum(["low", "normal", "high", "urgent"]).optional().default("normal"),
+    supportRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(25).optional().default([]),
     ticketType: z.string().min(1).max(80).nullable().optional().default(null),
     value: z.string().min(1).max(80)
   })).max(25).optional(),
@@ -1530,13 +1537,24 @@ async function validateGuildResources(
   }
 
   const ticketPanelMentionRoleIds = (input.ticketPanelOptions ?? [])
-    .map((option) => option.mentionRoleId)
+    .flatMap((option) => [option.mentionRoleId, ...(option.supportRoleIds ?? [])])
     .filter((roleId): roleId is string => Boolean(roleId));
 
   if (ticketPanelMentionRoleIds.length) {
     const roleChecks = await Promise.all([...new Set(ticketPanelMentionRoleIds)].map((roleId) => areGuildRoles(guildId, [roleId], botToken)));
     if (!roleChecks.every(Boolean)) {
       throw createSettingsError("Um dos cargos mencionados no painel de tickets não pertence a este servidor.");
+    }
+  }
+
+  const ticketPanelLogChannelIds = (input.ticketPanelOptions ?? [])
+    .map((option) => option.logChannelId)
+    .filter((channelId): channelId is string => Boolean(channelId));
+
+  if (ticketPanelLogChannelIds.length) {
+    const channelChecks = await Promise.all([...new Set(ticketPanelLogChannelIds)].map((channelId) => isGuildTextChannel(guildId, channelId, botToken)));
+    if (!channelChecks.every(Boolean)) {
+      throw createSettingsError("Um dos canais de logs do painel de tickets não pertence a este servidor.");
     }
   }
 
