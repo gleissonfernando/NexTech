@@ -94,6 +94,13 @@ export function moduleIdsFromPlanEntitlementKeys(keys: readonly string[]) {
   return unique(result);
 }
 
+export function mergeModuleIdsWithPlanEntitlementKeys(existingModuleIds: readonly string[], entitlementKeys: readonly string[]) {
+  return unique([
+    ...existingModuleIds.map((moduleId) => moduleId.trim()).filter(Boolean),
+    ...moduleIdsFromPlanEntitlementKeys(entitlementKeys)
+  ]);
+}
+
 function unique(values: readonly string[]) {
   return [...new Set(values)];
 }

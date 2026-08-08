@@ -7,6 +7,7 @@ import {
     type MongoBotGuildModuleConfig,
     type MongoDevBot,
     type MongoDevBotStatus,
+    type MongoPlanEntitlement,
     type MongoSecurityFeatureAccess
 } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
@@ -28,7 +29,7 @@ import { ensureSafeBotDiscordResources } from "./discordOptionsService";
 import { isCustomFivemModuleId } from "./fivemModuleService";
 import { getImageAntiSpamSettings } from "./imageAntiSpamService";
 import { createLog } from "./logService";
-import { expandModuleAccessKeys } from "./moduleEntitlementService";
+import { expandModuleAccessKeys, mergeModuleIdsWithPlanEntitlementKeys } from "./moduleEntitlementService";
 import { getSelfBotProtectionSettings, saveSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
 import { getGuildSettings, getPersistedDashboardAccess, saveSafeBotMessageState, updateGuildSettings } from "./settingsService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
@@ -503,7 +504,7 @@ export async function listDevBots() {
   ]);
   const guildIdsByBot = groupGuildIdsByBot(configs);
 
-  return bots.map((bot) => toDevBotDto(bot, allBotGuildIds(bot, guildIdsByBot.get(bot._id))));
+  return Promise.all(bots.map((bot) => toEffectiveDevBotDto(bot, allBotGuildIds(bot, guildIdsByBot.get(bot._id)))));
 }
 
 export async function listAccessibleDevBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {
@@ -567,7 +568,7 @@ export async function scanAccessibleDevBots(user: AuthSessionUser, options: Acce
     const accessLevel = highestDashboardAccessLevel(results.map((result) => result.accessLevel)) ?? "basic";
 
     return {
-      bot: authorizedGuildIds.length ? toDevBotDto(bot, authorizedGuildIds, accessLevel) : null,
+      bot: authorizedGuildIds.length ? await toEffectiveDevBotDto(bot, authorizedGuildIds, accessLevel) : null,
       diagnostics: results
     };
   }));
@@ -597,7 +598,7 @@ export async function getDevBot(botId: string) {
     botGuildConfigs.find({ botId }).toArray()
   ]);
 
-  return bot ? toDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId))) : null;
+  return bot ? toEffectiveDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId))) : null;
 }
 
 export async function getDevBotBySlug(slug: string) {
@@ -610,7 +611,7 @@ export async function getDevBotBySlug(slug: string) {
   }
 
   const configs = await botGuildConfigs.find({ botId: bot._id }).toArray();
-  return toDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId)));
+  return toEffectiveDevBotDto(bot, allBotGuildIds(bot, configs.map((config) => config.guildId)));
 }
 
 export async function getAccessibleDashboardBotBySlug(user: AuthSessionUser, slug: string) {
@@ -928,9 +929,10 @@ export async function createDevBot(input: CreateDevBotInput) {
       }
     )
   ]);
-  emitRealtime("dev:bot_created", toDashboardBotDto(toDevBotDto(bot)));
+  const dto = await toEffectiveDevBotDto(bot);
+  emitRealtime("dev:bot_created", toDashboardBotDto(dto));
 
-  return toDevBotDto(bot);
+  return dto;
 }
 
 export async function registerPrimaryDevBot(input: RegisterPrimaryDevBotInput): Promise<RegisterPrimaryDevBotResult> {
@@ -1117,8 +1119,9 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
     return null;
   }
 
-  emitRealtime("dev:bot_updated", toDashboardBotDto(toDevBotDto(updated)));
-  return toDevBotDto(updated);
+  const dto = await toEffectiveDevBotDto(updated);
+  emitRealtime("dev:bot_updated", toDashboardBotDto(dto));
+  return dto;
 }
 
 export async function deleteDevBot(botId: string) {
@@ -1134,7 +1137,7 @@ export async function deleteDevBot(botId: string) {
     botGuildConfigs.deleteMany({ botId })
   ]);
 
-  const dto = toDevBotDto(bot);
+  const dto = await toEffectiveDevBotDto(bot);
   emitRealtime("dev:bot_deleted", toDashboardBotDto(dto));
   return dto;
 }
@@ -1208,7 +1211,7 @@ export async function validateDevBotConnection(botId: string) {
   );
 
   const updated = await devBots.findOne({ _id: botId });
-  const dto = updated ? toDevBotDto(updated) : toDevBotDto(bot);
+  const dto = updated ? await toEffectiveDevBotDto(updated) : await toEffectiveDevBotDto(bot);
   emitRealtime("dev:bot_restarted", toDashboardBotDto(dto));
 
   return dto;
@@ -1462,7 +1465,7 @@ export async function setDevBotDesiredOnline(botId: string, desiredOnline: boole
     { returnDocument: "after" }
   );
   if (!updated) return null;
-  const dto = toDevBotDto(updated);
+  const dto = await toEffectiveDevBotDto(updated);
   emitRealtime("dev:bot_updated", toDashboardBotDto(dto));
   return dto;
 }
@@ -1583,14 +1586,14 @@ export async function syncDevBotProfile(
 
   if (current.clientId !== profileId) {
     console.warn(`[dev-bot] perfil ignorado para ${botId}: clientId recebido ${profileId} difere do cadastro ${current.clientId}.`);
-    return toDevBotDto(current);
+    return toEffectiveDevBotDto(current);
   }
 
   const avatarUrl = normalizeProfileAvatarUrl(profile?.avatarUrl);
   const changed = current.name !== username || (current.avatarUrl ?? null) !== avatarUrl;
 
   if (!changed) {
-    return toDevBotDto(current);
+    return toEffectiveDevBotDto(current);
   }
 
   const now = new Date();
@@ -1609,7 +1612,7 @@ export async function syncDevBotProfile(
   );
 
   const updated = await devBots.findOne({ _id: botId });
-  const dto = updated ? toDevBotDto(updated) : toDevBotDto({
+  const dto = updated ? await toEffectiveDevBotDto(updated) : await toEffectiveDevBotDto({
     ...current,
     name: username,
     avatarUrl,
@@ -2596,6 +2599,40 @@ function normalizeRuntimeStatus(value: string | null) {
     .toLowerCase() ?? null;
 }
 
+async function resolveEffectiveEnabledModules(bot: MongoDevBot) {
+  const baseModules = sanitizeModules(bot.enabledModules);
+  const { planSubscriptions, planWorkspaces, plans } = await getMongoCollections();
+  const workspace = await planWorkspaces.findOne({
+    status: { $ne: "cancelled" },
+    $or: [
+      { botIds: bot._id },
+      { ownerDiscordId: bot.ownerId },
+      { ownerUserId: bot.ownerId }
+    ]
+  });
+
+  if (!workspace?.subscriptionId) {
+    return baseModules;
+  }
+
+  const subscription = await planSubscriptions.findOne({ _id: workspace.subscriptionId });
+  if (!subscription || subscription.status !== "active") {
+    return baseModules;
+  }
+
+  const plan = await plans.findOne({ _id: subscription.planId });
+  const snapshot = subscription.metadata?.planSnapshot;
+  const snapshotRecord = asRuntimeRecord(snapshot);
+  const snapshotEntitlements = snapshotRecord && Array.isArray(snapshotRecord.entitlements)
+    ? snapshotRecord.entitlements as MongoPlanEntitlement[]
+    : [];
+  const entitlementKeys = (plan?.entitlements ?? snapshotEntitlements)
+    .filter((item) => item.enabled)
+    .map((item) => item.key);
+
+  return mergeModuleIdsWithPlanEntitlementKeys(baseModules, entitlementKeys);
+}
+
 function sanitizeModules(modules: string[]) {
   return [...new Set(
     modules
@@ -2708,7 +2745,16 @@ async function disableSelfBotDefaults(bot: DevBotDto) {
   }
 }
 
-function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], accessLevel: DashboardAccessLevel = "admin"): DevBotDto {
+async function toEffectiveDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], accessLevel: DashboardAccessLevel = "admin") {
+  return toDevBotDto(bot, guildIds, accessLevel, await resolveEffectiveEnabledModules(bot));
+}
+
+function toDevBotDto(
+  bot: MongoDevBot,
+  guildIds: string[] = [bot.mainGuildId],
+  accessLevel: DashboardAccessLevel = "admin",
+  enabledModules: string[] = sanitizeModules(bot.enabledModules)
+): DevBotDto {
   const slug = bot.slug || slugifyBotName(bot.name);
   const permissions = dashboardPermissionsForLevel(accessLevel);
 
@@ -2734,7 +2780,7 @@ function toDevBotDto(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId], a
     statusMessage: bot.statusMessage ? maskSensitiveText(bot.statusMessage) : null,
     maintenance: bot.maintenance === true,
     maintenanceBypass: bot.maintenanceBypass === true,
-    enabledModules: sanitizeModules(bot.enabledModules),
+    enabledModules: sanitizeModules(enabledModules),
     desiredOnline: bot.desiredOnline !== false,
     billingAccess: null,
     billingModel: bot.billingModel ?? "monthly",
@@ -2845,7 +2891,7 @@ async function fetchDiscordBotGuild(token: string, guildId: string): Promise<Det
 }
 
 async function runtimeModulesForBot(bot: MongoDevBot, guildIds: string[] = [bot.mainGuildId]) {
-  const modules = new Set(sanitizeModules(bot.enabledModules));
+  const modules = new Set(await resolveEffectiveEnabledModules(bot));
   const scopedGuildIds = allBotGuildIds(bot, guildIds);
 
   await Promise.all(scopedGuildIds.map(async (guildId) => {

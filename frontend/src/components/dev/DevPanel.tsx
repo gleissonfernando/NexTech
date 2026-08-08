@@ -164,6 +164,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "subscription-presence", label: "Pagamento de Presença" },
   { id: "manual-payments", label: "Pagamento Manual" },
   { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
+  { id: "courses", label: "Sistema de Cursos" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },
   { id: "verification", label: "Sistema de Verificação" },
@@ -250,6 +251,7 @@ type BotMenuId =
   | "payment-gateway"
   | "manual-payments"
   | "price-tables"
+  | "courses"
   | "manual-registration"
   | "verification"
   | "logs"
@@ -393,6 +395,14 @@ const botMenuItems: BotMenuItem[] = [
     description: "Atendimento e suporte",
     icon: Ticket,
     moduleIds: ["tickets"]
+  },
+  {
+    group: "geral",
+    id: "courses",
+    label: "Cursos",
+    description: "Cursos, provas, publicações e histórico",
+    icon: ScrollText,
+    moduleIds: ["courses"]
   },
   {
     group: "sales",

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { DEV_MODULES } from "./devBotService";
-import { expandModuleAccessKeys, moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
+import { expandModuleAccessKeys, mergeModuleIdsWithPlanEntitlementKeys, moduleIdsFromPlanEntitlementKeys } from "./moduleEntitlementService";
 
 test("converte entitlements comerciais em modulos reais", () => {
   assert.deepEqual(
@@ -115,4 +115,11 @@ test("expande chaves antigas sem remover modulos ja validos", () => {
 
 test("inclui o modulo de cursos na lista de modulos liberados", () => {
   assert.ok(DEV_MODULES.some((module) => module.id === "courses"));
+});
+
+test("mescla entitlements de plano sem remover modulos ja liberados", () => {
+  assert.deepEqual(
+    mergeModuleIdsWithPlanEntitlementKeys(["courses", "safe-bot"], ["discord.courses", "discord.logs"]),
+    ["courses", "safe-bot", "logs"]
+  );
 });
