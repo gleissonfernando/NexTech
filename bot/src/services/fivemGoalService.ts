@@ -799,6 +799,7 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
   const timeIcon = farmSystemEmojiText("relogio", guild, guild.client);
   const userIcon = farmSystemEmojiText("homem", guild, guild.client);
   const groupedItems = buildFinalGoalReportGroups(report);
+  if (!groupedItems.length) return createFinalUserGoalNoRecordsContent(guild, targetLabel);
   const detailLines = groupedItems.length
     ? groupedItems.flatMap((item) => {
       const emoji = finalGoalItemEmoji(item, guild);
@@ -824,7 +825,30 @@ export function createFinalUserGoalReportContent(guild: Guild, report: Finalized
   ].join("\n").slice(0, 3900);
 }
 
+function createFinalUserGoalNoRecordsContent(guild: Guild, targetLabel: string) {
+  return [
+    `## ${farmSystemEmojiText("perigo", guild, guild.client)} Sem registros`,
+    "",
+    `${farmSystemEmojiText("homem", guild, guild.client)} ${targetLabel} não possui registros de farm no momento.`,
+    "",
+    "-# *NexTech - Todos os direitos reservados*"
+  ].join("\n");
+}
+
 function createFinalUserGoalReportPayload(guild: Guild, report: FinalizedGoalUserReport, actorLabel: string, targetLabel: string, finalizationType: "Automático" | "Manual") {
+  if (!buildFinalGoalReportGroups(report).length) {
+    return {
+      allowedMentions: { parse: [] as never[] },
+      components: [{
+        type: 17,
+        accent_color: 0x71717a,
+        components: [
+          { type: 10, content: replaceSystemEmojis(createFinalUserGoalNoRecordsContent(guild, targetLabel), guild, guild.client) }
+        ]
+      }],
+      flags: MessageFlags.IsComponentsV2 as const
+    };
+  }
   const bannerUrl = goalReportBannerUrl(guild);
   const content = replaceSystemEmojis(createFinalUserGoalReportContent(guild, report, actorLabel, targetLabel, finalizationType), guild, guild.client);
   return {
@@ -2427,11 +2451,9 @@ function noRecordsPayload(userId: string, guild: Guild | null) {
     allowedMentions: { parse: [] as never[], users: [userId] },
     components: [{
       type: 17,
-      accent_color: 0x9ca3af,
+      accent_color: 0x71717a,
       components: [
-        { type: 10, content: [`## ${systemEmojiText("perigo", guild)} Sem registros`, "", `${systemEmojiText("homem", guild)} <@${userId}> não possui registros de farm no momento.`].join("\n") },
-        { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: "-# *NexTech - Todos os direitos reservados*" }
+        { type: 10, content: [`## ${systemEmojiText("perigo", guild)} Sem registros`, "", `${systemEmojiText("homem", guild)} <@${userId}> não possui registros de farm no momento.`, "", "-# *NexTech - Todos os direitos reservados*"].join("\n") }
       ]
     }],
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 as const

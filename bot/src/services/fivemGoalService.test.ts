@@ -84,8 +84,8 @@ test("relatório final informa usuário sem registros sem criar valores zero", (
     userId: "111111111111111111"
   } as any, "Sistema", "<@111111111111111111>", "Automático");
 
-  assert.match(content, /Nenhum registro realizado neste período\./);
-  assert.match(content, /Tipo: Automático/);
+  assert.match(content, /Sem registros/);
+  assert.match(content, /não possui registros de farm no momento\./);
   assert.doesNotMatch(content, /Total: 0/);
 });
 
