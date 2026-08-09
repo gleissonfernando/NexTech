@@ -165,6 +165,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Solicitações de UP com aprovação manual e troca segura de patentes policiais.",
+    id: "police-rank-up",
+    permissions: "Admin Polícia, Responsáveis",
+    title: "Solicitação de UP"
+  },
+  {
+    builtIn: true,
     description: "Canal anonimo para comunicacoes policiais com auditoria administrativa completa.",
     id: "police-hidden-channel",
     permissions: "Admin Polícia, Investigação",

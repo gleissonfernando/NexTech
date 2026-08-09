@@ -45,6 +45,7 @@ import { handleAutoActivityClockInteraction } from "../services/autoActivityCloc
 import { handleVehicleAbandonmentInteraction } from "../services/vehicleAbandonmentService";
 import { handlePoliceQruInteraction } from "../services/policeQruService";
 import { handlePolicePromotionInteraction } from "../services/policePromotionService";
+import { handlePoliceRankUpInteraction } from "../services/policeRankUpService";
 import { handleBoosterInteraction } from "../services/boosterService";
 import { getRuntimeModuleAuthorization, runtimeModuleDenialMessage } from "../services/runtimeModuleGuard";
 
@@ -160,6 +161,7 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   if (await handleVehicleAbandonmentInteraction(interaction, context)) return;
   if (await handlePoliceQruInteraction(interaction, context)) return;
   if (await handlePolicePromotionInteraction(interaction, context)) return;
+  if (await handlePoliceRankUpInteraction(interaction, context)) return;
   if (await handleDmBarInteraction(interaction, context)) return;
   if (await handleDafScaleInteraction(interaction, context)) return;
   if (await handlePoliceSubpoenaInteraction(interaction, context)) return;

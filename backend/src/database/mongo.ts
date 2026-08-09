@@ -3359,6 +3359,97 @@ export type MongoPolicePromotionLog = {
   requestId: string | null;
 };
 
+export type MongoPoliceRankUpRank = {
+  id: string;
+  name: string;
+  roleId: string;
+  emoji: string | null;
+  description: string | null;
+  hierarchyPosition: number;
+  enabled: boolean;
+  allowedPreviousRanks: string[];
+  allowSkip: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoPoliceRankUpPermission = "view" | "approve" | "reject" | "cancel" | "manage_ranks" | "manage_channels" | "publish_panel" | "view_logs" | "manage_responsibles";
+
+export type MongoPoliceRankUpSettings = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  panelMessageId: string | null;
+  temporaryCategoryId: string | null;
+  logChannelId: string | null;
+  adminChannelId: string | null;
+  approvedDeleteSeconds: number;
+  rejectedDeleteSeconds: number;
+  requireApprovalForInitialRank: boolean;
+  onlyNextRank: boolean;
+  blockDemotions: boolean;
+  allowRequesterCancel: boolean;
+  minRequestIntervalHours: number;
+  notifyByDm: boolean;
+  mentionResponsibles: boolean;
+  autoDeleteChannels: boolean;
+  blockMultipleRanks: boolean;
+  panelMessage: string;
+  temporaryChannelName: string;
+  responsibleUserIds: string[];
+  responsibleRoleIds: string[];
+  adminUserIds: string[];
+  adminRoleIds: string[];
+  permissions: {
+    users: Record<string, MongoPoliceRankUpPermission[]>;
+    roles: Record<string, MongoPoliceRankUpPermission[]>;
+  };
+  ranks: MongoPoliceRankUpRank[];
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+export type MongoPoliceRankUpRequest = {
+  _id: string;
+  protocol: string;
+  tenantId: string;
+  botId: string;
+  guildId: string;
+  userId: string;
+  userDisplayName: string;
+  username: string;
+  currentRankId: string | null;
+  currentRoleId: string | null;
+  requestedRankId: string;
+  requestedRoleId: string;
+  temporaryChannelId: string | null;
+  messageId: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled" | "error";
+  reviewedBy: string | null;
+  reviewedByName: string | null;
+  reviewReason: string | null;
+  errorReason: string | null;
+  createdAt: Date;
+  reviewedAt: Date | null;
+  completedAt: Date | null;
+  updatedAt: Date;
+};
+
+export type MongoPoliceRankUpLog = {
+  _id: string;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  botId: string;
+  guildId: string;
+  metadata: Record<string, unknown>;
+  requestId: string | null;
+  createdAt: Date;
+};
+
 export type MongoPoliceHiddenChannelSettings = {
   _id: string;
   botId: string;
@@ -6174,6 +6265,9 @@ export async function getMongoCollections() {
     policePromotionSettings: db.collection<MongoPolicePromotionSettings>("police_promotion_settings"),
     policePromotionRequests: db.collection<MongoPolicePromotionRequest>("police_promotion_requests"),
     policePromotionLogs: db.collection<MongoPolicePromotionLog>("police_promotion_logs"),
+    policeRankUpSettings: db.collection<MongoPoliceRankUpSettings>("police_rank_up_settings"),
+    policeRankUpRequests: db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests"),
+    policeRankUpLogs: db.collection<MongoPoliceRankUpLog>("police_rank_up_logs"),
     policeHiddenChannelSettings: db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings"),
     policeHiddenChannelLogs: db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs"),
     visibleMessageUsers: db.collection<MongoVisibleMessageUser>("visible_message_users"),
@@ -7138,6 +7232,17 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoPolicePromotionRequest>("police_promotion_requests").createIndex({ botId: 1, guildId: 1, promotionId: 1, createdAt: -1 }),
     db.collection<MongoPolicePromotionLog>("police_promotion_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPolicePromotionLog>("police_promotion_logs").createIndex({ botId: 1, guildId: 1, requestId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRankUpSettings>("police_rank_up_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests").createIndex(
+      { botId: 1, guildId: 1, userId: 1, status: 1 },
+      { unique: true, partialFilterExpression: { status: "pending" } }
+    ),
+    db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests").createIndex({ botId: 1, guildId: 1, protocol: 1 }, { unique: true }),
+    db.collection<MongoPoliceRankUpRequest>("police_rank_up_requests").createIndex({ botId: 1, guildId: 1, temporaryChannelId: 1 }, { sparse: true }),
+    db.collection<MongoPoliceRankUpLog>("police_rank_up_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRankUpLog>("police_rank_up_logs").createIndex({ botId: 1, guildId: 1, requestId: 1, createdAt: -1 }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoPoliceHiddenChannelSettings>("police_hidden_channel_settings").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoPoliceHiddenChannelLog>("police_hidden_channel_logs").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),

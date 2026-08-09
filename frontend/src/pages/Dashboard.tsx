@@ -89,6 +89,7 @@ import { PaymentGatewayPanel } from "../components/payments/PaymentGatewayPanel"
 import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotificationsPanel";
 import { PolicePromotionsPanel } from "../components/police/PolicePromotionsPanel";
 import { PoliceQruPanel } from "../components/police/PoliceQruPanel";
+import { PoliceRankUpPanel } from "../components/police/PoliceRankUpPanel";
 import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
 import { PriceTablesPanel } from "../components/price-tables/PriceTablesPanel";
 import { RhAdminPanel } from "../components/rh-admin/RhAdminPanel";
@@ -639,6 +640,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-promotions"
   },
   {
+    id: "police-rank-up",
+    title: "Sistema de UP",
+    description: "Solicitação, aprovação manual e troca segura de patentes policiais.",
+    icon: BadgeCheck,
+    view: "police-rank-up"
+  },
+  {
     id: "vehicle-abandonment",
     title: "Abandono de Veículo",
     description: "Registra veículos abandonados por imagem com parser automático.",
@@ -846,6 +854,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-patrol-reports": "police-patrol-reports",
   "police-qru": "police-qru",
   "police-promotions": "police-promotions",
+  "police-rank-up": "police-rank-up",
   "vehicle-abandonment": "vehicle-abandonment",
   "police-hidden-channel": "police-hidden-channel",
   "visible-message": "visible-message",
@@ -909,6 +918,7 @@ const policeTranscriptViews = new Set<ViewId>([
   "police-patrol-reports",
   "police-qru",
   "police-promotions",
+  "police-rank-up",
   "police-hidden-channel",
   "visible-message",
   "police-dm",
@@ -1883,6 +1893,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PolicePromotionsPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "police-promotions", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "police-rank-up" ? (
+          <PoliceRankUpPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police-rank-up", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -4995,6 +5012,7 @@ function fivemIconForModule(moduleId: string) {
     "police-actions": Activity,
     "police-qru": ShieldCheck,
     "police-promotions": BadgeCheck,
+    "police-rank-up": BadgeCheck,
     "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,
@@ -5108,6 +5126,7 @@ function canManageModule(bot: DashboardBot | null, moduleId: string, fallback: b
       "police-patrol-reports",
       "police-qru",
       "police-promotions",
+      "police-rank-up",
       "vehicle-abandonment",
       "police-hidden-channel",
       "visible-message",
@@ -12475,6 +12494,7 @@ const fallbackDashboardViewOrder: ViewId[] = [
   "police-patrol-reports",
   "police-qru",
   "police-promotions",
+  "police-rank-up",
   "vehicle-abandonment",
   "police-hidden-channel",
   "visible-message",

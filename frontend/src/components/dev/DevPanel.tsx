@@ -225,6 +225,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
   { id: "police-promotions", label: "Polícia - Promoções de Patente" },
+  { id: "police-rank-up", label: "Polícia - Solicitação de UP" },
   { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
   { id: "visible-message", label: "Polícia - Mensagem Visível" },
   { id: "message-control", label: "Polícia - Controle de Mensagem Individual" },
@@ -301,6 +302,7 @@ type BotMenuId =
   | "police-patrol-reports"
   | "police-qru"
   | "police-promotions"
+  | "police-rank-up"
   | "police-hidden-channel"
   | "visible-message"
   | "message-control"
@@ -344,6 +346,7 @@ const POLICE_RELEASE_MODULE_IDS = [
   "police-patrol-reports",
   "police-qru",
   "police-promotions",
+  "police-rank-up",
   "visible-message",
   "message-control",
   "police-dm",
@@ -817,6 +820,14 @@ const botMenuItems: BotMenuItem[] = [
         description: "Solicitação, avaliação, aprovação e cargos automáticos",
         icon: BadgeCheck,
         moduleIds: ["police-promotions"]
+      },
+      {
+        group: "policia",
+        id: "police-rank-up",
+        label: "Sistema de UP",
+        description: "Solicitação pública e troca segura de patentes",
+        icon: BadgeCheck,
+        moduleIds: ["police-rank-up"]
       },
       {
         group: "policia",

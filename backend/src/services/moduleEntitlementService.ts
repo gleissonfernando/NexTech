@@ -26,6 +26,7 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
     "police-patrol-reports",
     "police-qru",
     "police-promotions",
+    "police-rank-up",
     "vehicle-abandonment",
     "police-hidden-channel",
     "visible-message",

@@ -115,7 +115,7 @@ dashboardRouter.get("/bots/:botId/guilds/:guildId/config", async (req, res, next
   }
 });
 
-const dashboardServerReleaseModules = new Set(["police-daf-roster", "visible-message", "message-control"]);
+const dashboardServerReleaseModules = new Set(["police-daf-roster", "visible-message", "message-control", "police-rank-up"]);
 
 dashboardRouter.post("/bots/:botId/guilds/:guildId/modules/:moduleId/release", async (req, res, next) => {
   try {

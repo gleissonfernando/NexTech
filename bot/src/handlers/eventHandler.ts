@@ -411,6 +411,7 @@ function shouldHandleMessageCreateEvents() {
     "police-hidden-channel",
     "police-iab",
     "police-promotions",
+    "police-rank-up",
     "police-subpoenas",
     "temporary-voice",
     "visible-message",

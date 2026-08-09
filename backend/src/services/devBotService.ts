@@ -112,6 +112,7 @@ export const DEV_MODULES = [
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
   { id: "police-promotions", label: "Polícia - Promoções de Patente" },
+  { id: "police-rank-up", label: "Polícia - Solicitação de UP" },
   { id: "vehicle-abandonment", label: "Polícia - Abandono de Veículo" },
   { id: "police-hidden-channel", label: "Polícia - Canal Oculto" },
   { id: "visible-message", label: "Polícia - Mensagem Visível" },
@@ -143,7 +144,7 @@ const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
   "courses": ["police-courses"],
   "police-courses": ["courses"]
 };
-const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "message-control", "visible-message"]);
+const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "message-control", "visible-message", "police-rank-up"]);
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);
 const RUNTIME_EXPIRED_LICENSE_STATUSES = new Set(["expired", "expirado", "expirada"]);
@@ -1537,13 +1538,18 @@ export async function markDevBotsOfflineAfterBackendRestart() {
   }).toArray();
 
   if (!previouslyOnline.length) {
-    return 0;
+    return {
+      count: 0,
+      botIds: [] as string[]
+    };
   }
+
+  const botIds = previouslyOnline.map((bot) => bot._id);
 
   await devBots.updateMany(
     {
       _id: {
-        $in: previouslyOnline.map((bot) => bot._id)
+        $in: botIds
       }
     },
     {
@@ -1563,7 +1569,10 @@ export async function markDevBotsOfflineAfterBackendRestart() {
     }
   }));
 
-  return previouslyOnline.length;
+  return {
+    count: previouslyOnline.length,
+    botIds
+  };
 }
 
 export async function syncDevBotProfile(

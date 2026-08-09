@@ -23,6 +23,7 @@ import { handleVisibleMessageMessage } from "../services/visibleMessageService";
 import { handleVehicleAbandonmentMessage } from "../services/vehicleAbandonmentService";
 import { handlePoliceQruMessage } from "../services/policeQruService";
 import { handlePolicePromotionMessage } from "../services/policePromotionService";
+import { handlePoliceRankUpMessage } from "../services/policeRankUpService";
 import { handleAmmunitionMessage } from "../services/ammunitionService";
 import { handleWeaponSaleMessage } from "../services/weaponSaleService";
 
@@ -46,6 +47,10 @@ export async function handleMessageCreate(message: Message, context: BotContext)
   }
 
   if (await handlePolicePromotionMessage(message, context)) {
+    return;
+  }
+
+  if (await handlePoliceRankUpMessage(message, context)) {
     return;
   }
 

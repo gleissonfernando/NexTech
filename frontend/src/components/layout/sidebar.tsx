@@ -102,6 +102,7 @@ export type ViewId =
   | "police-patrol-reports"
   | "police-qru"
   | "police-promotions"
+  | "police-rank-up"
   | "vehicle-abandonment"
   | "police-hidden-channel"
   | "visible-message"
@@ -202,6 +203,7 @@ const navItems: NavItem[] = [
   { id: "police-patrol-reports", label: "Relatórios Políciais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
   { id: "police-qru", label: "Registro de QRU", icon: ShieldCheck, moduleId: "police-qru" },
   { id: "police-promotions", label: "Promoções", icon: BadgeCheck, moduleId: "police-promotions" },
+  { id: "police-rank-up", label: "Sistema de UP", icon: BadgeCheck, moduleId: "police-rank-up" },
   { id: "vehicle-abandonment", label: "Abandono de Veículo", icon: Car, moduleId: "vehicle-abandonment" },
   { id: "police-hidden-channel", label: "Canal Oculto", icon: EyeOff, moduleId: "police-hidden-channel" },
   { id: "visible-message", label: "Mensagem Visível", icon: MessageCircle, moduleId: "visible-message" },
@@ -240,6 +242,7 @@ const policeViewIds = new Set<ViewId>([
   "police-patrol-reports",
   "police-qru",
   "police-promotions",
+  "police-rank-up",
   "vehicle-abandonment",
   "police-hidden-channel",
   "visible-message",
@@ -259,6 +262,7 @@ const policeModuleIds = new Set([
   "police-patrol-reports",
   "police-qru",
   "police-promotions",
+  "police-rank-up",
   "vehicle-abandonment",
   "police-hidden-channel",
   "visible-message",

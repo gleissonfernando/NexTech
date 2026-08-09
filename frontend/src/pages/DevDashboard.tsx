@@ -4061,6 +4061,7 @@ function fiveMModuleIcon(moduleId: string): LucideIcon {
     "police-courses": ScrollText,
     "police-patrol-reports": ShieldCheck,
     "police-promotions": BadgeCheck,
+    "police-rank-up": BadgeCheck,
     "vehicle-abandonment": Car,
     "police-hidden-channel": EyeOff,
     "visible-message": MessageCircle,

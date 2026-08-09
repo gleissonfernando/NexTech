@@ -28,6 +28,7 @@ import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenC
 import { clearVehicleAbandonmentSettingsCache } from "../services/vehicleAbandonmentService";
 import { clearPoliceQruSettingsCache, startPoliceQruRankingService } from "../services/policeQruService";
 import { clearPolicePromotionSettingsCache, startPolicePromotionService } from "../services/policePromotionService";
+import { clearPoliceRankUpSettingsCache, startPoliceRankUpService } from "../services/policeRankUpService";
 import { clearMessageControlCache } from "../services/messageControlService";
 import { clearVisibleMessageCache } from "../services/visibleMessageService";
 import { clearDmBarConfigCache } from "../services/dmBarService";
@@ -189,6 +190,11 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   context.socket.onPolicePromotionSettingsUpdated((payload) => {
     if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
       clearPolicePromotionSettingsCache(payload.guildId);
+    }
+  });
+  context.socket.onPoliceRankUpSettingsUpdated((payload) => {
+    if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
+      clearPoliceRankUpSettingsCache(payload.guildId);
     }
   });
   context.socket.onVisibleMessageUsersUpdated((payload) => {
@@ -390,6 +396,7 @@ async function startRuntimeModuleServices(client: Client<true>, context: BotCont
   startRuntimeService("police-patrol-reports", isBotModuleEnabled("police-patrol-reports"), () => startPolicePatrolReportService(client, context));
   startRuntimeService("police-qru-ranking", true, () => startPoliceQruRankingService(client, context));
   startRuntimeService("police-promotions", isBotModuleEnabled("police-promotions"), () => startPolicePromotionService(client, context));
+  startRuntimeService("police-rank-up", isBotModuleEnabled("police-rank-up"), () => startPoliceRankUpService(context));
   startRuntimeService("manual-registration", isBotModuleEnabled("manual-registration"), () => startManualRegistrationService(client, context));
   startRuntimeService("image-anti-spam", isBotModuleEnabled("image-anti-spam") && !isSelfBotModuleEnabled(), () => startImageAntiSpamService(context));
   await startRuntimeService("voice-recorder", isBotModuleEnabled("voice-recorder"), async () => {

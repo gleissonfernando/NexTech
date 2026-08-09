@@ -36,6 +36,7 @@ import { barraCommand, relogioDePontoCommand } from "../services/policeTimeClock
 import { vehicleAbandonmentPanelCommand } from "../services/vehicleAbandonmentService";
 import { qruCommand, rankCommand, rankingCommandQru } from "../services/policeQruService";
 import { policePromotionHistoryAliasCommand, policePromotionHistoryCommand, policePromotionsCommand } from "../services/policePromotionService";
+import { policeRankUpConfigCommand } from "../services/policeRankUpService";
 import { recrutamentoCommand, ztkResetCommand } from "../services/ztkWebhookService";
 import { nexTechInviteCommand } from "../services/nexTechInviteService";
 import { safeBotDiagnosticCommand } from "./safeBotDiagnostic";
@@ -100,6 +101,7 @@ export function createCommandCollection() {
     policePromotionHistoryCommand,
     policePromotionHistoryAliasCommand,
     policePromotionsCommand,
+    policeRankUpConfigCommand,
     recrutamentoCommand,
     ztkResetCommand,
     nexTechInviteCommand,

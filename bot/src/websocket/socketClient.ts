@@ -386,6 +386,16 @@ export type PolicePromotionPanelPublishEvent = {
   settings?: unknown;
 };
 export type PolicePromotionPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
+export type PoliceRankUpSettingsEvent = {
+  botId?: string | null;
+  guildId: string;
+};
+export type PoliceRankUpPanelPublishEvent = {
+  botId?: string | null;
+  guildId: string;
+  settings?: unknown;
+};
+export type PoliceRankUpPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
 export type VisibleMessageUsersEvent = {
   botId?: string | null;
   guildId: string;
@@ -558,6 +568,8 @@ export class BotSocketClient {
   private policeQruSettingsHandler: ((payload: PoliceQruSettingsEvent) => void) | null = null;
   private policePromotionSettingsHandler: ((payload: PolicePromotionSettingsEvent) => void) | null = null;
   private policePromotionPanelPublishHandler: ((payload: PolicePromotionPanelPublishEvent, ack?: PolicePromotionPanelPublishAck) => void) | null = null;
+  private policeRankUpSettingsHandler: ((payload: PoliceRankUpSettingsEvent) => void) | null = null;
+  private policeRankUpPanelPublishHandler: ((payload: PoliceRankUpPanelPublishEvent, ack?: PoliceRankUpPanelPublishAck) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
   private messageControlUsersHandler: ((payload: MessageControlUsersEvent) => void) | null = null;
   private dmBarSettingsHandler: ((payload: DmBarSettingsEvent) => void) | null = null;
@@ -728,6 +740,12 @@ export class BotSocketClient {
     }
     if (this.policePromotionPanelPublishHandler) {
       this.socket.on("police-promotions:panel_publish", this.policePromotionPanelPublishHandler);
+    }
+    if (this.policeRankUpSettingsHandler) {
+      this.socket.on("police-rank-up:settings_updated", this.policeRankUpSettingsHandler);
+    }
+    if (this.policeRankUpPanelPublishHandler) {
+      this.socket.on("police-rank-up:panel_publish", this.policeRankUpPanelPublishHandler);
     }
     if (this.visibleMessageUsersHandler) {
       this.socket.on("visible-message:users_updated", this.visibleMessageUsersHandler);
@@ -1102,6 +1120,18 @@ export class BotSocketClient {
     this.policePromotionPanelPublishHandler = handler;
     this.socket?.off("police-promotions:panel_publish");
     this.socket?.on("police-promotions:panel_publish", handler);
+  }
+
+  onPoliceRankUpSettingsUpdated(handler: (payload: PoliceRankUpSettingsEvent) => void) {
+    this.policeRankUpSettingsHandler = handler;
+    this.socket?.off("police-rank-up:settings_updated");
+    this.socket?.on("police-rank-up:settings_updated", handler);
+  }
+
+  onPoliceRankUpPanelPublish(handler: (payload: PoliceRankUpPanelPublishEvent, ack?: PoliceRankUpPanelPublishAck) => void) {
+    this.policeRankUpPanelPublishHandler = handler;
+    this.socket?.off("police-rank-up:panel_publish");
+    this.socket?.on("police-rank-up:panel_publish", handler);
   }
 
   onVisibleMessageUsersUpdated(handler: (payload: VisibleMessageUsersEvent) => void) {

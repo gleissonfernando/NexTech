@@ -99,6 +99,7 @@ test("expande chaves antigas sem remover modulos ja validos", () => {
       "police-patrol-reports",
       "police-qru",
       "police-promotions",
+      "police-rank-up",
       "vehicle-abandonment",
       "police-hidden-channel",
       "visible-message",

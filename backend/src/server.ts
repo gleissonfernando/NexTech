@@ -5,7 +5,7 @@ import { createSocketServer } from "./realtime/socket";
 import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
 import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
-import { cleanupObsoleteDevBotCommands, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
+import { cleanupObsoleteDevBotCommands, startAllDevBotProcesses, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
 import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
 import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, startServerBackupScheduler } from "./services/serverBackupService";
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
@@ -53,21 +53,29 @@ httpServer.listen(env.PORT, env.HOST, () => {
     .catch((error) => {
       console.warn("[bot-billing] rotina inicial falhou:", error instanceof Error ? error.message : error);
     });
-  void markDevBotsOfflineAfterBackendRestart()
-    .then((count) => {
-      if (count > 0) {
-        console.log(`[dev-bot] ${count} bot(s) marcado(s) como offline após restart do backend.`);
+  const devBotRestartRecovery = markDevBotsOfflineAfterBackendRestart()
+    .then((restartRecovery) => {
+      if (restartRecovery.count > 0) {
+        console.log(`[dev-bot] ${restartRecovery.count} bot(s) marcado(s) como offline após restart do backend.`);
       }
+      return restartRecovery;
     })
     .catch((error) => {
       console.warn("[dev-bot] não foi possível reconciliar status no boot:", error instanceof Error ? error.message : error);
+      return { count: 0, botIds: [] };
+    });
+
+  void devBotRestartRecovery
+    .then(async (restartRecovery) => {
+      await runAccessControlStartupAudit();
+      await cleanupObsoleteDevBotCommands();
+      return restartRecovery;
     })
-    .then(() => runAccessControlStartupAudit())
-    .then(() => cleanupObsoleteDevBotCommands())
     .catch((error) => {
       console.warn("[startup] varredura/limpeza inicial falhou:", error instanceof Error ? error.message : error);
+      return { count: 0, botIds: [] };
     })
-    .finally(() => {
+    .then((restartRecovery) => {
       if (env.START_REGISTERED_DEV_BOTS) {
         void startRegisteredDevBots()
           .then((count) => {
@@ -76,9 +84,21 @@ httpServer.listen(env.PORT, env.HOST, () => {
           .catch((error) => {
             console.warn("[dev-bot] start automático falhou:", error instanceof Error ? error.message : error);
           });
-      } else {
-        console.log("[dev-bot] start automático desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
+        return;
       }
+
+      if (restartRecovery.botIds.length > 0) {
+        void startAllDevBotProcesses(restartRecovery.botIds)
+          .then(() => {
+            console.log(`[dev-bot] retomada pós-restart solicitada para ${restartRecovery.botIds.length} bot(s) que estavam online.`);
+          })
+          .catch((error) => {
+            console.warn("[dev-bot] retomada pós-restart falhou:", error instanceof Error ? error.message : error);
+          });
+        return;
+      }
+
+      console.log("[dev-bot] start automático desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
     });
   setTimeout(() => {
     void seedDefaultPanelEmojisForAllBots()
