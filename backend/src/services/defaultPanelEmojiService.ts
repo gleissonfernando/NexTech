@@ -18,6 +18,7 @@ type DefaultEmojiAssetDefinition = {
 
 const DEFAULT_PANEL_EMOJIS: DefaultEmojiAssetDefinition[] = [
   { fileName: "1467588900514955387.webp", name: "nuvem" },
+  { fileName: "1467588900514955387.webp", name: "arma" },
   { fileName: "acessar.webp", name: "acessar" },
   { fileName: "alerta.webp", name: "alerta" },
   { fileName: "aniversario.webp", name: "aniversario" },

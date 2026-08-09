@@ -40,10 +40,19 @@ type GuildSystemEmojiCache = {
 const runtimeEmojis = new Map<string, RuntimeEmoji>();
 const guildEmojiCaches = new Map<string, GuildSystemEmojiCache>();
 const fixedSystemEmojiKeyById = new Map<string, SystemEmojiKey>();
+const systemEmojiKeyByName = new Map<string, SystemEmojiKey>();
 
 for (const [key, item] of Object.entries(FIXED_SYSTEM_EMOJI_BY_KEY) as Array<[SystemEmojiKey, (typeof FIXED_SYSTEM_EMOJI_BY_KEY)[SystemEmojiKey]]>) {
   if (!fixedSystemEmojiKeyById.has(item.emojiId)) {
     fixedSystemEmojiKeyById.set(item.emojiId, key);
+  }
+}
+
+for (const definition of SYSTEM_EMOJIS) {
+  systemEmojiKeyByName.set(definition.key.toLowerCase(), definition.key);
+  systemEmojiKeyByName.set(definition.name.toLowerCase(), definition.key);
+  for (const alias of definition.aliases ?? []) {
+    systemEmojiKeyByName.set(alias.toLowerCase(), definition.key);
   }
 }
 
@@ -183,6 +192,10 @@ export function systemEmojiText(key: SystemEmojiKey, guild?: Guild | null, clien
     if (fromApplication) return customEmojiMarkdown(fromApplication);
   }
 
+  if (cached?.found) {
+    return cached.markdown;
+  }
+
   return emoji.fallback;
 }
 
@@ -221,7 +234,8 @@ export function systemStatusEmoji(status: "success" | "warning" | "danger" | "ac
 }
 
 export function replaceSystemEmojis(input: string, guild?: Guild | null, client?: Client | null) {
-  return unicodeReplacementPairs.reduce((text, [pattern, key]) => text.replace(pattern, systemEmojiText(key, guild, client)), replaceFixedSystemEmojiMarkdown(input, guild, client));
+  const withNamedTokens = replaceNamedSystemEmojiTokens(input, guild, client);
+  return unicodeReplacementPairs.reduce((text, [pattern, key]) => text.replace(pattern, systemEmojiText(key, guild, client)), replaceFixedSystemEmojiMarkdown(withNamedTokens, guild, client));
 }
 
 function replaceFixedSystemEmojiMarkdown(input: string, guild?: Guild | null, client?: Client | null) {
@@ -229,6 +243,20 @@ function replaceFixedSystemEmojiMarkdown(input: string, guild?: Guild | null, cl
     const key = fixedSystemEmojiKeyById.get(emojiId);
     return key ? systemEmojiText(key, guild, client) : match;
   });
+}
+
+function replaceNamedSystemEmojiTokens(input: string, guild?: Guild | null, client?: Client | null) {
+  const emojiTokens: string[] = [];
+  const protectedInput = input.replace(/<a?:[a-zA-Z0-9_]{2,32}:\d{5,32}>/g, (match) => {
+    const token = `\u0000CUSTOM_EMOJI_${emojiTokens.length}\u0000`;
+    emojiTokens.push(match);
+    return token;
+  });
+  const replaced = protectedInput.replace(/:([a-zA-Z0-9_]{2,32}):/g, (match, name: string) => {
+    const key = systemEmojiKeyByName.get(name.toLowerCase());
+    return key ? systemEmojiText(key, guild, client) : match;
+  });
+  return emojiTokens.reduce((text, emoji, index) => text.split(`\u0000CUSTOM_EMOJI_${index}\u0000`).join(emoji), replaced);
 }
 
 function cachedEmoji(key: SystemEmojiKey, name: string, fallback: string, emoji: GuildEmoji | null): CachedGuildEmoji {

@@ -639,8 +639,12 @@ function sessionPayload(session: FivemActionSession, guild: Parameters<typeof sy
     "━━━━━━━━━━━━━━━━━━━━━━",
     session.actionDescription || "Nome do Sistema"
   ].filter(Boolean).join("\n") };
+  const serverIconUrl = guild?.iconURL({ extension: "png", size: 256 }) ?? null;
+  const detailsWithServerPhoto = serverIconUrl
+    ? { type: 9, components: [details], accessory: { type: 11, media: { url: serverIconUrl }, description: "Foto do servidor" } }
+    : details;
   const image = session.actionImageUrl ? [{ type: 12, items: [{ media: { url: session.actionImageUrl } }] }] : [];
-  return { components: [{ type: 17, accent_color: session.status === "victory" ? 0x22c55e : session.status === "draw" ? 0xf59e0b : session.status === "defeat" || session.status === "cancelled" ? 0xef4444 : parseColor(session.actionColor), components: [details, ...image, ...rows] }], flags: MessageFlags.IsComponentsV2 as const };
+  return { components: [{ type: 17, accent_color: session.status === "victory" ? 0x22c55e : session.status === "draw" ? 0xf59e0b : session.status === "defeat" || session.status === "cancelled" ? 0xef4444 : parseColor(session.actionColor), components: [detailsWithServerPhoto, ...image, ...rows] }], flags: MessageFlags.IsComponentsV2 as const };
 }
 
 function numberedList(items: FivemActionSession["participants"], limit: number) {
