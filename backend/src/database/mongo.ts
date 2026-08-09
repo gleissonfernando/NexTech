@@ -6806,6 +6806,9 @@ async function ensureSystemEmojiIndexes(db: Db) {
 }
 
 async function ensurePlanIndexes(db: Db) {
+  const contracts = db.collection<MongoContract>("contracts");
+  await contracts.dropIndex("paymentOrderId_1").catch(() => undefined);
+
   await Promise.all([
     db.collection<MongoPlan>("plans").createIndex({ slug: 1 }, { unique: true }),
     db.collection<MongoPlan>("plans").createIndex({ isPublic: 1, isActive: 1, order: 1 }),
@@ -6838,11 +6841,18 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, environment: 1, paymentId: 1, eventType: 1, requestId: 1 }, { sparse: true }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ provider: 1, payloadHash: 1 }),
     db.collection<MongoPaymentEvent>("payment_events").createIndex({ createdAt: -1 }),
-    db.collection<MongoContract>("contracts").createIndex({ contractHolderUserId: 1, status: 1, updatedAt: -1 }),
-    db.collection<MongoContract>("contracts").createIndex({ billingContactUserId: 1, status: 1, nextDueDate: 1 }),
-    db.collection<MongoContract>("contracts").createIndex({ botId: 1, serverId: 1, status: 1 }),
-    db.collection<MongoContract>("contracts").createIndex({ paymentOrderId: 1 }, { sparse: true, unique: true }),
-    db.collection<MongoContract>("contracts").createIndex({ subscriptionId: 1 }, { sparse: true }),
+    contracts.createIndex({ contractHolderUserId: 1, status: 1, updatedAt: -1 }),
+    contracts.createIndex({ billingContactUserId: 1, status: 1, nextDueDate: 1 }),
+    contracts.createIndex({ botId: 1, serverId: 1, status: 1 }),
+    contracts.createIndex(
+      { paymentOrderId: 1 },
+      {
+        name: "paymentOrderId_1",
+        partialFilterExpression: { paymentOrderId: { $type: "string" } },
+        unique: true
+      }
+    ),
+    contracts.createIndex({ subscriptionId: 1 }, { sparse: true }),
     db.collection<MongoContractItem>("contract_items").createIndex({ contractId: 1, status: 1, updatedAt: -1 }),
     db.collection<MongoInvoiceNotification>("invoice_notifications").createIndex({ invoiceId: 1, userId: 1, notificationType: 1, channel: 1 }, { unique: true }),
     db.collection<MongoInvoiceNotification>("invoice_notifications").createIndex({ status: 1, createdAt: -1 }),
