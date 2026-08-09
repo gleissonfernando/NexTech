@@ -156,6 +156,9 @@ const DEV_BOT_RECOVERABLE_RESTART_STATUSES: MongoDevBotStatus[] = [
   "authenticating",
   "syncing_config",
   "waiting_retry",
+  "crashed",
+  "database_error",
+  "discord_connection_error",
   "degraded"
 ];
 const RUNTIME_BLOCKED_LICENSE_STATUSES = new Set([

@@ -49,7 +49,7 @@ const DEV_BOT_START_CONCURRENCY = 1;
 const DEV_BOT_START_STAGGER_MS = 5_000;
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
-const DEV_BOT_SUPERVISOR_LEASE_MS = 15_000;
+const DEV_BOT_SUPERVISOR_LEASE_MS = 60_000;
 const DEV_BOT_SUPERVISOR_START_RETRY_MS = 3_000;
 const DEV_BOT_SUPERVISOR_START_ATTEMPTS = 7;
 const DEV_BOT_SUPERVISOR_INSTANCE_ID = `dev-bot-supervisor:${process.pid}:${randomUUID()}`;
@@ -222,7 +222,7 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
     moduleRestartTimers.delete(botId);
   }
 
-const runtime = runningBots.get(botId);
+  const runtime = runningBots.get(botId);
   const finalStatus = options.finalStatus ?? "offline";
   const status = await updateDevBotRuntimeStatus(botId, runtime ? "stopping" : finalStatus, statusMessage);
 
@@ -343,17 +343,41 @@ async function renewDevBotSupervisorLease() {
       }
     );
 
-    supervisorLeaseErrors = 0;
     if (result.matchedCount === 0) {
+      if (await reacquireDevBotSupervisorLease("a renovacao nao encontrou a trava atual")) {
+        return;
+      }
+
       await handleLostDevBotSupervisorLease("a posse da trava foi transferida para outra instancia");
+      return;
     }
+
+    supervisorLeaseErrors = 0;
   } catch (error) {
     supervisorLeaseErrors += 1;
-    console.error("[dev-bot] falha ao renovar trava distribuida de supervisor:", readRuntimeError(error));
-    if (supervisorLeaseErrors >= 2) {
-      await handleLostDevBotSupervisorLease("a trava não pode ser renovada antes da expiracao");
+    console.warn("[dev-bot] falha ao renovar trava distribuida de supervisor; mantendo bots ativos enquanto a posse não for perdida:", readRuntimeError(error));
+
+    if (isMongoWriteBlockedError(error)) {
+      supervisorLeaseLocalOnly = true;
+      supervisorLeaseErrors = 0;
+      console.warn("[dev-bot] MongoDB bloqueou escritas durante renovacao; supervisor local manterá os bots ativos nesta instância.");
+      return;
     }
   }
+}
+
+async function reacquireDevBotSupervisorLease(reason: string) {
+  supervisorLeaseHeld = false;
+  supervisorLeaseErrors = 0;
+  const acquired = await acquireDevBotSupervisorLease();
+
+  if (!acquired) {
+    return false;
+  }
+
+  supervisorLeaseHeld = true;
+  console.warn(`[dev-bot] trava distribuida de supervisor recuperada após ${reason}.`);
+  return true;
 }
 
 async function handleLostDevBotSupervisorLease(reason: string) {

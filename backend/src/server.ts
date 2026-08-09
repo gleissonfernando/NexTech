@@ -17,6 +17,7 @@ import { processBotBillingCycle, startBotBillingScheduler } from "./services/bot
 
 const httpServer = createServer(app);
 let shuttingDown = false;
+const DEV_BOT_START_RETRY_DELAYS_MS = [15_000, 45_000, 120_000, 300_000];
 
 httpServer.keepAliveTimeout = 65_000;
 httpServer.headersTimeout = 70_000;
@@ -77,24 +78,12 @@ httpServer.listen(env.PORT, env.HOST, () => {
     })
     .then((restartRecovery) => {
       if (env.START_REGISTERED_DEV_BOTS) {
-        void startRegisteredDevBots()
-          .then((count) => {
-            console.log(`[dev-bot] start automático concluído para ${count} bot(s) cadastrado(s).`);
-          })
-          .catch((error) => {
-            console.warn("[dev-bot] start automático falhou:", error instanceof Error ? error.message : error);
-          });
+        scheduleRegisteredDevBotStartup(0);
         return;
       }
 
       if (restartRecovery.botIds.length > 0) {
-        void startAllDevBotProcesses(restartRecovery.botIds)
-          .then(() => {
-            console.log(`[dev-bot] retomada pós-restart solicitada para ${restartRecovery.botIds.length} bot(s) que estavam online.`);
-          })
-          .catch((error) => {
-            console.warn("[dev-bot] retomada pós-restart falhou:", error instanceof Error ? error.message : error);
-          });
+        scheduleRecoveredDevBotStartup(restartRecovery.botIds, 0);
         return;
       }
 
@@ -145,6 +134,58 @@ process.on("uncaughtException", (error) => {
 process.on("warning", (warning) => {
   console.warn(JSON.stringify({ level: "warning", service: "backend", type: warning.name, error: warning.stack ?? warning.message, at: new Date().toISOString() }));
 });
+
+function scheduleRegisteredDevBotStartup(attempt: number) {
+  void startRegisteredDevBots()
+    .then((count) => {
+      console.log(`[dev-bot] start automático concluído para ${count} bot(s) cadastrado(s).`);
+    })
+    .catch((error) => {
+      scheduleDevBotStartupRetry({
+        attempt,
+        label: "start automático",
+        retry: () => scheduleRegisteredDevBotStartup(attempt + 1),
+        error
+      });
+    });
+}
+
+function scheduleRecoveredDevBotStartup(botIds: string[], attempt: number) {
+  void startAllDevBotProcesses(botIds)
+    .then(() => {
+      console.log(`[dev-bot] retomada pós-restart solicitada para ${botIds.length} bot(s) que estavam online.`);
+    })
+    .catch((error) => {
+      scheduleDevBotStartupRetry({
+        attempt,
+        label: "retomada pós-restart",
+        retry: () => scheduleRecoveredDevBotStartup(botIds, attempt + 1),
+        error
+      });
+    });
+}
+
+function scheduleDevBotStartupRetry(input: {
+  attempt: number;
+  error: unknown;
+  label: string;
+  retry: () => void;
+}) {
+  const delayMs = DEV_BOT_START_RETRY_DELAYS_MS[input.attempt];
+
+  if (!delayMs || shuttingDown) {
+    console.warn(`[dev-bot] ${input.label} falhou definitivamente:`, input.error instanceof Error ? input.error.message : input.error);
+    return;
+  }
+
+  console.warn(
+    `[dev-bot] ${input.label} falhou; nova tentativa em ${Math.round(delayMs / 1000)}s (${input.attempt + 1}/${DEV_BOT_START_RETRY_DELAYS_MS.length}):`,
+    input.error instanceof Error ? input.error.message : input.error
+  );
+  setTimeout(() => {
+    if (!shuttingDown) input.retry();
+  }, delayMs).unref();
+}
 
 function readProcessError(error: unknown) {
   return error instanceof Error ? error.stack ?? error.message : String(error);
