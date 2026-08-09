@@ -148,6 +148,16 @@ const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "messag
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);
 const RUNTIME_EXPIRED_LICENSE_STATUSES = new Set(["expired", "expirado", "expirada"]);
+const DEV_BOT_BACKEND_RESTART_MESSAGE = "Backend reiniciado. Aguardando inicializacao do processo do bot.";
+const DEV_BOT_RECOVERABLE_RESTART_STATUSES: MongoDevBotStatus[] = [
+  "online",
+  "ready",
+  "starting",
+  "authenticating",
+  "syncing_config",
+  "waiting_retry",
+  "degraded"
+];
 const RUNTIME_BLOCKED_LICENSE_STATUSES = new Set([
   "blocked",
   "bloqueado",
@@ -1527,8 +1537,15 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
 export async function markDevBotsOfflineAfterBackendRestart() {
   const { devBots } = await getMongoCollections();
   const restartedAt = new Date();
-  const previouslyOnline = await devBots.find({
-    status: "online"
+  const recoverableBots = await devBots.find({
+    $or: [
+      { status: { $in: DEV_BOT_RECOVERABLE_RESTART_STATUSES } },
+      {
+        desiredOnline: true,
+        status: "offline",
+        statusMessage: DEV_BOT_BACKEND_RESTART_MESSAGE
+      }
+    ]
   }, {
     projection: {
       _id: 1,
@@ -1537,14 +1554,14 @@ export async function markDevBotsOfflineAfterBackendRestart() {
     }
   }).toArray();
 
-  if (!previouslyOnline.length) {
+  if (!recoverableBots.length) {
     return {
       count: 0,
       botIds: [] as string[]
     };
   }
 
-  const botIds = previouslyOnline.map((bot) => bot._id);
+  const botIds = recoverableBots.map((bot) => bot._id);
 
   await devBots.updateMany(
     {
@@ -1555,13 +1572,13 @@ export async function markDevBotsOfflineAfterBackendRestart() {
     {
       $set: {
         status: "offline",
-        statusMessage: "Backend reiniciado. Aguardando inicializacao do processo do bot.",
+        statusMessage: DEV_BOT_BACKEND_RESTART_MESSAGE,
         updatedAt: restartedAt
       }
     }
   );
 
-  await Promise.all(previouslyOnline.map(async (bot) => {
+  await Promise.all(recoverableBots.map(async (bot) => {
     const updatedBot = await getDevBot(bot._id);
 
     if (updatedBot) {
@@ -1570,7 +1587,7 @@ export async function markDevBotsOfflineAfterBackendRestart() {
   }));
 
   return {
-    count: previouslyOnline.length,
+    count: recoverableBots.length,
     botIds
   };
 }
