@@ -101,7 +101,7 @@ export function startBotBillingScheduler() {
 export async function processBotBillingCycle(source = "manual") {
   const migration = await migrateExistingBotBillingModels(source);
   const generated = await generateDueBotInvoices(source);
-  const overdue = await markOverdueBotInvoices(source);
+  const overdue = await markOverdueBotInvoices(source, { stopBots: false });
   return { generated, migration, overdue };
 }
 
