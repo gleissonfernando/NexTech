@@ -63,6 +63,8 @@ export type MonthlyBillingBulkFilters = {
 };
 
 const BILLING_VARIABLES = ["{usuario}", "{nome}", "{discord_id}", "{plano}", "{tipo_cobranca}", "{valor}", "{vencimento}", "{dias_vencido}", "{chave_pix}"];
+const DEFAULT_PIX_COPY_PASTE = "00020126330014br.gov.bcb.pix011105117656148520400005303986540512.005802BR5925GLEISSON FERNANDO CRUZ PE6007GOIANIA62070503***63043F2D";
+const DEFAULT_PIX_QR_CODE_URL = `https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=16&data=${encodeURIComponent(DEFAULT_PIX_COPY_PASTE)}`;
 
 const DEFAULT_MONTHLY_BILLING_SETTINGS: Pick<MongoMonthlyBillingSettings, "hosting" | "monthly"> = {
   hosting: {
@@ -87,8 +89,8 @@ const DEFAULT_MONTHLY_BILLING_SETTINGS: Pick<MongoMonthlyBillingSettings, "hosti
       "Para liberar o bot, entre no servidor da NexTech, abra um ticket e envie o comprovante: " + DEFAULT_SUPPORT_URL
     ].join("\n"),
     paymentDeadlineDays: 0,
-    pixKey: "00020126330014br.gov.bcb.pix011105117656148520400005303986540512.005802BR5925GLEISSON FERNANDO CRUZ PE6007GOIANIA62070503***63043F2D",
-    pixQrCodeUrl: "https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=16&data=00020126330014br.gov.bcb.pix011105117656148520400005303986540512.005802BR5925GLEISSON%20FERNANDO%20CRUZ%20PE6007GOIANIA62070503***63043F2D"
+    pixKey: DEFAULT_PIX_COPY_PASTE,
+    pixQrCodeUrl: DEFAULT_PIX_QR_CODE_URL
   },
   monthly: {
     defaultAmountInCents: null,
@@ -111,8 +113,8 @@ const DEFAULT_MONTHLY_BILLING_SETTINGS: Pick<MongoMonthlyBillingSettings, "hosti
       "Após realizar o pagamento, envie o comprovante pelo suporte: " + DEFAULT_SUPPORT_URL
     ].join("\n"),
     paymentDeadlineDays: 0,
-    pixKey: null,
-    pixQrCodeUrl: null
+    pixKey: DEFAULT_PIX_COPY_PASTE,
+    pixQrCodeUrl: DEFAULT_PIX_QR_CODE_URL
   }
 };
 
@@ -333,9 +335,9 @@ export async function sendMonthlyBillingCharge(customerId: string, actor: AuthSe
       currency: "BRL" as const,
       dueDate: computed.oldestDueDate?.toISOString() ?? computed.nextDueDate.toISOString(),
       id: charge._id,
-      pixCopyPaste: typeSettings.pixKey,
+      pixCopyPaste: typeSettings.pixKey ?? DEFAULT_PIX_COPY_PASTE,
       pixExpiresAt: null,
-      pixQrCode: typeSettings.pixQrCodeUrl,
+      pixQrCode: typeSettings.pixQrCodeUrl ?? DEFAULT_PIX_QR_CODE_URL,
       status: computed.overdueMonths > 0 ? "atrasada" : "pendente"
     },
     items: [{ name: `${billingTypeLabel(billingType)} - ${customer.planName}`, quantity: Math.max(1, computed.overdueMonths), status: computed.statusLabel }],
@@ -436,8 +438,8 @@ export async function previewMonthlyBillingMessage(input: { billingType: MongoMo
   const bot = sampleCustomer.botId === "preview" ? null : await devBots.findOne({ _id: sampleCustomer.botId });
   return {
     message: renderMonthlyBillingTemplate(settings[billingType].messageTemplate, sampleCustomer, bot, computeCustomerBilling(sampleCustomer), settings[billingType]),
-    pixKey: settings[billingType].pixKey,
-    pixQrCodeUrl: settings[billingType].pixQrCodeUrl
+    pixKey: settings[billingType].pixKey ?? DEFAULT_PIX_COPY_PASTE,
+    pixQrCodeUrl: settings[billingType].pixQrCodeUrl ?? DEFAULT_PIX_QR_CODE_URL
   };
 }
 
@@ -631,7 +633,7 @@ function renderMonthlyBillingTemplate(
   const billingType = resolveBillingType(customer);
   const daysOverdue = computed.oldestDueDate ? Math.max(0, Math.floor((startOfDay(new Date()).getTime() - startOfDay(computed.oldestDueDate).getTime()) / 86400000)) : 0;
   const variables: Record<string, string> = {
-    "{chave_pix}": settings.pixKey ?? "Pix não configurado",
+    "{chave_pix}": settings.pixKey ?? DEFAULT_PIX_COPY_PASTE,
     "{dias_vencido}": String(daysOverdue),
     "{discord_id}": customer.discordUserId,
     "{nome}": customer.customerName,

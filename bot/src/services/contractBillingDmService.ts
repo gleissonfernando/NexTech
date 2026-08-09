@@ -54,8 +54,14 @@ function renderContractDm(payload: ContractBillingDmEvent) {
     : invoice?.pixExpiresAt
       ? "Este QR Code PIX possui validade limitada. Caso ele expire, acesse a dashboard para consultar ou gerar um novo código de pagamento."
       : "Use o QR Code PIX ou, se preferir, copie o código copia e cola abaixo.";
+  const pixCopyPasteBlock = invoice?.pixCopyPaste
+    ? `## PIX Copia e Cola\nSe preferir, use este código para pagar manualmente:\n\`\`\`\n${invoice.pixCopyPaste.slice(0, 1800)}\n\`\`\``
+    : null;
   const content = configuredMessage ? [
     configuredMessage,
+    invoice?.pixCopyPaste && !configuredMessage.includes(invoice.pixCopyPaste) ? "" : null,
+    invoice?.pixCopyPaste && !configuredMessage.includes(invoice.pixCopyPaste) ? pixCopyPasteBlock : null,
+    invoice?.pixQrCode ? "## QR Code PIX\nO QR Code PIX está anexado nesta mensagem." : null,
     "",
     payload.contractId ? `-# Contrato: ${payload.contractId}` : null,
     invoice ? `-# Fatura: ${invoice.id}` : null
@@ -75,7 +81,7 @@ function renderContractDm(payload: ContractBillingDmEvent) {
     "## Recursos liberados ou cobrados",
     items,
     "",
-    invoice?.pixCopyPaste ? `## PIX Copia e Cola\nSe preferir, use este código para pagar manualmente:\n\`\`\`\n${invoice.pixCopyPaste.slice(0, 1800)}\n\`\`\`` : null,
+    pixCopyPasteBlock,
     invoice ? `## Aviso sobre QR Code\n${pixStatus}${invoice.pixExpiresAt ? `\nValidade: ${pixExpiresAt}` : ""}` : null,
     invoice && isChargeEvent(payload.event) ? [
       "## Aviso de hospedagem",
@@ -89,7 +95,7 @@ function renderContractDm(payload: ContractBillingDmEvent) {
   ].filter(Boolean).join("\n");
 
   const components: Array<Record<string, unknown> | ActionRowBuilder<ButtonBuilder>> = [];
-  if (invoice?.pixQrCode && !isExpired(invoice.pixExpiresAt)) {
+  if (invoice?.pixQrCode) {
     components.push({ type: 12, items: [{ media: { url: invoice.pixQrCode }, description: "QR Code PIX" }] });
   }
   components.push({ type: 10, content });
