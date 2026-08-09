@@ -1420,6 +1420,7 @@ export async function listDevBotRuntimeConfigs() {
     const enabledModules = await runtimeModulesForBot(bot, guildIds);
     const access = await canStartBotByBilling(bot._id);
     if (!access.allowed) {
+      await markDevBotBlockedByBilling(bot, access.reason);
       return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
     }
     return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
@@ -1469,9 +1470,30 @@ export async function getDevBotRuntimeConfig(botId: string) {
   const enabledModules = await runtimeModulesForBot(bot, guildIds);
   const access = await canStartBotByBilling(bot._id);
   if (!access.allowed) {
+    await markDevBotBlockedByBilling(bot, access.reason);
     return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
   }
   return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
+}
+
+async function markDevBotBlockedByBilling(bot: MongoDevBot, reason: string | null | undefined) {
+  const message = reason ?? "Bot bloqueado por cobrança pendente.";
+
+  if (bot.desiredOnline === false && bot.status === "stopped_by_payment" && bot.statusMessage === message) {
+    return;
+  }
+
+  const { devBots } = await getMongoCollections();
+  await devBots.updateOne(
+    { _id: bot._id },
+    {
+      $set: {
+        desiredOnline: false,
+        updatedAt: new Date()
+      }
+    }
+  );
+  await updateDevBotRuntimeStatus(bot._id, "stopped_by_payment", message);
 }
 
 export async function setDevBotDesiredOnline(botId: string, desiredOnline: boolean) {
