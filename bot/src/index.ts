@@ -34,6 +34,8 @@ const needsMessageEvents = needsLegacyMessageModeration
   || isBotModuleEnabled("manual-payments")
   || isBotModuleEnabled("fivem-ammunition")
   || isBotModuleEnabled("fivem-weapons")
+  || isBotModuleEnabled("message-control")
+  || isBotModuleEnabled("visible-message")
   || isBotModuleEnabled("temporary-voice")
   || needsMessageLogs;
 

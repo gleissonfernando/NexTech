@@ -405,6 +405,7 @@ function shouldHandleMessageCreateEvents() {
     "courses",
     "fivem-goals",
     "manual-payments",
+    "message-control",
     "music",
     "nextech-invites",
     "police-hidden-channel",
@@ -412,6 +413,7 @@ function shouldHandleMessageCreateEvents() {
     "police-promotions",
     "police-subpoenas",
     "temporary-voice",
+    "visible-message",
     "logs"
   ].some(isBotModuleEnabled)
     || isBotModuleEnabled("image-anti-spam")
