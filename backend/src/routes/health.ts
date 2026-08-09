@@ -333,9 +333,13 @@ function serverHealthReasons(input: {
     reasons.push("Status do bot está sem atualização recente.");
   }
 
-  if (!input.runtimeGuildIds.has(input.guildId)) {
+  if (!input.runtimeGuildIds.has(input.guildId) && !isDevBotRuntimeHealthy(botStatus)) {
     reasons.push("Servidor não aparece no runtime do bot; o bot pode ter sido removido do servidor ou não conseguiu carregar a guild.");
   }
 
   return [...new Set(reasons)];
+}
+
+function isDevBotRuntimeHealthy(status: DevBotDto["status"]) {
+  return status === "online" || status === "ready";
 }
