@@ -85,6 +85,62 @@ function readProjectFile(file) {
   return readFileSync(path.join(root, file), "utf8");
 }
 
+function configuredEnvValue(key) {
+  if (process.env[key]?.trim()) {
+    return process.env[key].trim();
+  }
+
+  const envPath = path.join(root, ".env");
+  if (existsSync(envPath)) {
+    const env = parseKeyValueFile(".env");
+    const value = env.get(key)?.trim();
+    if (value) return unquoteEnvValue(value);
+
+    const packedJson = env.get("APP_CONFIG_JSON")?.trim();
+    const packedValue = packedJson ? readPackedConfigValue(unquoteEnvValue(packedJson), key) : "";
+    if (packedValue) return packedValue;
+  }
+
+  const packedValue = process.env.APP_CONFIG_JSON ? readPackedConfigValue(process.env.APP_CONFIG_JSON, key) : "";
+  if (packedValue) return packedValue;
+
+  return "";
+}
+
+function unquoteEnvValue(value) {
+  return value.replace(/^["'`]+|["'`]+$/g, "");
+}
+
+function readPackedConfigValue(rawConfig, key) {
+  try {
+    const parsed = JSON.parse(rawConfig);
+    const value = parsed?.[key];
+    return value === null || value === undefined ? "" : String(value).trim();
+  } catch {
+    return "";
+  }
+}
+
+function mongoHostsFromUri(uri) {
+  try {
+    const parsed = new URL(uri);
+    return parsed.host
+      .split(",")
+      .map((host) => host.split(":")[0]?.trim().toLowerCase() ?? "")
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function isLocalMongoHost(host) {
+  return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host);
+}
+
+function isSingleLabelMongoHost(host) {
+  return !host.includes(".") && !host.includes(":");
+}
+
 check("configuracao discloud.config", () => {
   if (!existsSync(path.join(root, "discloud.config"))) {
     fail("discloud.config nao encontrado na raiz.");
@@ -125,6 +181,28 @@ check("contrato de token interno do bot", () => {
 
   if (!botEntrypoint.includes("const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());")) {
     fail("bot principal nao pode tratar BOT_API_TOKEN/BACKEND_API_URL como bot DEV gerenciado; isso habilita intents privilegiadas em producao.");
+  }
+});
+
+check("MONGODB_URI segura para runtime", () => {
+  const uri = configuredEnvValue("MONGODB_URI") || configuredEnvValue("MONGO_URI") || configuredEnvValue("DATABASE_URL");
+
+  if (!uri) {
+    return;
+  }
+
+  const hosts = mongoHostsFromUri(uri);
+  if (!hosts.length) {
+    fail("MONGODB_URI invalida: nao foi possivel identificar o host do MongoDB.");
+  }
+
+  if (process.env.MONGODB_ALLOW_SINGLE_LABEL_HOST === "true") {
+    return;
+  }
+
+  const invalidHost = hosts.find((host) => isSingleLabelMongoHost(host) && !isLocalMongoHost(host));
+  if (invalidHost) {
+    fail(`MONGODB_URI usa host curto "${invalidHost}". Use um dominio resolvivel, como mongodb+srv://cluster.example.mongodb.net/NexTech, ou configure MONGODB_ALLOW_SINGLE_LABEL_HOST=true se for rede interna intencional.`);
   }
 });
 

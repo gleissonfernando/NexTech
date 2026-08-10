@@ -6095,6 +6095,8 @@ function getMongoClient() {
     throw new Error("MONGODB_URI não configurada.");
   }
 
+  validateMongoUri(env.MONGODB_URI);
+
   if (!globalForMongo.mongoClient) {
     globalForMongo.mongoClient = new MongoClient(env.MONGODB_URI);
   }
@@ -6104,14 +6106,103 @@ function getMongoClient() {
 
 export async function getMongoDb() {
   const client = getMongoClient();
-  await client.connect();
+  await connectMongoClient(client);
   return client.db(databaseNameFromUri(env.MONGODB_URI));
 }
 
 export async function getBotMongoDb(botId: string) {
   const client = getMongoClient();
-  await client.connect();
+  await connectMongoClient(client);
   return client.db(botDatabaseName(botId));
+}
+
+async function connectMongoClient(client: MongoClient) {
+  try {
+    await client.connect();
+  } catch (error) {
+    throw enrichMongoConnectionError(error, env.MONGODB_URI);
+  }
+}
+
+function validateMongoUri(uri: string) {
+  const hosts = mongoHostsFromUri(uri);
+
+  if (!hosts.length) {
+    throw new Error("MONGODB_URI inválida: não foi possível identificar o host do MongoDB.");
+  }
+
+  if (process.env.MONGODB_ALLOW_SINGLE_LABEL_HOST === "true") {
+    return;
+  }
+
+  const invalidHosts = hosts.filter((host) => isSingleLabelMongoHost(host) && !isLocalMongoHost(host));
+
+  if (invalidHosts.length > 0) {
+    throw new Error(
+      [
+        `MONGODB_URI inválida: host "${invalidHosts[0]}" não é um domínio resolvível fora da máquina/rede local.`,
+        "Use um endereço MongoDB público/Atlas, como mongodb+srv://cluster.example.mongodb.net/NexTech.",
+        "Se este host curto for intencional em rede interna, configure MONGODB_ALLOW_SINGLE_LABEL_HOST=true."
+      ].join(" ")
+    );
+  }
+}
+
+function enrichMongoConnectionError(error: unknown, uri: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  const host = mongoHostsFromUri(uri)[0] ?? "desconhecido";
+
+  if (/ENOTFOUND|getaddrinfo/i.test(message)) {
+    return new Error(
+      [
+        `MongoDB inacessível: o host "${host}" de MONGODB_URI não foi encontrado no DNS.`,
+        "Corrija MONGODB_URI para um endereço acessível pelo backend antes de iniciar bots cadastrados.",
+        `Detalhe original: ${message}`
+      ].join(" ")
+    );
+  }
+
+  if (/Authentication failed|bad auth|auth failed/i.test(message)) {
+    return new Error(
+      [
+        `MongoDB recusou autenticação para o host "${host}".`,
+        "Confira usuário, senha e authSource de MONGODB_URI.",
+        `Detalhe original: ${message}`
+      ].join(" ")
+    );
+  }
+
+  if (/Server selection timed out|ETIMEDOUT|ECONNREFUSED|ECONNRESET/i.test(message)) {
+    return new Error(
+      [
+        `MongoDB não respondeu no host "${host}".`,
+        "Confira firewall, allowlist de IP, rede da hospedagem e se o cluster está ativo.",
+        `Detalhe original: ${message}`
+      ].join(" ")
+    );
+  }
+
+  return error;
+}
+
+function mongoHostsFromUri(uri: string) {
+  try {
+    const parsed = new URL(uri);
+    return parsed.host
+      .split(",")
+      .map((host) => host.split(":")[0]?.trim().toLowerCase() ?? "")
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function isSingleLabelMongoHost(host: string) {
+  return !host.includes(".") && !host.includes(":");
+}
+
+function isLocalMongoHost(host: string) {
+  return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host);
 }
 
 export async function getBotMongoCollections(botId: string) {
