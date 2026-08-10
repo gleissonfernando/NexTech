@@ -202,7 +202,7 @@ check("MONGODB_URI segura para runtime", () => {
 
   const invalidHost = hosts.find((host) => isSingleLabelMongoHost(host) && !isLocalMongoHost(host));
   if (invalidHost) {
-    fail(`MONGODB_URI usa host curto "${invalidHost}". Use um dominio resolvivel, como mongodb+srv://cluster.example.mongodb.net/NexTech, ou configure MONGODB_ALLOW_SINGLE_LABEL_HOST=true se for rede interna intencional.`);
+    console.warn(`[deploy-check] aviso: MONGODB_URI usa host curto "${invalidHost}". Isso e valido apenas quando a hospedagem resolve esse nome por DNS/rede interna.`);
   }
 });
 

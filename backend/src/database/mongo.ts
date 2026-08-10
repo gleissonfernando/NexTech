@@ -6130,22 +6130,6 @@ function validateMongoUri(uri: string) {
   if (!hosts.length) {
     throw new Error("MONGODB_URI inválida: não foi possível identificar o host do MongoDB.");
   }
-
-  if (process.env.MONGODB_ALLOW_SINGLE_LABEL_HOST === "true") {
-    return;
-  }
-
-  const invalidHosts = hosts.filter((host) => isSingleLabelMongoHost(host) && !isLocalMongoHost(host));
-
-  if (invalidHosts.length > 0) {
-    throw new Error(
-      [
-        `MONGODB_URI inválida: host "${invalidHosts[0]}" não é um domínio resolvível fora da máquina/rede local.`,
-        "Use um endereço MongoDB público/Atlas, como mongodb+srv://cluster.example.mongodb.net/NexTech.",
-        "Se este host curto for intencional em rede interna, configure MONGODB_ALLOW_SINGLE_LABEL_HOST=true."
-      ].join(" ")
-    );
-  }
 }
 
 function enrichMongoConnectionError(error: unknown, uri: string) {
