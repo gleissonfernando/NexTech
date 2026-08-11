@@ -405,22 +405,22 @@ function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
   const compact = mode === "realtime-summary";
   const sections = compact ? buildCompactChangelogSections(changelog) : buildFullChangelogSections(changelog, analysis, showTechnical);
   const technicalLine = showTechnical ? `\n-# Hash interno: ${release.commit.slice(0, 12)}` : "";
-  const content = [
-    `**ATUALIZAÇÕES – ${formatUpdateDate(date)}**`,
-    "",
+  const description = [
     ...sections.flatMap(([title, items]) => formatSimpleUpdateSection(title, items)),
     `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
     "",
     technicalLine,
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
-  const components = [{ type: 10, content }];
-  const footer = updatePanelFooterComponent(footerText, footerIconUrl);
-  if (footer) components.push({ type: 14, divider: true, spacing: 1 }, footer);
+  const footer = updatePanelFooter(footerText, footerIconUrl);
 
   return {
     allowed_mentions: { parse: [] },
-    components: [{ type: 17, accent_color: color, components }],
-    flags: 32768
+    embeds: [{
+      color,
+      description,
+      footer,
+      title: `ATUALIZAÇÕES – ${formatUpdateDate(date)}`
+    }]
   };
 }
 
@@ -797,23 +797,13 @@ function formatSimpleUpdateSection(title, items) {
   ];
 }
 
-function updatePanelFooterComponent(text, iconUrl) {
+function updatePanelFooter(text, iconUrl) {
   const footerText = sanitizeSingleLine(text);
-  if (!footerText) return null;
-
-  const content = `-# **${escapeMarkdown(footerText).slice(0, 220)}**`;
+  if (!footerText) return undefined;
   const cleanIconUrl = isHttpUrl(iconUrl) ? String(iconUrl).trim() : "";
-  if (!cleanIconUrl) return { type: 10, content };
-
-  return {
-    type: 9,
-    components: [{ type: 10, content }],
-    accessory: {
-      type: 11,
-      media: { url: cleanIconUrl },
-      description: "Ícone do rodapé"
-    }
-  };
+  return cleanIconUrl
+    ? { icon_url: cleanIconUrl, text: footerText.slice(0, 2048) }
+    : { text: footerText.slice(0, 2048) };
 }
 
 function discordBotAvatarUrl(bot) {
