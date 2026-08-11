@@ -38,7 +38,7 @@ import type { BotCommand, BotContext } from "../types";
 import { currentRuntimeBotId, env } from "../config/env";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
-import type { Course, CourseDepartment, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CoursePublication, CourseSettings, CourseStudentHistory, CourseStudentHistoryPage, CourseInstructorReport } from "./apiClient";
+import type { Course, CourseDepartment, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CourseForgetfulnessHistory, CourseForgetfulnessHistoryPage, CoursePublication, CourseSettings, CourseStudentHistory, CourseStudentHistoryPage, CourseInstructorReport } from "./apiClient";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 type CourseActionInteraction = ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
@@ -120,6 +120,9 @@ const examChannelStateRetryTimers = new Map<string, NodeJS.Timeout>();
 const courseEventLifecycleTimers = new Map<string, { end?: NodeJS.Timeout; start?: NodeJS.Timeout }>();
 const courseEventLifecycleGenerations = new Map<string, symbol>();
 const pendingExamSelections = new Map<string, string[]>();
+const courseForgetfulnessTimers = new Map<string, NodeJS.Timeout>();
+const COURSE_FORGETFULNESS_DAILY_SCAN_MS = 24 * 60 * 60 * 1000;
+const COURSE_FORGETFULNESS_MAX_TIMER_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function startCourseSystemService(client: Client, context: BotContext) {
   if (startedCourseClients.has(client)) return;
@@ -152,6 +155,9 @@ export function startCourseSystemService(client: Client, context: BotContext) {
   const restoreRuntimeState = () => {
     void restoreTemporaryExamChannelCleanup(client, context).catch((error) => {
       console.error("[courses] failed to restore temporary exam channel cleanup:", error instanceof Error ? error.message : error);
+    });
+    void restoreCourseForgetfulnessTracking(client, context).catch((error) => {
+      console.error("[courses] failed to restore course forgetfulness tracking:", error instanceof Error ? error.message : error);
     });
   };
   if (client.isReady()) restoreRuntimeState();
@@ -207,6 +213,29 @@ export const cursosHistoricoCommand: BotCommand = {
   moduleId: "courses",
   async execute(interaction, context) {
     await showStudentCourseHistory(interaction, context, interaction.options.getUser("aluno")?.id ?? interaction.user.id, 0);
+  }
+};
+
+export const historicoEsquecimentoCommand: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName("historico-esquecimento")
+    .setDescription("Mostra os cursos que passaram do prazo de finalização na semana atual.")
+    .addUserOption((option) => option.setName("responsavel").setDescription("Filtra por responsável."))
+    .addStringOption((option) => option
+      .setName("situacao")
+      .setDescription("Filtra a situação do atraso.")
+      .addChoices(
+        { name: "Todos", value: "all" },
+        { name: "Finalizados com atraso", value: "overdue_completed" },
+        { name: "Ainda abertos", value: "open" }
+      )),
+  moduleId: "courses",
+  async execute(interaction, context) {
+    await showCourseForgetfulnessHistory(interaction, context, {
+      page: 0,
+      responsibleUserId: interaction.options.getUser("responsavel")?.id ?? null,
+      situation: (interaction.options.getString("situacao") as "all" | "overdue_completed" | "open" | null) ?? "all"
+    });
   }
 };
 
@@ -494,6 +523,15 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
       return;
     }
     await showStudentCourseHistory(interaction, context, studentId, Number(rawPage) || 0);
+    return;
+  }
+  if (interaction.customId.startsWith("course_forgetfulness_page:")) {
+    const [, rawPage, situation = "all", responsibleUserId = "all"] = interaction.customId.split(":");
+    await showCourseForgetfulnessHistory(interaction, context, {
+      page: Number(rawPage) || 0,
+      responsibleUserId: responsibleUserId === "all" ? null : responsibleUserId,
+      situation: situation === "open" || situation === "overdue_completed" ? situation : "all"
+    });
     return;
   }
   if (interaction.customId.startsWith(`${IDS.historyRemoveYes}:`)) {
@@ -959,7 +997,11 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
   });
   await refreshPublicationMessage(interaction, context, updated);
   if (course) await recordInstructorTrackingEvent(interaction.guild!, context, course, updated, status === "cancelled" ? "cancelled" : status === "finished" ? "finished" : "started", interaction.user.id);
+  if (status === "started") {
+    scheduleCourseForgetfulnessCheck(interaction.guild!, context, updated);
+  }
   if (status === "finished") {
+    clearCourseForgetfulnessTimer(updated);
     await lockFinishedCourseChannel(interaction, context, updated).catch(async (error) => {
       await sendPublicationLog(interaction, context, updated, `⚠️ Falha ao bloquear canal após finalização\nResponsável: <@${interaction.user.id}>\nErro: ${error instanceof Error ? error.message : String(error)}`).catch(() => null);
     });
@@ -997,6 +1039,125 @@ async function recordInstructorTrackingEvent(guild: Guild, context: BotContext, 
   }).catch((error) => {
     console.error(`[courses] failed to record instructor tracking guild=${guild.id} publication=${publication.id} actor=${actorId}:`, error instanceof Error ? error.message : error);
   });
+}
+
+async function restoreCourseForgetfulnessTracking(client: Client, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    await scanAndSendCourseForgetfulnessReminders(guild, context).catch((error) => {
+      console.error(`[courses] COURSE_OVERDUE restore failed guild=${guild.id}:`, error instanceof Error ? error.message : error);
+    });
+    const active = [
+      ...await context.api.listCoursePublications(guild.id, "started").catch(() => []),
+      ...await context.api.listCoursePublications(guild.id, "proof").catch(() => [])
+    ];
+    for (const publication of active) scheduleCourseForgetfulnessCheck(guild, context, publication);
+  }
+
+  const timer = setInterval(() => {
+    for (const guild of client.guilds.cache.values()) {
+      void scanAndSendCourseForgetfulnessReminders(guild, context).catch((error) => {
+        console.error(`[courses] COURSE_OVERDUE daily scan failed guild=${guild.id}:`, error instanceof Error ? error.message : error);
+      });
+    }
+  }, COURSE_FORGETFULNESS_DAILY_SCAN_MS);
+  timer.unref();
+}
+
+function scheduleCourseForgetfulnessCheck(guild: Guild, context: BotContext, publication: CoursePublication) {
+  clearCourseForgetfulnessTimer(publication);
+  if (!publication.completionDeadlineAt || !["started", "proof"].includes(publication.status)) return;
+  const timerKey = courseForgetfulnessTimerKey(guild.id, publication.id);
+  const targetAt = Date.parse(publication.completionDeadlineAt);
+  if (!Number.isFinite(targetAt)) return;
+  const scheduleNext = () => {
+    const delay = targetAt - Date.now();
+    if (delay <= 0) {
+      courseForgetfulnessTimers.delete(timerKey);
+      void processCourseForgetfulnessPublication(guild, context, publication.id);
+      return;
+    }
+    const timer = setTimeout(scheduleNext, Math.min(delay, COURSE_FORGETFULNESS_MAX_TIMER_MS));
+    timer.unref();
+    courseForgetfulnessTimers.set(timerKey, timer);
+  };
+  scheduleNext();
+}
+
+function clearCourseForgetfulnessTimer(publication: Pick<CoursePublication, "guildId" | "id">) {
+  const key = courseForgetfulnessTimerKey(publication.guildId, publication.id);
+  const timer = courseForgetfulnessTimers.get(key);
+  if (timer) clearTimeout(timer);
+  courseForgetfulnessTimers.delete(key);
+}
+
+function courseForgetfulnessTimerKey(guildId: string, publicationId: string) {
+  return `${guildId}:${publicationId}`;
+}
+
+async function processCourseForgetfulnessPublication(guild: Guild, context: BotContext, publicationId: string) {
+  const history = await context.api.registerCourseForgetfulnessOverdue(guild.id, publicationId);
+  if (!history || history.reminderSent) return;
+  await sendCourseForgetfulnessReminder(guild, context, history);
+}
+
+async function scanAndSendCourseForgetfulnessReminders(guild: Guild, context: BotContext) {
+  await context.api.scanCourseForgetfulness(guild.id);
+  const pending = await context.api.listPendingCourseForgetfulnessReminders(guild.id);
+  for (const history of pending) {
+    await sendCourseForgetfulnessReminder(guild, context, history);
+  }
+}
+
+async function sendCourseForgetfulnessReminder(guild: Guild, context: BotContext, pendingHistory: CourseForgetfulnessHistory) {
+  const history = await context.api.claimCourseForgetfulnessReminder(guild.id, pendingHistory.id).catch((error) => {
+    console.error(`[courses] COURSE_REMINDER claim failed guild=${guild.id} history=${pendingHistory.id}:`, error instanceof Error ? error.message : error);
+    return null;
+  });
+  if (!history) return;
+
+  const member = await guild.members.fetch(history.responsibleUserId).catch(() => null);
+  const user = member?.user ?? await context.client.users.fetch(history.responsibleUserId).catch(() => null);
+  const displayName = member?.displayName ?? user?.globalName ?? user?.username ?? history.responsibleName ?? history.responsibleUserId;
+  const serverIconUrl = guild.iconURL({ size: 256 }) ?? null;
+  try {
+    if (!user) throw new Error("responsible_user_not_found");
+    await user.send(courseForgetfulnessReminderPanel(history, displayName, serverIconUrl));
+    await context.api.markCourseForgetfulnessReminderDelivery(guild.id, history.id, true);
+  } catch (error) {
+    const message = discordDmErrorMessage(error);
+    await context.api.markCourseForgetfulnessReminderDelivery(guild.id, history.id, false, message).catch(() => null);
+    console.error(`[courses] COURSE_REMINDER_DM_FAILED guild=${guild.id} history=${history.id} user=${history.responsibleUserId}:`, message);
+  }
+}
+
+function courseForgetfulnessReminderPanel(history: CourseForgetfulnessHistory, displayName: string, serverIconUrl: string | null) {
+  const startedAt = new Date(history.startedAt);
+  const deadlineAt = new Date(history.deadlineAt);
+  return renderComponentsV2Panel({
+    accentColor: 0xf59e0b,
+    description: [
+      `Olá, <@${history.responsibleUserId}>.`,
+      "",
+      "Identificamos que um curso iniciado por você ainda não foi finalizado.",
+      "",
+      `Curso: **${history.courseName}**`,
+      `Iniciado: **${formatDateTime(startedAt)}**`,
+      `Prazo de finalização: **${formatDurationMs(deadlineAt.getTime() - startedAt.getTime())}**`,
+      "Status: **Pendente de finalização**",
+      "",
+      "Retorne ao servidor e realize a finalização pelo fluxo normal do sistema de cursos.",
+      "",
+      "Esse aviso foi registrado no Histórico de Esquecimentos."
+    ].join("\n"),
+    footer: "© NexTech Systems",
+    image: serverIconUrl ? { imageEnabled: true, imagePosition: "thumbnail", imageUrl: serverIconUrl } : null,
+    title: `Curso Ainda em Aberto - ${displayName}`
+  });
+}
+
+function discordDmErrorMessage(error: unknown) {
+  if (error && typeof error === "object" && "code" in error) return `discord_code_${String((error as { code?: unknown }).code)}`;
+  return error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300);
 }
 
 function parseCourseScheduleWindow(dateInput: string, timeInput: string) {
@@ -2298,6 +2459,35 @@ async function showStudentCourseHistory(interaction: ChatInputCommandInteraction
   else await interaction.editReply(payload);
 }
 
+async function showCourseForgetfulnessHistory(interaction: ChatInputCommandInteraction | ButtonInteraction, context: BotContext, input: {
+  page: number;
+  responsibleUserId?: string | null;
+  situation?: "all" | "overdue_completed" | "open";
+}) {
+  if (interaction.isButton()) await interaction.deferUpdate();
+  else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const [historySettings, courseSettings] = await Promise.all([
+    context.api.getCourseHistorySettings(interaction.guildId!),
+    context.api.getCourseSettings(interaction.guildId!)
+  ]);
+  if (!historySettings.enabled) {
+    await interaction.editReply(courseNoticePanel("Histórico de Esquecimentos", "O histórico de cursos está desativado no dashboard."));
+    return;
+  }
+  if (!canUseTrackingFeature(interaction, historySettings.viewRoleIds, courseSettings)) {
+    await interaction.editReply(courseNoticePanel("Sem permissão", "Você não possui permissão para visualizar esquecimentos de finalização."));
+    return;
+  }
+  const history = await context.api.listCourseForgetfulnessHistory(interaction.guildId!, {
+    page: input.page,
+    pageSize: 5,
+    responsibleUserId: input.responsibleUserId ?? null,
+    situation: input.situation ?? "all"
+  });
+  const responsibleNames = await resolveCourseForgetfulnessResponsibleNames(interaction.guild!, history);
+  await interaction.editReply(courseForgetfulnessHistoryPanel(history, input.situation ?? "all", input.responsibleUserId ?? null, responsibleNames));
+}
+
 async function startRemoveCourseHistoryFlow(interaction: ChatInputCommandInteraction, context: BotContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const target = interaction.options.getUser("aluno", true);
@@ -2433,6 +2623,62 @@ function studentCourseHistoryPanel(studentId: string, studentName: string, histo
     ].join("\n"),
     footer: "© NexTech Systems",
     title: "📚 Histórico de Cursos"
+  });
+}
+
+async function resolveCourseForgetfulnessResponsibleNames(guild: Guild, history: CourseForgetfulnessHistoryPage) {
+  const ids = new Set([
+    ...history.items.map((item) => item.responsibleUserId),
+    ...history.ranking.map((item) => item.responsibleUserId)
+  ]);
+  const names = new Map<string, string>();
+  for (const id of ids) {
+    const member = await guild.members.fetch(id).catch(() => null);
+    names.set(id, member?.displayName ?? member?.user.globalName ?? member?.user.username ?? id);
+  }
+  return names;
+}
+
+function courseForgetfulnessHistoryPanel(history: CourseForgetfulnessHistoryPage, situation: "all" | "overdue_completed" | "open", responsibleUserId: string | null, responsibleNames: Map<string, string>) {
+  const rows = history.items.map((item, index) => {
+    const finished = item.finishedAt ? formatDateTime(item.finishedAt) : "Ainda não";
+    const delay = item.finishedAt ? formatDurationMs(new Date(item.finishedAt).getTime() - new Date(item.deadlineAt).getTime()) : formatDurationMs(Date.now() - new Date(item.deadlineAt).getTime());
+    const status = item.resolved ? "Finalizado com atraso" : "Curso continua aberto";
+    const responsibleName = responsibleNames.get(item.responsibleUserId) ?? item.responsibleName ?? item.responsibleUserId;
+    return [
+      `**${history.page * history.pageSize + index + 1}. ${responsibleName}**`,
+      `Responsável: <@${item.responsibleUserId}>`,
+      `Curso: **${item.courseName}**`,
+      `Iniciado: **${formatDateTime(item.startedAt)}**`,
+      `Prazo: **${formatDateTime(item.deadlineAt)}**`,
+      `Finalizado: **${finished}**`,
+      `Situação: **${status}**`,
+      `Atraso: **${delay}**`
+    ].join("\n");
+  });
+  const ranking = history.ranking.slice(0, 10).map((item, index) => `${index + 1}. ${responsibleNames.get(item.responsibleUserId) ?? item.responsibleName ?? item.responsibleUserId} — **${item.count}** esquecimento(s)`);
+  const previous = Math.max(0, history.page - 1);
+  const next = Math.min(history.totalPages - 1, history.page + 1);
+  return renderComponentsV2Panel({
+    accentColor: 0xf59e0b,
+    actions: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`course_forgetfulness_page:${previous}:${situation}:${responsibleUserId ?? "all"}`).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(history.page <= 0),
+        new ButtonBuilder().setCustomId(`course_forgetfulness_page:${history.page}:${situation}:${responsibleUserId ?? "all"}`).setLabel(`Página ${history.page + 1}/${history.totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`course_forgetfulness_page:${next}:${situation}:${responsibleUserId ?? "all"}`).setLabel("Próximo").setStyle(ButtonStyle.Secondary).setDisabled(history.page >= history.totalPages - 1)
+      )
+    ],
+    description: [
+      `Período: **${formatDateTime(history.periodStart)}** até **${formatDateTime(history.periodEnd)}**`,
+      `Ocorrências: **${history.total}**`,
+      "",
+      rows.length ? rows.join("\n\n") : "Nenhum esquecimento registrado na semana atual.",
+      "",
+      "**Ranking semanal**",
+      ranking.length ? ranking.join("\n") : "Sem registros para rankear."
+    ].join("\n"),
+    footer: "© NexTech Systems",
+    title: "Histórico de Esquecimentos - Semana Atual"
   });
 }
 
@@ -4180,10 +4426,18 @@ function formatExamDuration(startedAt: string, finishedAt: string | null) {
 
 function formatCourseDuration(startedAt: string | null, finishedAt: string | null) {
   if (!startedAt || !finishedAt) return "-";
-  const seconds = Math.max(0, Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000));
+  return formatDurationMs(new Date(finishedAt).getTime() - new Date(startedAt).getTime());
+}
+
+function formatDurationMs(durationMs: number) {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatDateTime(date: Date | string) {
+  return new Date(date).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 async function sendPublicationLog(interaction: { guild: ChatInputCommandInteraction["guild"]; guildId: string | null }, context: BotContext, publication: CoursePublication, content: string) {

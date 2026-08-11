@@ -26,7 +26,7 @@ import { policeHiddenChannelCommand } from "../services/policeHiddenChannelServi
 import { dmBarCommand } from "../services/dmBarService";
 import { dafCommand, escalaDafCommand } from "../services/dafScaleService";
 import { policeSubpoenaCommand } from "../services/policeSubpoenaService";
-import { courseCommand, cursosHistoricoCommand, instrutoresCommand, publicarCursoCommand, removerCursoHistoricoCommand } from "../services/courseSystemService";
+import { courseCommand, cursosHistoricoCommand, historicoEsquecimentoCommand, instrutoresCommand, publicarCursoCommand, removerCursoHistoricoCommand } from "../services/courseSystemService";
 import { rhAdminCommand } from "../services/rhAdminService";
 import { removerCommand } from "./remover";
 import { messageControlActivateAliasCommand, messageControlCommand, messageControlDeactivateAliasCommand } from "../services/messageControlService";
@@ -78,6 +78,7 @@ export function createCommandCollection() {
     courseCommand,
     instrutoresCommand,
     cursosHistoricoCommand,
+    historicoEsquecimentoCommand,
     removerCursoHistoricoCommand,
     publicarCursoCommand,
     rhAdminCommand,

@@ -68,11 +68,17 @@ import {
   getCourseHistorySettings,
   getInstructorTrackingSettings,
   getInstructorWeeklyReport,
+  claimCourseForgetfulnessReminder,
+  createCourseForgetfulnessIfOverdue,
+  listPendingCourseForgetfulnessReminders,
+  listWeeklyCourseForgetfulness,
   listStudentCourseHistory,
+  markCourseForgetfulnessReminderDelivery,
   recordInstructorCourseEvent,
   removeStudentCourseHistory,
   saveCourseHistorySettings,
-  saveInstructorTrackingSettings
+  saveInstructorTrackingSettings,
+  scanOverdueCourseForgetfulness
 } from "../services/courseTrackingService";
 
 export const coursesRouter = Router();
@@ -333,6 +339,17 @@ const instructorEventSchema = z.object({
 const historyRemoveSchema = z.object({
   actorId: snowflake,
   reason: z.string().max(400).nullable().optional()
+});
+const forgetfulnessListSchema = z.object({
+  courseId: z.string().min(1).max(120).nullable().optional(),
+  page: z.coerce.number().int().min(0).optional(),
+  pageSize: z.coerce.number().int().min(1).max(10).optional(),
+  responsibleUserId: snowflake.nullable().optional(),
+  situation: z.enum(["all", "overdue_completed", "open"]).optional()
+});
+const reminderDeliverySchema = z.object({
+  delivered: z.boolean(),
+  error: z.string().max(300).nullable().optional()
 });
 
 coursesRouter.use(requireAuthOrBot);
@@ -636,6 +653,61 @@ coursesRouter.get("/bot/:guildId/history/settings", requireBot, async (req, res,
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
     return res.json({ settings: await getCourseHistorySettings(botId, guildId) });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/bot/:guildId/forgetfulness/history", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const input = forgetfulnessListSchema.parse(req.query ?? {});
+    return res.json(await listWeeklyCourseForgetfulness(botId, guildId, input));
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/forgetfulness/scan", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const items = await scanOverdueCourseForgetfulness(botId, guildId);
+    return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.get("/bot/:guildId/forgetfulness/pending-reminders", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const items = await listPendingCourseForgetfulnessReminders(botId, guildId);
+    return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/forgetfulness/publications/:publicationId/register-overdue", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const item = await createCourseForgetfulnessIfOverdue(botId, guildId, routeParam(req, "publicationId"));
+    return res.json({ item });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.post("/bot/:guildId/forgetfulness/:historyId/claim-reminder", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const item = await claimCourseForgetfulnessReminder(botId, guildId, routeParam(req, "historyId"));
+    return res.json({ item });
+  } catch (error) { return next(error); }
+});
+
+coursesRouter.patch("/bot/:guildId/forgetfulness/:historyId/reminder-delivery", requireBot, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await assertRuntime(await resolveRequestBotId(req), guildId);
+    const input = reminderDeliverySchema.parse(req.body ?? {});
+    const item = await markCourseForgetfulnessReminderDelivery(botId, guildId, routeParam(req, "historyId"), input.delivered, input.error);
+    return res.json({ item });
   } catch (error) { return next(error); }
 });
 

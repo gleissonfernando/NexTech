@@ -5,6 +5,7 @@ import { emitRealtime } from "../realtime/events";
 
 export const COURSES_MODULE_ID = "courses";
 const DEFAULT_COURSE_CHANNEL_EXPIRATION_HOURS = 24;
+const DEFAULT_COURSE_COMPLETION_DEADLINE_MINUTES = 15;
 const DEFAULT_COURSE_DEPARTMENTS = ["Dp aduana", "Dp Norte"];
 const COURSE_DEPARTMENT_NAME_MIN = 2;
 const COURSE_DEPARTMENT_NAME_MAX = 80;
@@ -1402,6 +1403,12 @@ export async function createCoursePublication(botId: string | null, guildId: str
     cancelledAt: null,
     startedBy: null,
     startedAt: null,
+    completionDeadlineAt: null,
+    completionReminderSent: false,
+    completionReminderSentAt: null,
+    completionReminderDmDelivered: null,
+    completionReminderDmError: null,
+    completionResolvedAt: null,
     proofStartedBy: null,
     proofStartedAt: null,
     finishedBy: null,
@@ -1620,12 +1627,19 @@ export async function setCoursePublicationStatus(botId: string | null, guildId: 
     await assertNoCoursePublicationConflictForDay(botId, guildId, publication.courseId, publication.scheduledStartAt ?? null, publication.scheduledFor, publicationId);
   }
   const allowedStatuses = publicationStatusTransitionSources(status);
+  const startedAt = status === "started" ? now : publication.startedAt ?? null;
   const transition = await coursePublications.updateOne({ _id: publicationId, ...scope(botId, guildId), ...(allowedStatuses ? { status: { $in: allowedStatuses } } : {}) }, {
     $set: {
       cancelledAt: status === "cancelled" ? now : publication.cancelledAt,
       cancelledBy: status === "cancelled" ? actorId : publication.cancelledBy,
       startedBy: status === "started" ? actorId : publication.startedBy ?? null,
-      startedAt: status === "started" ? now : publication.startedAt ?? null,
+      startedAt,
+      completionDeadlineAt: status === "started" ? courseCompletionDeadlineAt(now) : publication.completionDeadlineAt ?? null,
+      completionReminderSent: status === "started" ? false : publication.completionReminderSent ?? false,
+      completionReminderSentAt: status === "started" ? null : publication.completionReminderSentAt ?? null,
+      completionReminderDmDelivered: status === "started" ? null : publication.completionReminderDmDelivered ?? null,
+      completionReminderDmError: status === "started" ? null : publication.completionReminderDmError ?? null,
+      completionResolvedAt: status === "started" ? null : publication.completionResolvedAt ?? null,
       proofStartedBy: status === "proof" ? actorId : publication.proofStartedBy ?? null,
       proofStartedAt: status === "proof" ? now : publication.proofStartedAt ?? null,
       finishedBy: status === "finished" || status === "closed" ? actorId : publication.finishedBy ?? null,
@@ -1647,6 +1661,20 @@ export async function setCoursePublicationStatus(botId: string | null, guildId: 
   }
   const updated = await coursePublications.findOne({ _id: publicationId, ...scope(botId, guildId) });
   await logCourseAction(botId, guildId, `course.${status}`, actorId, publication.courseId, publicationId, { from: publication.status, to: status });
+  if (status === "started") {
+    await logCourseAction(botId, guildId, "COURSE_STARTED", actorId, publication.courseId, publicationId, {
+      deadlineAt: courseCompletionDeadlineAt(now).toISOString(),
+      startedAt: now.toISOString()
+    });
+    await logCourseAction(botId, guildId, "COURSE_DEADLINE_CREATED", actorId, publication.courseId, publicationId, {
+      deadlineMinutes: 15,
+      deadlineAt: courseCompletionDeadlineAt(now).toISOString()
+    });
+  }
+  if (status === "finished" || status === "closed") {
+    const { resolveCourseForgetfulnessForPublication } = await import("./courseTrackingService.js");
+    await resolveCourseForgetfulnessForPublication(botId, guildId, publicationId, now);
+  }
   emitRealtime("courses:publication", { botId, guildId, publicationId });
   return mapPublication(updated ?? publication);
 }
@@ -1995,6 +2023,11 @@ function mapPublication(publication: MongoCoursePublication) {
     cancelledAt: publication.cancelledAt?.toISOString() ?? null,
     startedBy: publication.startedBy ?? null,
     startedAt: publication.startedAt?.toISOString() ?? null,
+    completionDeadlineAt: publication.completionDeadlineAt?.toISOString() ?? null,
+    completionReminderSent: publication.completionReminderSent === true,
+    completionReminderSentAt: publication.completionReminderSentAt?.toISOString() ?? null,
+    completionReminderDmDelivered: publication.completionReminderDmDelivered ?? null,
+    completionResolvedAt: publication.completionResolvedAt?.toISOString() ?? null,
     proofStartedBy: publication.proofStartedBy ?? null,
     proofStartedAt: publication.proofStartedAt?.toISOString() ?? null,
     finishedBy: publication.finishedBy ?? null,
@@ -2229,4 +2262,8 @@ function isDuplicateKeyError(error: unknown) {
 
 function scope(botId: string | null, guildId: string) {
   return { botId, guildId };
+}
+
+function courseCompletionDeadlineAt(startedAt: Date) {
+  return new Date(startedAt.getTime() + DEFAULT_COURSE_COMPLETION_DEADLINE_MINUTES * 60_000);
 }

@@ -496,10 +496,42 @@ export type MongoCoursePublication = {
   cancelledAt: Date | null;
   startedBy?: string | null;
   startedAt?: Date | null;
+  completionDeadlineAt?: Date | null;
+  completionReminderSent?: boolean;
+  completionReminderSentAt?: Date | null;
+  completionReminderDmDelivered?: boolean | null;
+  completionReminderDmError?: string | null;
+  completionResolvedAt?: Date | null;
   proofStartedBy?: string | null;
   proofStartedAt?: Date | null;
   finishedBy?: string | null;
   finishedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoCourseForgetfulnessHistory = {
+  _id: string;
+  botId: string | null;
+  guildId: string;
+  responsibleUserId: string;
+  responsibleName: string | null;
+  courseId: string;
+  courseName: string;
+  publicationId: string;
+  scheduledAt: Date | null;
+  startedAt: Date;
+  deadlineAt: Date;
+  reminderSent: boolean;
+  reminderSentAt: Date | null;
+  dmDelivered: boolean | null;
+  dmError: string | null;
+  finishedAt: Date | null;
+  resolved: boolean;
+  status: "OVERDUE" | "OVERDUE_COMPLETED";
+  weekReference: string;
+  periodStart: Date;
+  periodEnd: Date;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -6232,6 +6264,7 @@ export async function getMongoCollections() {
     courseInstructorEvents: db.collection<MongoCourseInstructorEvent>("course_instructor_events"),
     courseHistorySettings: db.collection<MongoCourseHistorySettings>("course_history_settings"),
     courseStudentHistory: db.collection<MongoCourseStudentHistory>("course_student_history"),
+    courseForgetfulnessHistory: db.collection<MongoCourseForgetfulnessHistory>("course_forgetfulness_history"),
     openDutySettings: db.collection<MongoOpenDutySettings>("open_duty_settings"),
     openDutyCounters: db.collection<MongoOpenDutyWarningCounter>("open_duty_counters"),
     openDutyNotifications: db.collection<MongoOpenDutyNotification>("open_duty_notifications"),
@@ -6534,6 +6567,7 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, messageId: 1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, discordEventId: 1 }),
     db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, courseId: 1, scheduledStartAt: 1 }),
+    db.collection<MongoCoursePublication>("course_publications").createIndex({ botId: 1, guildId: 1, status: 1, completionDeadlineAt: 1, completionReminderSent: 1 }),
     db.collection<MongoCourseEnrollment>("course_enrollments").createIndex(
       { botId: 1, guildId: 1, publicationId: 1, studentId: 1 },
       { unique: true }
@@ -6557,6 +6591,12 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoCourseStudentHistory>("course_student_history").createIndex(
       { botId: 1, guildId: 1, attemptId: 1 },
       { unique: true, partialFilterExpression: { attemptId: { $type: "string" } } }
+    ),
+    db.collection<MongoCourseForgetfulnessHistory>("course_forgetfulness_history").createIndex({ botId: 1, guildId: 1, weekReference: 1, responsibleUserId: 1, startedAt: -1 }),
+    db.collection<MongoCourseForgetfulnessHistory>("course_forgetfulness_history").createIndex({ botId: 1, guildId: 1, resolved: 1, deadlineAt: 1 }),
+    db.collection<MongoCourseForgetfulnessHistory>("course_forgetfulness_history").createIndex(
+      { botId: 1, guildId: 1, publicationId: 1, responsibleUserId: 1, startedAt: 1 },
+      { unique: true }
     ),
     db.collection<MongoOpenDutySettings>("open_duty_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoOpenDutyWarningCounter>("open_duty_counters").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),

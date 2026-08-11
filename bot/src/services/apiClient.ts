@@ -365,12 +365,55 @@ export type CoursePublication = {
   cancelledAt: string | null;
   startedBy: string | null;
   startedAt: string | null;
+  completionDeadlineAt: string | null;
+  completionReminderSent: boolean;
+  completionReminderSentAt: string | null;
+  completionReminderDmDelivered: boolean | null;
+  completionResolvedAt: string | null;
   proofStartedBy: string | null;
   proofStartedAt: string | null;
   finishedBy: string | null;
   finishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CourseForgetfulnessHistory = {
+  id: string;
+  botId: string | null;
+  guildId: string;
+  responsibleUserId: string;
+  responsibleName: string | null;
+  courseId: string;
+  courseName: string;
+  publicationId: string;
+  scheduledAt: string | null;
+  startedAt: string;
+  deadlineAt: string;
+  reminderSent: boolean;
+  reminderSentAt: string | null;
+  dmDelivered: boolean | null;
+  dmError: string | null;
+  finishedAt: string | null;
+  resolved: boolean;
+  status: "OVERDUE" | "OVERDUE_COMPLETED";
+  weekReference: string;
+  periodStart: string;
+  periodEnd: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CourseForgetfulnessHistoryPage = {
+  items: CourseForgetfulnessHistory[];
+  page: number;
+  pageSize: number;
+  ranking: Array<{ count: number; responsibleName: string | null; responsibleUserId: string }>;
+  total: number;
+  totalPages: number;
+  weekReference: string;
+  periodStart: string;
+  periodEnd: string;
 };
 
 export type CourseDepartment = {
@@ -2920,6 +2963,44 @@ export class ApiClient {
 
   async removeCourseStudentHistory(guildId: string, historyId: string, input: { actorId: string; reason?: string | null }) {
     const { data } = await this.http.delete<{ item: CourseStudentHistory }>(`/courses/bot/${guildId}/history/items/${historyId}`, { data: input });
+    return data.item;
+  }
+
+  async listCourseForgetfulnessHistory(guildId: string, input: { courseId?: string | null; page?: number; pageSize?: number; responsibleUserId?: string | null; situation?: "all" | "overdue_completed" | "open" } = {}) {
+    const { data } = await this.http.get<CourseForgetfulnessHistoryPage>(`/courses/bot/${guildId}/forgetfulness/history`, {
+      params: {
+        courseId: input.courseId || undefined,
+        page: input.page,
+        pageSize: input.pageSize,
+        responsibleUserId: input.responsibleUserId || undefined,
+        situation: input.situation || undefined
+      }
+    });
+    return data;
+  }
+
+  async scanCourseForgetfulness(guildId: string) {
+    const { data } = await this.http.post<{ items: CourseForgetfulnessHistory[] }>(`/courses/bot/${guildId}/forgetfulness/scan`);
+    return data.items;
+  }
+
+  async listPendingCourseForgetfulnessReminders(guildId: string) {
+    const { data } = await this.http.get<{ items: CourseForgetfulnessHistory[] }>(`/courses/bot/${guildId}/forgetfulness/pending-reminders`);
+    return data.items;
+  }
+
+  async registerCourseForgetfulnessOverdue(guildId: string, publicationId: string) {
+    const { data } = await this.http.post<{ item: CourseForgetfulnessHistory | null }>(`/courses/bot/${guildId}/forgetfulness/publications/${publicationId}/register-overdue`);
+    return data.item;
+  }
+
+  async claimCourseForgetfulnessReminder(guildId: string, historyId: string) {
+    const { data } = await this.http.post<{ item: CourseForgetfulnessHistory | null }>(`/courses/bot/${guildId}/forgetfulness/${historyId}/claim-reminder`);
+    return data.item;
+  }
+
+  async markCourseForgetfulnessReminderDelivery(guildId: string, historyId: string, delivered: boolean, error?: string | null) {
+    const { data } = await this.http.patch<{ item: CourseForgetfulnessHistory | null }>(`/courses/bot/${guildId}/forgetfulness/${historyId}/reminder-delivery`, { delivered, error: error ?? null });
     return data.item;
   }
 
