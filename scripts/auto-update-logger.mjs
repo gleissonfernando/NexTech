@@ -392,56 +392,29 @@ function looksLikeModuleLabel(value) {
 }
 
 function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
-  const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#FFD500");
-  const bannerUrl = readConfigValue("UPDATE_PANEL_BANNER_URL");
+  const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#5865F2");
   const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
-  const footer = readConfigValue("UPDATE_PANEL_FOOTER") || `${appName} - Todos os direitos reservados`;
+  const signature = readConfigValue("UPDATE_PANEL_SIGNATURE") || `Atenciosamente, ${appName}`;
+  const observation = readConfigValue("UPDATE_PANEL_OBS")
+    || "Estamos trabalhando em uma grande atualização que será lançada na próxima semana. Por esse motivo, alguns sistemas ainda não foram incluídos nesta atualização.";
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const compact = mode === "realtime-summary";
   const sections = compact ? buildCompactChangelogSections(changelog) : buildFullChangelogSections(changelog, analysis, showTechnical);
-  const publishedAt = formatUpdateDateTime(date);
-  const restartText = changelog.restartRequired ? "Exige reinicialização informada no cadastro." : "Não exige nova configuração ou ação manual.";
-  const affected = changelog.affectedModules.length ? changelog.affectedModules.join(", ") : "Todos os sistemas contratados aplicáveis";
   const technicalLine = showTechnical ? `\n-# Hash interno: ${release.commit.slice(0, 12)}` : "";
   const content = [
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    `# 🚀 ${escapeMarkdown(changelog.title).toUpperCase()}`,
-    `**Versão ${escapeMarkdown(changelog.version)} • ${formatUpdateDate(date)}**`,
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    `**ATUALIZAÇÕES – ${formatUpdateDate(date)}**`,
     "",
-    ...sections.flatMap(([title, items]) => formatUpdateSection(title, items)),
-    ...(compact ? [] : [
-      "⚠️ **INFORMAÇÕES IMPORTANTES**",
-      ...changelog.importantInfo.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
-      `• ${escapeMarkdown(restartText)}`,
-      "",
-      "📦 **SISTEMAS AFETADOS**",
-      `• ${escapeMarkdown(affected).slice(0, 260)}`,
-      ""
-    ]),
-    "📊 **STATUS DA ATUALIZAÇÃO**",
-    `✅ ${escapeMarkdown(changelog.statusLabel)}`,
-    "🟢 Todos os serviços estão funcionando normalmente.",
+    ...sections.flatMap(([title, items]) => formatSimpleUpdateSection(title, items)),
+    `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
     "",
-    `**Versão:** ${escapeMarkdown(changelog.version)}`,
-    `**Publicado em:** ${publishedAt}`,
-    `**Responsável:** ${escapeMarkdown(changelog.responsible)}`,
+    `**${escapeMarkdown(signature)}**`,
     technicalLine,
-    `-# **${escapeMarkdown(footer)}**`
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
-
-  const components = [];
-  if (bannerUrl) {
-    components.push({ type: 12, items: [{ media: { url: bannerUrl }, description: "Banner da atualização" }] });
-  }
-  components.push({ type: 10, content });
-  const actionRow = buildUpdateActionRow(changelog);
-  if (actionRow) components.push(actionRow);
 
   return {
     allowed_mentions: { parse: [] },
-    components: [{ type: 17, accent_color: color, components }],
+    components: [{ type: 17, accent_color: color, components: [{ type: 10, content }] }],
     flags: 32768
   };
 }
@@ -809,6 +782,22 @@ function formatUpdateSection(title, items) {
     ...items.map((item) => `- ${escapeMarkdown(item).slice(0, 220)}`),
     ""
   ];
+}
+
+function formatSimpleUpdateSection(title, items) {
+  return [
+    `**${normalizeSimpleUpdateTitle(title)}**`,
+    ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
+    ""
+  ];
+}
+
+function normalizeSimpleUpdateTitle(title) {
+  const normalized = String(title || "").replace(/[A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ ]+$/u, (value) => value.toLowerCase());
+  if (/corre/i.test(normalized) || /erro/i.test(normalized)) return "🔧 Correções";
+  if (/nov/i.test(normalized)) return "🆕 Novidades";
+  if (/melhor/i.test(normalized)) return "✨ Melhorias";
+  return normalized.replace(/\s+/g, " ").trim() || "Atualizações";
 }
 
 function formatUpdateDate(date) {
