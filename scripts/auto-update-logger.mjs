@@ -394,7 +394,10 @@ function looksLikeModuleLabel(value) {
 function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#5865F2");
   const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
-  const signature = readConfigValue("UPDATE_PANEL_SIGNATURE") || `Atenciosamente, ${appName}`;
+  const footerText = readConfigValue("UPDATE_PANEL_FOOTER_TEXT")
+    || readConfigValue("UPDATE_PANEL_SIGNATURE")
+    || `Atenciosamente, ${appName}`;
+  const footerIconUrl = readConfigValue("UPDATE_PANEL_FOOTER_ICON_URL") || discordBotAvatarUrl(bot);
   const observation = readConfigValue("UPDATE_PANEL_OBS")
     || "Estamos trabalhando em uma grande atualização que será lançada na próxima semana. Por esse motivo, alguns sistemas ainda não foram incluídos nesta atualização.";
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
@@ -408,13 +411,15 @@ function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
     ...sections.flatMap(([title, items]) => formatSimpleUpdateSection(title, items)),
     `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
     "",
-    `**${escapeMarkdown(signature)}**`,
     technicalLine,
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
+  const components = [{ type: 10, content }];
+  const footer = updatePanelFooterComponent(footerText, footerIconUrl);
+  if (footer) components.push({ type: 14, divider: true, spacing: 1 }, footer);
 
   return {
     allowed_mentions: { parse: [] },
-    components: [{ type: 17, accent_color: color, components: [{ type: 10, content }] }],
+    components: [{ type: 17, accent_color: color, components }],
     flags: 32768
   };
 }
@@ -790,6 +795,31 @@ function formatSimpleUpdateSection(title, items) {
     ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
     ""
   ];
+}
+
+function updatePanelFooterComponent(text, iconUrl) {
+  const footerText = sanitizeSingleLine(text);
+  if (!footerText) return null;
+
+  const content = `-# **${escapeMarkdown(footerText).slice(0, 220)}**`;
+  const cleanIconUrl = isHttpUrl(iconUrl) ? String(iconUrl).trim() : "";
+  if (!cleanIconUrl) return { type: 10, content };
+
+  return {
+    type: 9,
+    components: [{ type: 10, content }],
+    accessory: {
+      type: 11,
+      media: { url: cleanIconUrl },
+      description: "Ícone do rodapé"
+    }
+  };
+}
+
+function discordBotAvatarUrl(bot) {
+  if (!bot?.id || !bot?.avatar) return "";
+  const extension = String(bot.avatar).startsWith("a_") ? "gif" : "png";
+  return `${discordApi}/avatars/${bot.id}/${bot.avatar}.${extension}?size=128`;
 }
 
 function normalizeSimpleUpdateTitle(title) {
