@@ -2967,7 +2967,7 @@ function coursePublicationPanel(course: Course, publication: CoursePublication, 
   const statusText = coursePublicationPlainStatusLabel(publication, full);
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
-  const canStartClass = publication.status === "open" && isCoursePublicationStartDateReached(publication);
+  const canStartClass = publication.status === "open";
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
@@ -3226,7 +3226,7 @@ function coursePublicationFallbackPanel(course: Course, publication: CoursePubli
   const full = publication.students.length >= publication.capacity;
   const canJoin = publication.status === "open" && !full;
   const canLeave = publication.status === "open";
-  const canStartClass = publication.status === "open" && isCoursePublicationStartDateReached(publication);
+  const canStartClass = publication.status === "open";
   const canStartExam = publication.status === "started" || publication.status === "proof";
   const canFinishClass = publication.status === "started" || publication.status === "proof";
   const canCancel = !["cancelled", "proof", "finished", "closed"].includes(publication.status);
