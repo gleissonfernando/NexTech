@@ -149,12 +149,14 @@ const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "inva
 const RUNTIME_ACTIVE_LICENSE_STATUSES = new Set(["active", "ativo", "approved", "aprovado", "enabled", "liberado", "valid", "valido"]);
 const RUNTIME_EXPIRED_LICENSE_STATUSES = new Set(["expired", "expirado", "expirada"]);
 const DEV_BOT_BACKEND_RESTART_MESSAGE = "Backend reiniciado. Aguardando inicializacao do processo do bot.";
+const DEV_BOT_BACKEND_SHUTDOWN_MESSAGE = "Backend encerrando processo do bot.";
 const DEV_BOT_RECOVERABLE_RESTART_STATUSES: MongoDevBotStatus[] = [
   "online",
   "ready",
   "starting",
   "authenticating",
   "syncing_config",
+  "stopping",
   "waiting_retry",
   "crashed",
   "database_error",
@@ -1568,7 +1570,7 @@ export async function markDevBotsOfflineAfterBackendRestart() {
       {
         desiredOnline: true,
         status: "offline",
-        statusMessage: DEV_BOT_BACKEND_RESTART_MESSAGE
+        statusMessage: { $in: [DEV_BOT_BACKEND_RESTART_MESSAGE, DEV_BOT_BACKEND_SHUTDOWN_MESSAGE] }
       }
     ]
   }, {

@@ -51,7 +51,7 @@ const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
 const DEV_BOT_SUPERVISOR_LEASE_MS = 60_000;
 const DEV_BOT_SUPERVISOR_START_RETRY_MS = 3_000;
-const DEV_BOT_SUPERVISOR_START_ATTEMPTS = 7;
+const DEV_BOT_SUPERVISOR_START_ATTEMPTS = Math.ceil(DEV_BOT_SUPERVISOR_LEASE_MS / DEV_BOT_SUPERVISOR_START_RETRY_MS) + 5;
 const DEV_BOT_SUPERVISOR_INSTANCE_ID = `dev-bot-supervisor:${process.pid}:${randomUUID()}`;
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
@@ -146,7 +146,7 @@ async function waitForDevBotSupervisorLease() {
 }
 
 export async function startAllDevBotProcesses(botIds: string[]) {
-  if (!(await ensureDevBotSupervisorLease())) {
+  if (!(await waitForDevBotSupervisorLease())) {
     throw new Error("Outra instancia e responsável por executar os bots cadastrados.");
   }
 

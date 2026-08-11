@@ -67,15 +67,6 @@ httpServer.listen(env.PORT, env.HOST, () => {
     });
 
   void devBotRestartRecovery
-    .then(async (restartRecovery) => {
-      await runAccessControlStartupAudit();
-      await cleanupObsoleteDevBotCommands();
-      return restartRecovery;
-    })
-    .catch((error) => {
-      console.warn("[startup] varredura/limpeza inicial falhou:", error instanceof Error ? error.message : error);
-      return { count: 0, botIds: [] };
-    })
     .then((restartRecovery) => {
       if (env.START_REGISTERED_DEV_BOTS) {
         scheduleRegisteredDevBotStartup(0);
@@ -88,6 +79,17 @@ httpServer.listen(env.PORT, env.HOST, () => {
       }
 
       console.log("[dev-bot] start automático desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
+    })
+    .catch((error) => {
+      console.warn("[dev-bot] retomada pós-restart não pôde ser agendada:", error instanceof Error ? error.message : error);
+    });
+  void devBotRestartRecovery
+    .then(async () => {
+      await runAccessControlStartupAudit();
+      await cleanupObsoleteDevBotCommands();
+    })
+    .catch((error) => {
+      console.warn("[startup] varredura/limpeza inicial falhou:", error instanceof Error ? error.message : error);
     });
   setTimeout(() => {
     void seedDefaultPanelEmojisForAllBots()
