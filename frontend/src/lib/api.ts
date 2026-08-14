@@ -208,7 +208,9 @@ import { buildEditableFivemHierarchyPanelPayload, hierarchyPanelClientRequestId 
 import { publicOrigin } from "./urls";
 
 export const API_URL = (
-  import.meta.env.VITE_API_URL
+  import.meta.env.DEV
+    ? `${publicOrigin()}/api`
+    : import.meta.env.VITE_API_URL
   || `${publicOrigin()}/api`
   || "https://nextech.discloud.app/api"
 ).replace(/\/+$/, "");

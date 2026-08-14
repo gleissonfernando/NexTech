@@ -20,13 +20,17 @@ function isPublicUrl(value?: string): value is string {
 }
 
 export function publicOrigin() {
-  const configuredPublicUrl = normalizeUrl(import.meta.env.VITE_FRONTEND_URL || import.meta.env.VITE_APP_BASE_URL);
+  const browserOrigin = normalizeUrl(window.location.origin);
 
+  if (import.meta.env.DEV && browserOrigin) {
+    return browserOrigin;
+  }
+
+  const configuredPublicUrl = normalizeUrl(import.meta.env.VITE_FRONTEND_URL || import.meta.env.VITE_APP_BASE_URL);
   if (isPublicUrl(configuredPublicUrl)) {
     return configuredPublicUrl;
   }
 
-  const browserOrigin = normalizeUrl(window.location.origin);
   return isPublicUrl(browserOrigin) ? browserOrigin : PRODUCTION_ORIGIN;
 }
 

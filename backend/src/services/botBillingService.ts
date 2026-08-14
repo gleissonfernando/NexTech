@@ -298,7 +298,7 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
     botBillingInvoices.findOne({ botId, status: "pending", dueDate: { $gte: now } }, { sort: { dueDate: 1 } }),
     botBillingInvoices.findOne({ botId }, { sort: { dueDate: -1 } })
   ]);
-  const dashboardOverrideActive = hasValidBotOverride(bot, "dashboard");
+  const dashboardOverrideActive = hasValidBotOverride(bot, "dashboard", now);
   const blocked = Boolean(blockingInvoice && !dashboardOverrideActive);
   const nextDueDate = (nextInvoice?.dueDate ?? nextDueDateFromLatestInvoice(bot, latestInvoice))?.toISOString() ?? null;
 
@@ -307,7 +307,7 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
     blockingInvoice: blockingInvoice ? toBotBillingInvoiceDto(blockingInvoice, bot) : null,
     currentInvoice: currentInvoice ? toBotBillingInvoiceDto(currentInvoice, bot) : null,
     dashboardOverrideActive,
-    forceBotActive: hasValidBotOverride(bot, "bot"),
+    forceBotActive: hasValidBotOverride(bot, "bot", now),
     model: bot.billingModel ?? "monthly",
     nextDueDate,
     nextInvoice: nextInvoice ? toBotBillingInvoiceDto(nextInvoice, bot) : null,
@@ -344,7 +344,7 @@ export function evaluateBotBillingShutdown(
     };
   }
 
-  if (hasValidBotOverride(bot, "bot")) {
+  if (hasValidBotOverride(bot, "bot", now)) {
     return {
       allowed: false,
       reason: "Bot possui liberação administrativa ativa.",
@@ -732,10 +732,10 @@ function effectiveInvoiceAmount(invoice: MongoBotBillingInvoice, bot?: MongoDevB
   return BOT_HOSTING_AMOUNT_IN_CENTS;
 }
 
-function hasValidBotOverride(bot: MongoDevBot, mode: "bot" | "dashboard") {
+function hasValidBotOverride(bot: MongoDevBot, mode: "bot" | "dashboard", now = new Date()) {
   const override = bot.billingOverride;
   if (!override) return false;
-  if (override.expiresAt && override.expiresAt.getTime() <= Date.now()) return false;
+  if (override.expiresAt && override.expiresAt.getTime() <= now.getTime()) return false;
   return mode === "bot" ? override.forceBotActive === true : override.forceDashboardAccess === true;
 }
 
