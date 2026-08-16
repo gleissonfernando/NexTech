@@ -30,7 +30,7 @@ Pedimos que, ao encerrar o serviço ou se ausentar, feche corretamente o ponto. 
 
 Se você esqueceu o ponto aberto, por favor, justifique em {canal}.`;
 
-export const DEFAULT_OPEN_DUTY_MESSAGE = `Prezada(o) {usuário},
+export const DEFAULT_OPEN_DUTY_MESSAGE = `Prezado(a) {usuário},
 
 Verificamos que seu ponto de serviço permanece aberto, mesmo sem haver registro de atividade. Essa situação está em desacordo com as normas e diretrizes do departamento.
 
@@ -224,7 +224,7 @@ function mapSettings(settings: MongoOpenDutySettings) {
     mentionChannelId: settings.mentionChannelId ?? null,
     allowedRoleIds: settings.allowedRoleIds,
     allowedUserIds: settings.allowedUserIds,
-    defaultMessage: settings.defaultMessage,
+    defaultMessage: normalizeOpenDutyMessageText(settings.defaultMessage),
     alertMessage: settings.alertMessage,
     dmBannerUrl: settings.dmBannerUrl,
     panelBannerUrl: settings.panelBannerUrl,
@@ -276,7 +276,20 @@ function cleanSettings(input: Partial<Omit<OpenDutySettingsDto, "id" | "botId" |
     }
   }
 
+  if (input.defaultMessage !== undefined) {
+    cleaned.defaultMessage = normalizeOpenDutyMessageText(input.defaultMessage);
+  }
+
   return cleaned;
+}
+
+export function normalizeOpenDutyMessageText(message: string) {
+  return String(message ?? "")
+    .replace(/Prezada\(o\)/g, "Prezado(a)")
+    .replace(/Prezado\(a\)/g, "Prezado(a)")
+    .replace(/\bjustifique\s+justiqu[a-zçãõáéíóúâêôü]*/gi, "justifique")
+    .replace(/([^\s.])\n\nCanal de justificativa:/g, "$1.\n\nCanal de justificativa:")
+    .trim();
 }
 
 function normalizeNullable(value: string | null | undefined) {

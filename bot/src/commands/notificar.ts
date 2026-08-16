@@ -95,9 +95,9 @@ async function openNotificationPanel(interaction: ChatInputCommandInteraction, c
   await interaction.reply({
     ...panel(settings, {
       actions: [actionRow(draftId, settings)],
-      description: `Usuário selecionado: ${target}\n\nPrevia da mensagem que será enviada por DM:`,
+      description: `Usuário selecionado: ${target}\n\nPrévia da mensagem que será enviada por DM:`,
       fields: [
-        `**Canal mencionado na DM:** ${settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "não configurado"}\n**Variavel de canal:** ${hasChannelVariable(settings.defaultMessage) ? "ativa" : "adicione {canal} ou {channel} na mensagem padrão"}`,
+        `**Canal mencionado na DM:** ${settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "não configurado"}\n**Variável de canal:** ${hasChannelVariable(settings.defaultMessage) ? "ativa" : "adicione {canal} ou {channel} na mensagem padrão"}`,
         message
       ],
       title: "Notificação de Ponto Aberto"
@@ -196,7 +196,7 @@ async function submitEdit(interaction: ModalSubmitInteraction, context: BotConte
   await interaction.reply({
     ...panel(settings, {
       actions: [confirmEditedRow(draftId, settings)],
-      description: `Previa editada para ${target ? `${target}` : `<@${draft.targetId}>`}:`,
+      description: `Prévia editada para ${target ? `${target}` : `<@${draft.targetId}>`}:`,
       fields: [previewMessage],
       title: "Confirmar Envio"
     }),
@@ -303,7 +303,7 @@ async function sendLog(interaction: ButtonInteraction, settings: OpenDutySetting
     description: "Registro interno do sistema de Ponto Aberto.",
     fields: [
       `**Executor:** <@${draft.executorId}> (${draft.executorId})\n**Usuário notificado:** <@${target.id}> (${target.id})\n**Status:** ${status}\n**Avisos atuais:** ${counterTotal}`,
-      `**Mensagem ${draft.edited ? "editada" : "padrao"}:**\n${draft.message.slice(0, 1500)}${error ? `\n**Erro:** ${error}` : ""}`
+      `**Mensagem ${draft.edited ? "editada" : "padrão"}:**\n${draft.message.slice(0, 1500)}${error ? `\n**Erro:** ${error}` : ""}`
     ],
     title: "Log Ponto Aberto"
   })).catch(() => null);
@@ -343,13 +343,13 @@ function configPanel(settings: OpenDutySettings) {
   return panel(settings, {
     actions: [
       channelSelectRow(`${PREFIX}:config:mention`, "Canal que será mencionado na DM", settings.mentionChannelId),
-      channelSelectRow(`${PREFIX}:config:log`, "Canal de logs internas", settings.logChannelId),
+      channelSelectRow(`${PREFIX}:config:log`, "Canal de logs internos", settings.logChannelId),
       channelSelectRow(`${PREFIX}:config:alert`, "Canal de multas 3/3", settings.alertChannelId)
     ],
     description: "Resumo da configuração principal. Selecione os canais abaixo para salvar direto pelo Discord.",
     fields: [
-      `**Logs internas:** ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}\n**Canal de multas:** ${settings.alertChannelId ? `<#${settings.alertChannelId}>` : "não configurado"}\n**Canal mencionado na DM:** ${settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "não configurado"}`,
-      `**Variavel de canal na mensagem:** ${hasChannelVariable(settings.defaultMessage) ? "configurada" : "ausente - use {canal} ou {channel}"}\n**Cargos autorizados:** ${settings.allowedRoleIds.length ? settings.allowedRoleIds.map((id) => `<@&${id}>`).join(", ") : "nenhum"}\n**Regra:** envia multa ao chegar em 3/3; zera e inicia uma nova contagem.`
+      `**Logs internos:** ${settings.logChannelId ? `<#${settings.logChannelId}>` : "não configurado"}\n**Canal de multas:** ${settings.alertChannelId ? `<#${settings.alertChannelId}>` : "não configurado"}\n**Canal mencionado na DM:** ${settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "não configurado"}`,
+      `**Variável de canal na mensagem:** ${hasChannelVariable(settings.defaultMessage) ? "configurada" : "ausente - use {canal} ou {channel}"}\n**Cargos autorizados:** ${settings.allowedRoleIds.length ? settings.allowedRoleIds.map((id) => `<@&${id}>`).join(", ") : "nenhum"}\n**Regra:** envia multa ao chegar em 3/3; zera e inicia uma nova contagem.`
     ],
     title: "Configurar Ponto Aberto"
   });
@@ -394,32 +394,41 @@ function canUse(member: GuildMember, userId: string, settings: OpenDutySettings)
 
 function renderMessage(template: string, target: User, settings: OpenDutySettings) {
   const channelMention = mentionChannel(settings);
-  return ensureMentionTargets(template
+  return ensureMentionTargets(normalizeOpenDutyMessageText(template
     .replaceAll("{usuário}", `<@${target.id}>`)
     .replaceAll("{usuario}", `<@${target.id}>`)
     .replaceAll("<@usuário>", `<@${target.id}>`)
     .replaceAll("{canal}", channelMention)
-    .replaceAll("{channel}", channelMention), target, settings);
+    .replaceAll("{channel}", channelMention)), target, settings);
 }
 
 function ensureMentionTargets(message: string, target: User, settings: OpenDutySettings) {
   const userMention = `<@${target.id}>`;
   const channelMention = mentionChannel(settings);
-  let next = message.trim();
+  let next = normalizeOpenDutyMessageText(message);
 
   if (!next.includes(userMention)) {
-    next = `Prezada(o) ${userMention},\n\n${next}`;
+    next = `Prezado(a) ${userMention},\n\n${next}`;
   }
 
   if (settings.mentionChannelId && !next.includes(channelMention)) {
     next = `${next}\n\nCanal de justificativa: ${channelMention}`;
   }
 
-  return next;
+  return normalizeOpenDutyMessageText(next);
 }
 
 function mentionChannel(settings: OpenDutySettings) {
   return settings.mentionChannelId ? `<#${settings.mentionChannelId}>` : "#justificar-ponto";
+}
+
+export function normalizeOpenDutyMessageText(message: string) {
+  return String(message ?? "")
+    .replace(/Prezada\(o\)/g, "Prezado(a)")
+    .replace(/Prezado\(a\)/g, "Prezado(a)")
+    .replace(/\bjustifique\s+justiqu[a-zçãõáéíóúâêôü]*/gi, "justifique")
+    .replace(/([^\s.])\n\nCanal de justificativa:/g, "$1.\n\nCanal de justificativa:")
+    .trim();
 }
 
 function normalizeChannelName(value: string) {
@@ -443,15 +452,15 @@ function extractTargetIdFromDraftId(draftId: string) {
 function extractTargetIdFromMessage(message: ButtonInteraction["message"]) {
   return collectMessageText(message)
     .join("\n")
-    .match(/Usuario selecionado:\s*<@!?(\d{5,32})>|Previa editada para\s*<@!?(\d{5,32})>|Prezada\(o\)\s*<@!?(\d{5,32})>/i)?.slice(1).find(Boolean) ?? null;
+    .match(/Usu[aá]rio selecionado:\s*<@!?(\d{5,32})>|Pr[eé]via editada para\s*<@!?(\d{5,32})>|Prezado\(a\)\s*<@!?(\d{5,32})>|Prezada\(o\)\s*<@!?(\d{5,32})>/i)?.slice(1).find(Boolean) ?? null;
 }
 
 function extractNotificationMessage(message: ButtonInteraction["message"]) {
   const texts = collectMessageText(message).map((text) => text.trim()).filter(Boolean);
-  const directMessage = [...texts].reverse().find((text) => /Prezada\(o\)|Verificamos que seu ponto|Se voce esqueceu|Se você esqueceu/i.test(text));
+  const directMessage = [...texts].reverse().find((text) => /Prezado\(a\)|Prezada\(o\)|Verificamos que seu ponto|Se voce esqueceu|Se você esqueceu/i.test(text));
   if (directMessage) return directMessage.replace(/^#+\s*Confirmar Envio\s*/i, "").trim().slice(0, 3000);
   const joined = texts.join("\n\n");
-  const previewIndex = joined.search(/Previa da mensagem que sera enviada por DM:|Previa editada para/i);
+  const previewIndex = joined.search(/Pr[eé]via da mensagem que ser[aá] enviada por DM:|Pr[eé]via editada para/i);
   return previewIndex >= 0 ? joined.slice(previewIndex).replace(/^.*?(?:DM:|:)\s*/s, "").trim().slice(0, 3000) || null : null;
 }
 
