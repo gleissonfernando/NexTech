@@ -86,10 +86,9 @@ httpServer.listen(env.PORT, env.HOST, () => {
   void devBotRestartRecovery
     .then(async () => {
       await runAccessControlStartupAudit();
-      await cleanupObsoleteDevBotCommands();
     })
     .catch((error) => {
-      console.warn("[startup] varredura/limpeza inicial falhou:", error instanceof Error ? error.message : error);
+      console.warn("[startup] varredura inicial falhou:", error instanceof Error ? error.message : error);
     });
   setTimeout(() => {
     void seedDefaultPanelEmojisForAllBots()
@@ -106,7 +105,7 @@ httpServer.listen(env.PORT, env.HOST, () => {
       .catch((error) => {
         console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
       });
-  }, 60_000).unref();
+  }, env.DEV_BOT_COMMAND_CLEANUP_DELAY_MS ?? (env.START_REGISTERED_DEV_BOTS ? 15 * 60_000 : 60_000)).unref();
 });
 
 function shutdown(signal: string, exitCode = 0) {

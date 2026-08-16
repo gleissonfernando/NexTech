@@ -46,7 +46,7 @@ const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "f
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
 const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
 const DEV_BOT_START_CONCURRENCY = 1;
-const DEV_BOT_START_STAGGER_MS = 5_000;
+const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 30_000 : 5_000);
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
 const DEV_BOT_SUPERVISOR_LEASE_MS = 60_000;

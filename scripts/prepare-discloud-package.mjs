@@ -96,7 +96,7 @@ for (const key of [
     runtimeEnv[key] = value;
   }
 }
-for (const key of ["START_REGISTERED_DEV_BOTS"]) {
+for (const key of ["START_REGISTERED_DEV_BOTS", "DEV_BOT_START_STAGGER_MS", "DEV_BOT_COMMAND_CLEANUP_DELAY_MS"]) {
   const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
     runtimeEnv[key] = value;

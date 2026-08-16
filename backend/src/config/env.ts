@@ -383,7 +383,9 @@ const envSchema = z
     DEV_DISCORD_IDS: z.string().optional().default(""),
     DASHBOARD_GUILD_IDS: z.string().optional().default(defaultDashboardGuildIds),
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles"),
-    START_REGISTERED_DEV_BOTS: envBoolean(!isProduction)
+    START_REGISTERED_DEV_BOTS: envBoolean(!isProduction),
+    DEV_BOT_START_STAGGER_MS: z.coerce.number().int().positive().optional(),
+    DEV_BOT_COMMAND_CLEANUP_DELAY_MS: z.coerce.number().int().positive().optional()
   })
   .transform((value) => {
     const mongoUrl = firstMongoUrl(value.MONGODB_URI, value.MONGO_URI, value.DATABASE_URL);
