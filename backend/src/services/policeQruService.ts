@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Filter } from "mongodb";
 import { getMongoCollections, type MongoPoliceQruOfficer, type MongoPoliceQruRecord, type MongoPoliceQruSettings } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
 
@@ -32,6 +33,9 @@ export type PoliceQruRankingEntryDto = {
   position: number;
   total: number;
 };
+
+const POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO = 14;
+const SAO_PAULO_OFFSET_MS = -3 * 60 * 60 * 1000;
 
 export type PoliceQruDashboardDto = {
   logs: Array<{ action: string; actorId: string | null; actorName: string | null; createdAt: string; id: string; recordId: string | null }>;
@@ -348,14 +352,15 @@ export async function getPoliceQruRanking(botId: string, guildId: string, limit 
     officerName: string;
     total: number;
   }>([
-    { $match: { botId, guildId, createdAt: { $gte: cutoff }, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
-    { $unwind: "$officers" },
+    { $match: { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
+    { $addFields: { rankingAt: { $ifNull: ["$approvedAt", "$createdAt"] } } },
+    { $match: { rankingAt: { $gte: cutoff } } },
     {
       $group: {
-        _id: "$officers.id",
-        firstQruAt: { $min: "$createdAt" },
-        lastQruAt: { $max: "$createdAt" },
-        officerName: { $last: "$officers.name" },
+        _id: "$authorId",
+        firstQruAt: { $min: "$rankingAt" },
+        lastQruAt: { $max: "$rankingAt" },
+        officerName: { $last: "$authorName" },
         total: { $sum: 1 }
       }
     },
@@ -419,15 +424,22 @@ async function getPoliceQruStats(botId: string, guildId: string) {
   const settings = await policeQruSettings.findOne({ _id: `${botId}:${guildId}` });
   const weekStart = policeQruRankingCutoff(settings, now);
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+  const approvedMatch: Filter<MongoPoliceQruRecord> = { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] };
+  const approvedSince = (date: Date) => ([
+    { $match: approvedMatch },
+    { $addFields: { rankingAt: { $ifNull: ["$approvedAt", "$createdAt"] } } },
+    { $match: { rankingAt: { $gte: date } } },
+    { $count: "total" }
+  ]);
 
   const [total, qrusToday, qrusWeek, qrusMonth, officerCount, topAuthorRows] = await Promise.all([
-    policeQruRecords.countDocuments({ botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: todayStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: weekStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
-    policeQruRecords.countDocuments({ botId, guildId, createdAt: { $gte: monthStart }, $or: [{ status: "approved" }, { status: { $exists: false } }] }),
-    policeQruRecords.distinct("officers.id", { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] }).then((ids) => ids.length),
+    policeQruRecords.countDocuments(approvedMatch),
+    policeQruRecords.aggregate<{ total: number }>(approvedSince(todayStart)).toArray().then((rows) => rows[0]?.total ?? 0),
+    policeQruRecords.aggregate<{ total: number }>(approvedSince(weekStart)).toArray().then((rows) => rows[0]?.total ?? 0),
+    policeQruRecords.aggregate<{ total: number }>(approvedSince(monthStart)).toArray().then((rows) => rows[0]?.total ?? 0),
+    policeQruRecords.distinct("authorId", approvedMatch).then((ids) => ids.length),
     policeQruRecords.aggregate<{ _id: string; name: string; total: number }>([
-      { $match: { botId, guildId, $or: [{ status: "approved" }, { status: { $exists: false } }] } },
+      { $match: approvedMatch },
       { $group: { _id: "$authorId", name: { $last: "$authorName" }, total: { $sum: 1 } } },
       { $sort: { total: -1, name: 1 } },
       { $limit: 1 }
@@ -444,24 +456,26 @@ async function getPoliceQruStats(botId: string, guildId: string) {
   };
 }
 
-function startOfPoliceQruWeek(now = new Date()) {
-  const saoPauloOffsetMs = -3 * 60 * 60 * 1000;
-  const local = new Date(now.getTime() + saoPauloOffsetMs);
+export function startOfPoliceQruWeek(now = new Date()) {
+  const local = new Date(now.getTime() + SAO_PAULO_OFFSET_MS);
   const localDay = local.getUTCDay();
   const daysSinceMonday = (localDay + 6) % 7;
-  const mondayLocalMidnight = Date.UTC(
+  const mondayLocalReset = Date.UTC(
     local.getUTCFullYear(),
     local.getUTCMonth(),
     local.getUTCDate() - daysSinceMonday,
-    0,
+    POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO,
     0,
     0,
     0
   );
-  return new Date(mondayLocalMidnight - saoPauloOffsetMs);
+  const resetAt = new Date(mondayLocalReset - SAO_PAULO_OFFSET_MS);
+  return resetAt.getTime() > now.getTime()
+    ? new Date(resetAt.getTime() - 7 * 86_400_000)
+    : resetAt;
 }
 
-function policeQruRankingCutoff(settings?: Pick<MongoPoliceQruSettings, "rankingResetAt"> | null, now = new Date()) {
+export function policeQruRankingCutoff(settings?: Pick<MongoPoliceQruSettings, "rankingResetAt"> | null, now = new Date()) {
   const weekStart = startOfPoliceQruWeek(now);
   const resetAt = settings?.rankingResetAt instanceof Date ? settings.rankingResetAt : null;
   return resetAt && resetAt > weekStart ? resetAt : weekStart;

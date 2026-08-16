@@ -32,6 +32,8 @@ const IMAGE_EXTENSIONS = new Set(["gif", "jpg", "jpeg", "png", "webp"]);
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const MAX_EVIDENCE_FILES = 10;
 const QRU_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
+const POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO = 14;
+const SAO_PAULO_OFFSET_MS = -3 * 60 * 60 * 1000;
 
 type QruStep = "officers" | "date" | "bo" | "type" | "vehicle" | "evidence" | "seizures" | "notes" | "confirm";
 
@@ -602,7 +604,6 @@ function rankingCommand(name: "rank" | "ranking"): BotCommand {
         await interaction.reply({ content: "❌ Você não possui permissão para ver o ranking.", ephemeral: true });
         return;
       }
-      settings = await ensureQruRankingResetMarker(context, interaction.guild.id, settings);
       const ranking = await context.api.getPoliceQruRanking(interaction.guild.id, 20);
       await interaction.reply(rankingPayload(ranking, settings, false, interaction.guild, context.client) as any);
       const message = await interaction.fetchReply().catch(() => null);
@@ -661,27 +662,12 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
     });
 }
 
-async function ensureQruRankingResetMarker(context: BotContext, guildId: string, settings: PoliceQruSettings) {
-  if (settings.rankingResetAt) return settings;
-  const updated = await context.api.savePoliceQruSettings(guildId, { rankingResetAt: new Date().toISOString() });
-  settingsCache.set(`${MODULE_ID}:${guildId}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings: updated });
-  return updated;
-}
-
 async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
   const stats = { checked: 0, resetMarkers: 0, skippedPanels: 0, updatedPanels: 0 };
   await Promise.allSettled(client.guilds.cache.map(async (guild) => {
-    let settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
+    const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
     if (!settings) return;
     stats.checked += 1;
-    if (reason === "startup" && !settings.rankingResetAt) {
-      const resetSettings = await context.api.savePoliceQruSettings(guild.id, { rankingResetAt: new Date().toISOString() }).catch(() => null);
-      if (resetSettings) {
-        settings = resetSettings;
-        stats.resetMarkers += 1;
-        settingsCache.set(`${MODULE_ID}:${guild.id}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings });
-      }
-    }
     if (!settings.rankingChannelId || !settings.rankingMessageId) {
       stats.skippedPanels += 1;
       return;
@@ -935,7 +921,7 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
       components: [
         { type: 10, content: [
           `# ${trophy} Ranking de QRUs`,
-          full ? "Ranking completo temporário da semana atual." : "Painel oficial com atualização automática. Zera toda segunda-feira.",
+          full ? "Ranking completo temporário da semana atual." : "Painel oficial com atualização automática. Zera toda segunda-feira às 14:00.",
           "",
           `**Período:** ${period}`,
           `**${clock} Última atualização:** <t:${updatedAt}:f>`,
@@ -1255,20 +1241,22 @@ function policeQruRankingPeriodStart(settings: Pick<PoliceQruSettings, "rankingR
 }
 
 function startOfPoliceQruWeek(now = new Date()) {
-  const saoPauloOffsetMs = -3 * 60 * 60 * 1000;
-  const local = new Date(now.getTime() + saoPauloOffsetMs);
+  const local = new Date(now.getTime() + SAO_PAULO_OFFSET_MS);
   const localDay = local.getUTCDay();
   const daysSinceMonday = (localDay + 6) % 7;
-  const mondayLocalMidnight = Date.UTC(
+  const mondayLocalReset = Date.UTC(
     local.getUTCFullYear(),
     local.getUTCMonth(),
     local.getUTCDate() - daysSinceMonday,
-    0,
+    POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO,
     0,
     0,
     0
   );
-  return new Date(mondayLocalMidnight - saoPauloOffsetMs);
+  const resetAt = new Date(mondayLocalReset - SAO_PAULO_OFFSET_MS);
+  return resetAt.getTime() > now.getTime()
+    ? new Date(resetAt.getTime() - 7 * 86_400_000)
+    : resetAt;
 }
 
 function parseColor(value: string) {
