@@ -17,6 +17,7 @@ import {
   type Message,
   type MessageCreateOptions,
   type ModalSubmitInteraction,
+  type TextChannel,
   type User
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
@@ -641,15 +642,18 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
   const settings = fallbackSettings.rankingChannelId && fallbackSettings.rankingMessageId
     ? fallbackSettings
     : await context.api.getPoliceQruSettings(guildId).catch(() => fallbackSettings);
-  if (!settings.rankingChannelId || !settings.rankingMessageId) return false;
+  if (!settings.rankingChannelId || !settings.rankingMessageId) {
+    return await recoverOfficialRankingPanel(context, guildId, settings);
+  }
 
   const channel = await context.client.channels.fetch(settings.rankingChannelId).catch(() => null);
-  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) return false;
+  if (!channel?.isTextBased() || channel.isDMBased() || !("messages" in channel)) {
+    return await recoverOfficialRankingPanel(context, guildId, settings);
+  }
 
   const message = await channel.messages.fetch(settings.rankingMessageId).catch(() => null);
   if (!message) {
-    await rememberRankingPanel(context, guildId, null, null).catch(() => null);
-    return false;
+    return await recoverOfficialRankingPanel(context, guildId, settings);
   }
 
   const ranking = await context.api.getPoliceQruRanking(guildId, 20);
@@ -662,17 +666,70 @@ async function updateOfficialRankingPanel(context: BotContext, guildId: string, 
     });
 }
 
+async function recoverOfficialRankingPanel(context: BotContext, guildId: string, settings: PoliceQruSettings) {
+  const recovered = await findExistingRankingPanel(context, guildId, settings.rankingChannelId);
+  if (!recovered) {
+    if (settings.rankingChannelId || settings.rankingMessageId) await rememberRankingPanel(context, guildId, null, null).catch(() => null);
+    return false;
+  }
+
+  const updatedSettings = await context.api.savePoliceQruSettings(guildId, {
+    rankingChannelId: recovered.channelId,
+    rankingMessageId: recovered.messageId
+  }).catch(() => settings);
+  if (updatedSettings) settingsCache.set(`${MODULE_ID}:${guildId}`, { expiresAt: Date.now() + SETTINGS_TTL_MS, settings: updatedSettings });
+
+  const ranking = await context.api.getPoliceQruRanking(guildId, 20);
+  const guild = context.client.guilds.cache.get(guildId) ?? null;
+  return await recovered.message.edit(rankingPayload(ranking, updatedSettings ?? settings, false, guild, context.client) as any)
+    .then(() => true)
+    .catch((error: unknown) => {
+      console.warn(`[police-qru] failed to recover ranking panel for guild ${guildId}:`, error);
+      return false;
+    });
+}
+
+async function findExistingRankingPanel(context: BotContext, guildId: string, preferredChannelId?: string | null) {
+  const guild = context.client.guilds.cache.get(guildId) ?? await context.client.guilds.fetch(guildId).catch(() => null);
+  const me = guild?.members.me ?? await guild?.members.fetchMe().catch(() => null);
+  if (!guild || !me) return null;
+
+  const channels = await guild.channels.fetch().catch(() => null);
+  const textChannels = [...(channels?.values() ?? [])]
+    .filter((channel): channel is TextChannel => Boolean(channel && channel.type === ChannelType.GuildText && "messages" in channel))
+    .sort((left, right) => (left.id === preferredChannelId ? -1 : right.id === preferredChannelId ? 1 : 0));
+
+  for (const channel of textChannels) {
+    const permissions = channel.permissionsFor(me);
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.ReadMessageHistory)) continue;
+
+    const messages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+    const panel = messages
+      ?.filter((message: Message) => message.author.id === context.client.user?.id && isRankingPanelMessage(message))
+      .sort((left: Message, right: Message) => right.createdTimestamp - left.createdTimestamp)
+      .first();
+    if (panel) return { channelId: channel.id, message: panel, messageId: panel.id };
+  }
+
+  return null;
+}
+
+function isRankingPanelMessage(message: Message) {
+  const raw = typeof message.toJSON === "function" ? JSON.stringify(message.toJSON()) : message.content;
+  return raw.includes("Ranking de QRUs") && raw.includes("Painel oficial");
+}
+
 async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
   const stats = { checked: 0, resetMarkers: 0, skippedPanels: 0, updatedPanels: 0 };
   await Promise.allSettled(client.guilds.cache.map(async (guild) => {
     const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
     if (!settings) return;
     stats.checked += 1;
-    if (!settings.rankingChannelId || !settings.rankingMessageId) {
+    if (!await updateOfficialRankingPanel(context, guild.id, settings)) {
       stats.skippedPanels += 1;
       return;
     }
-    if (await updateOfficialRankingPanel(context, guild.id, settings)) stats.updatedPanels += 1;
+    stats.updatedPanels += 1;
   }));
   console.log(`[police-qru] ranking panels refreshed: ${reason}`, stats);
 }
@@ -1229,7 +1286,7 @@ function policeQruWeekKey(now = new Date()) {
 function policeQruWeekPeriodLabel(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
   const start = policeQruRankingPeriodStart(settings, now);
   const end = new Date(start.getTime() + 7 * 86_400_000 - 1);
-  const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" });
+  const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
   return `${formatter.format(start)} até ${formatter.format(end)}`;
 }
 
