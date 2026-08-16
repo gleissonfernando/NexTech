@@ -29,7 +29,8 @@ import { policeSubpoenaCommand } from "../services/policeSubpoenaService";
 import { courseCommand, cursosHistoricoCommand, historicoEsquecimentoCommand, instrutoresCommand, publicarCursoCommand, removerCursoHistoricoCommand } from "../services/courseSystemService";
 import { rhAdminCommand } from "../services/rhAdminService";
 import { removerCommand } from "./remover";
-import { messageControlActivateAliasCommand, messageControlCommand, messageControlDeactivateAliasCommand } from "../services/messageControlService";
+import { messageControlCommand } from "../services/messageControlService";
+import { visibleMessageActivateCommand, visibleMessageDeactivateCommand } from "../services/visibleMessageService";
 import { livesCommand } from "../services/liveService";
 import { consultaPontosCommand, fecharPontoCommand, pontosAutomaticosCommand, pontosCommand } from "../services/autoActivityClockBotService";
 import { barraCommand, relogioDePontoCommand } from "../services/policeTimeClockBotService";
@@ -84,8 +85,8 @@ export function createCommandCollection() {
     rhAdminCommand,
     removerCommand,
     messageControlCommand,
-    messageControlActivateAliasCommand,
-    messageControlDeactivateAliasCommand,
+    visibleMessageActivateCommand,
+    visibleMessageDeactivateCommand,
     livesCommand,
     sistemaCommand,
     iabCommand,

@@ -29,8 +29,7 @@ const activeUserCache = new Map<string, { enabled: boolean; expiresAt: number }>
 export const visibleMessageActivateCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("mensagem-ativar")
-    .setDescription("Abre o painel para ativar mensagens visíveis para usuários.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDescription("Abre o painel para ativar mensagens visíveis para usuários."),
   moduleId: MODULE_ID,
   async execute(interaction, context) {
     await openVisibleMessagePanel(interaction, context);
@@ -40,8 +39,7 @@ export const visibleMessageActivateCommand: BotCommand = {
 export const visibleMessageDeactivateCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("mensagem-desativar")
-    .setDescription("Abre o painel para remover usuários da Mensagem Visível.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDescription("Abre o painel para remover usuários da Mensagem Visível."),
   moduleId: MODULE_ID,
   async execute(interaction, context) {
     await openVisibleMessagePanel(interaction, context, "remove");
