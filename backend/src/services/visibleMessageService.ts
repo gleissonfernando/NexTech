@@ -48,6 +48,12 @@ export async function isVisibleMessageUserEnabled(botId: string, guildId: string
   return Boolean(row);
 }
 
+export async function getVisibleMessageUser(botId: string, guildId: string, userId: string) {
+  const { visibleMessageUsers } = await getMongoCollections();
+  const row = await visibleMessageUsers.findOne({ botId, guildId, userId });
+  return row ? toDto(row) : null;
+}
+
 export async function addVisibleMessageUser(
   botId: string,
   guildId: string,
@@ -73,6 +79,20 @@ export async function addVisibleMessageUser(
 
   await ensureGuild(guildId);
   await visibleMessageUsers.updateOne({ botId, guildId, userId: input.userId }, { $set: row }, { upsert: true });
+  emitVisibleMessageUsersUpdated(botId, guildId);
+  return toDto(row);
+}
+
+export async function setVisibleMessageUserEnabled(botId: string, guildId: string, userId: string, enabled: boolean, actorId: string | null) {
+  const { visibleMessageUsers } = await getMongoCollections();
+  const row = await visibleMessageUsers.findOneAndUpdate(
+    { botId, guildId, userId },
+    { $set: { enabled, updatedAt: new Date(), updatedBy: actorId } },
+    { returnDocument: "after" }
+  );
+
+  if (!row) throw serviceError("Usuário não cadastrado na Mensagem Visível.", 403);
+
   emitVisibleMessageUsersUpdated(botId, guildId);
   return toDto(row);
 }
@@ -118,6 +138,10 @@ function toDto(row: MongoVisibleMessageUser): VisibleMessageUserDto {
 function normalizeNullable(value: string | null | undefined, maxLength: number) {
   const trimmed = value?.trim();
   return trimmed ? trimmed.slice(0, maxLength) : null;
+}
+
+function serviceError(message: string, statusCode: number) {
+  return Object.assign(new Error(message), { statusCode });
 }
 
 function emitVisibleMessageUsersUpdated(botId: string, guildId: string) {

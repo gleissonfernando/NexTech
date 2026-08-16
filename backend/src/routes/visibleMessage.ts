@@ -7,9 +7,11 @@ import {
   addVisibleMessageUser,
   clearVisibleMessageUsers,
   getVisibleMessageDashboard,
+  getVisibleMessageUser,
   isVisibleMessageUserEnabled,
   listVisibleMessageUsers,
   removeVisibleMessageUser,
+  setVisibleMessageUserEnabled,
   VISIBLE_MESSAGE_MODULE_ID
 } from "../services/visibleMessageService";
 
@@ -19,6 +21,7 @@ const userSchema = z.object({
   userId: snowflake,
   username: z.string().max(120).nullable().optional()
 });
+const statusSchema = z.object({ enabled: z.boolean() });
 
 export const visibleMessageRouter = Router();
 
@@ -87,6 +90,38 @@ visibleMessageRouter.get("/bot/:guildId/users/:userId/enabled", requireBot, asyn
     await licensed(botId, guildId);
     res.json({
       enabled: await isVisibleMessageUserEnabled(botId, guildId, snowflake.parse(req.params.userId))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+visibleMessageRouter.get("/bot/:guildId/users/:userId", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    const guildId = snowflake.parse(req.params.guildId);
+    await licensed(botId, guildId);
+    res.json({
+      user: await getVisibleMessageUser(botId, guildId, snowflake.parse(req.params.userId))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+visibleMessageRouter.patch("/bot/:guildId/users/:userId/status", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    const guildId = snowflake.parse(req.params.guildId);
+    await licensed(botId, guildId);
+    res.json({
+      user: await setVisibleMessageUserEnabled(
+        botId,
+        guildId,
+        snowflake.parse(req.params.userId),
+        statusSchema.parse(req.body).enabled,
+        req.header("x-actor-id") ?? null
+      )
     });
   } catch (error) {
     next(error);

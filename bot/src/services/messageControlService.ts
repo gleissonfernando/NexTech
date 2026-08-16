@@ -20,6 +20,7 @@ import type { MessageControlStatus, MessageControlUser } from "./apiClient";
 import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./deletedMessageLogService";
 import { getActiveTicketForMessageChannel } from "./ticketChannelGuard";
 import { systemComponentEmoji } from "./systemEmojiService";
+import { clearVisibleMessageCache } from "./visibleMessageService";
 
 const MODULE_ID = "message-control";
 const PREFIX = "message_control";
@@ -44,7 +45,6 @@ export const messageControlCommand: BotCommand = {
     .addSubcommand((subcommand) => subcommand
       .setName("reativar")
       .setDescription("Atalho para reativar o modo oculto para suas mensagens.")),
-  moduleId: MODULE_ID,
   async execute(interaction, context) {
     if (!isMessageControlEnabled()) {
       await interaction.reply({ content: "O sistema /mensagem não está liberado para este bot.", flags: MessageFlags.Ephemeral });
@@ -58,11 +58,13 @@ export const messageControlCommand: BotCommand = {
     }
 
     if (subcommand === "desativar") {
+      if (await setOwnVisibleMessageStatus(interaction, context, false)) return;
       await setOwnMessageControlStatus(interaction, context, "pessoal");
       return;
     }
 
     if (subcommand === "ativar" || subcommand === "reativar") {
+      if (await setOwnVisibleMessageStatus(interaction, context, true)) return;
       await setOwnMessageControlStatus(interaction, context, "equipe");
     }
   }
@@ -318,6 +320,29 @@ async function setOwnMessageControlStatus(interaction: ChatInputCommandInteracti
       : "Modo oculto ativado. Suas próximas mensagens voltam ao fluxo padrão do bot/equipe.",
     flags: MessageFlags.Ephemeral
   });
+}
+
+async function setOwnVisibleMessageStatus(interaction: ChatInputCommandInteraction, context: BotContext, enabled: boolean) {
+  if (!interaction.guild) return false;
+
+  const visibleUser = await context.api.getVisibleMessageUser(interaction.guild.id, interaction.user.id).catch(() => null);
+  if (!visibleUser) return false;
+
+  const updated = await context.api.setVisibleMessageUserEnabled(interaction.guild.id, interaction.user.id, enabled, interaction.user.id);
+  clearVisibleMessageCache(interaction.guild.id, interaction.user.id);
+
+  if (enabled) {
+    await context.api.setMessageControlUserStatus(interaction.guild.id, interaction.user.id, "pessoal", interaction.user.id).catch(() => null);
+    clearMessageControlCache(interaction.guild.id, interaction.user.id);
+  }
+
+  await interaction.reply({
+    content: updated.enabled
+      ? "Mensagem Visível ativada para você. A partir de agora, suas mensagens normais serão processadas automaticamente nos canais compatíveis."
+      : "Mensagem Visível desativada para você. Suas próximas mensagens passam normalmente pela sua conta Discord.",
+    flags: MessageFlags.Ephemeral
+  });
+  return true;
 }
 
 function panelPayload(users: MessageControlUser[], mode?: "add" | "remove" | "personal" | "team") {

@@ -120,7 +120,7 @@ export async function handleVisibleMessageMessage(message: Message, context: Bot
     return false;
   });
   if (!enabled) return false;
-  const visibleContent = parseVisibleMessageContent(message.content);
+  const visibleContent = resolveVisibleMessageContent(message.content, enabled);
   if (visibleContent === null) return false;
 
   if (!message.channel.isTextBased() || message.channel.isDMBased() || !("permissionsFor" in message.channel)) return false;
@@ -242,7 +242,7 @@ function panelText(users: VisibleMessageUser[]) {
     "",
     `**Total:** ${users.length} usuário(s)`,
     "",
-    "Para enviar pela Mensagem Visível, comece a mensagem com `.visivel`, `!visivel`, `.mv`, `!mv` ou `visivel:`. Conversa normal não será alterada."
+    "Usuários ativos têm suas mensagens normais retransmitidas como a própria pessoa nos canais compatíveis. Os prefixos `.visivel`, `!visivel`, `.mv`, `!mv` e `visivel:` continuam aceitos."
   ].join("\n");
 }
 
@@ -287,11 +287,16 @@ function relayPayload(message: Message, content: string) {
   };
 }
 
-function parseVisibleMessageContent(content: string) {
+export function resolveVisibleMessageContent(content: string, enabled: boolean) {
+  if (!enabled) return null;
   const trimmed = content.trim();
-  const match = trimmed.match(/^(?:[.!](?:visivel|visível|mv)\b|vis[ií]vel\s*:)\s*/i);
+  return parseVisibleMessageContent(trimmed) ?? trimmed;
+}
+
+function parseVisibleMessageContent(content: string) {
+  const match = content.match(/^(?:[.!](?:visivel|visível|mv)\b|vis[ií]vel\s*:)\s*/i);
   if (!match) return null;
-  return trimmed.slice(match[0].length).trim();
+  return content.slice(match[0].length).trim();
 }
 
 function resolveVisibleIdentity(message: Message, member: GuildMember | null) {
