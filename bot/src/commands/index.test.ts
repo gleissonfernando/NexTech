@@ -15,3 +15,11 @@ test("registra comandos da Mensagem Visivel", () => {
   assert.equal(deactivate.data.toJSON().default_member_permissions, undefined);
   assert.equal(message.moduleId, undefined);
 });
+
+test("registra comandos de QRU na coleção local", () => {
+  const commands = createCommandCollection();
+
+  assert.ok(commands.get("qru"));
+  assert.ok(commands.get("rank"));
+  assert.ok(commands.get("ranking"));
+});

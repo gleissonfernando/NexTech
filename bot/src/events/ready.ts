@@ -333,7 +333,7 @@ async function registerGuildCommandsWithRetry(commands: BotCommand[], clientId: 
 }
 
 function visibleCommands(commands: BotCommand[]) {
-  return commands.filter((command) => !command.moduleId || isBotModuleEnabled(command.moduleId));
+  return commands;
 }
 
 async function startOperationalRuntime(client: Client<true>, context: BotContext, reason: string) {
