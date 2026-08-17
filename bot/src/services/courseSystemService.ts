@@ -973,13 +973,17 @@ async function leavePublication(interaction: ButtonInteraction, context: BotCont
 
 async function changePublicationStatus(interaction: ButtonInteraction, context: BotContext, publicationId: string, status: "started" | "cancelled" | "finished") {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId);
+  const publication = await resolveCoursePublicationForPanelAction(interaction, context, publicationId);
+  if (!publication) {
+    await interaction.editReply("Publicação não encontrada. Atualize ou republique o painel deste curso e tente novamente.");
+    return;
+  }
   const allowed = await canManagePublication(interaction, context, publication);
   if (!allowed) {
     await interaction.editReply("Somente o instrutor autorizado deste curso pode iniciar, finalizar ou cancelar.");
     return;
   }
-  const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id).catch(async (error) => {
+  const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publication.id, status, interaction.user.id).catch(async (error) => {
     await interaction.editReply(courseApiErrorMessage(error) || "Esta ação já foi executada ou o curso mudou de estado.");
     return null;
   });
@@ -1010,6 +1014,24 @@ async function changePublicationStatus(interaction: ButtonInteraction, context: 
   const logTitle = status === "started" ? "▶️ Curso iniciado" : status === "finished" ? "✅ Curso finalizado" : "❌ Curso cancelado";
   await sendPublicationLog(interaction, context, updated, `${logTitle}\nResponsável: <@${interaction.user.id}>\nInscritos: ${updated.students.length}\nStatus: ${status}${status === "finished" ? `\nDuração: ${formatCourseDuration(updated.startedAt, updated.finishedAt)}` : ""}`);
   await interaction.editReply(status === "started" ? "Curso iniciado. A opção Realizar prova foi liberada aos alunos inscritos." : status === "finished" ? "Curso finalizado. O painel foi bloqueado e o evento foi encerrado." : "Curso cancelado.");
+}
+
+async function resolveCoursePublicationForPanelAction(interaction: ButtonInteraction, context: BotContext, publicationId: string) {
+  const direct = await context.api.getCoursePublication(interaction.guildId!, publicationId).catch(() => null);
+  if (direct) return direct;
+
+  const candidates = await context.api.listCoursePublications(interaction.guildId!, null).catch(() => []);
+  const byMessage = findCoursePublicationByPanelMessage(candidates, interaction.message.id, interaction.channelId);
+  if (byMessage) {
+    await context.api.updateCoursePublicationMessage(interaction.guildId!, byMessage.id, interaction.message.id).catch(() => null);
+  }
+  return byMessage;
+}
+
+export function findCoursePublicationByPanelMessage(publications: CoursePublication[], messageId: string, channelId: string | null | undefined) {
+  return publications.find((publication) => publication.messageId === messageId)
+    ?? publications.find((publication) => publication.channelId === channelId && ["started", "proof", "open"].includes(publication.status))
+    ?? null;
 }
 
 async function lockFinishedCourseChannel(interaction: ButtonInteraction, context: BotContext, publication: CoursePublication) {

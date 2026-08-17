@@ -4,6 +4,7 @@ import { OverwriteType, PermissionFlagsBits } from "discord.js";
 import {
   courseExamChannelTopic,
   examPermissionOverwrites,
+  findCoursePublicationByPanelMessage,
   isCourseExamChannelFor,
   isCourseFormInstructorOverride,
   parseCourseExamChannelTopic,
@@ -106,4 +107,15 @@ test("overwrites deixam o canal visível somente para aluno, instrutor responsá
 test("usuário liberado pode operar formulários e finalização de cursos", () => {
   assert.equal(isCourseFormInstructorOverride("1426287249020158018"), true);
   assert.equal(isCourseFormInstructorOverride("1426287249020158019"), false);
+});
+
+test("ação administrativa recupera publicação pelo painel clicado", () => {
+  const publications = [
+    { id: "publication-old", channelId: "channel-1", messageId: "message-old", status: "started" },
+    { id: "publication-current", channelId: "channel-1", messageId: "message-current", status: "proof" }
+  ] as Parameters<typeof findCoursePublicationByPanelMessage>[0];
+
+  assert.equal(findCoursePublicationByPanelMessage(publications, "message-current", "channel-1")?.id, "publication-current");
+  assert.equal(findCoursePublicationByPanelMessage(publications, "message-missing", "channel-1")?.id, "publication-old");
+  assert.equal(findCoursePublicationByPanelMessage(publications, "message-missing", "channel-2"), null);
 });
