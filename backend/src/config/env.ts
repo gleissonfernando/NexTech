@@ -385,6 +385,7 @@ const envSchema = z
     DASHBOARD_VERIFICATION_MODE: z.enum(["temporary", "roles"]).default("roles"),
     START_REGISTERED_DEV_BOTS: envBoolean(!isProduction),
     DEV_BOT_START_CONCURRENCY: z.coerce.number().int().min(1).max(4).optional(),
+    DEV_BOT_NODE_MAX_OLD_SPACE_MB: z.coerce.number().int().min(64).max(512).optional(),
     DEV_BOT_START_STAGGER_MS: z.coerce.number().int().positive().optional(),
     DEV_BOT_COMMAND_CLEANUP_DELAY_MS: z.coerce.number().int().positive().optional()
   })

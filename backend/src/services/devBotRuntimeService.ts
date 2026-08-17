@@ -46,6 +46,7 @@ const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "f
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
 const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
 const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV === "production" ? 1 : 3);
+const DEV_BOT_NODE_MAX_OLD_SPACE_MB = env.DEV_BOT_NODE_MAX_OLD_SPACE_MB ?? 128;
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
@@ -473,6 +474,7 @@ async function startRuntime(bot: DevBotRuntimeConfig) {
       BOT_COMMAND_GUILD_IDS: bot.guildIds.join(","),
       BOT_ENABLED_MODULES: bot.enabledModules.join(","),
       BOT_MEMBER_EVENTS_ENABLED: String(memberEventsEnabled),
+      NODE_OPTIONS: nodeOptionsWithMaxOldSpace(process.env.NODE_OPTIONS, DEV_BOT_NODE_MAX_OLD_SPACE_MB),
       BACKEND_API_URL: `${backendRuntimeUrl}/api`,
       BACKEND_SOCKET_URL: backendRuntimeUrl,
       BOT_API_TOKEN: env.BOT_API_TOKEN
@@ -574,6 +576,17 @@ function restartDelayMs(botId: string) {
   const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
   const backoff = Math.min(10 * 60_000, DEV_BOT_RESTART_DELAY_MS * 2 ** Math.max(0, next.attempts - 1));
   return backoff + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+}
+
+function nodeOptionsWithMaxOldSpace(current: string | undefined, maxOldSpaceMb: number) {
+  const options = (current ?? "")
+    .split(/\s+/)
+    .map((option) => option.trim())
+    .filter(Boolean)
+    .filter((option) => !option.startsWith("--max-old-space-size"));
+
+  options.push(`--max-old-space-size=${maxOldSpaceMb}`);
+  return options.join(" ");
 }
 
 async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[]) {
