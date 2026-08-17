@@ -5,7 +5,7 @@ import { createSocketServer } from "./realtime/socket";
 import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
 import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
-import { cleanupObsoleteDevBotCommands, startAllDevBotProcesses, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
+import { cleanupObsoleteDevBotCommands, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
 import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
 import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, startServerBackupScheduler } from "./services/serverBackupService";
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
@@ -70,11 +70,6 @@ httpServer.listen(env.PORT, env.HOST, () => {
     .then((restartRecovery) => {
       if (env.START_REGISTERED_DEV_BOTS) {
         scheduleRegisteredDevBotStartup(0);
-        return;
-      }
-
-      if (restartRecovery.botIds.length > 0) {
-        scheduleRecoveredDevBotStartup(restartRecovery.botIds, 0);
         return;
       }
 
@@ -146,21 +141,6 @@ function scheduleRegisteredDevBotStartup(attempt: number) {
         attempt,
         label: "start automático",
         retry: () => scheduleRegisteredDevBotStartup(attempt + 1),
-        error
-      });
-    });
-}
-
-function scheduleRecoveredDevBotStartup(botIds: string[], attempt: number) {
-  void startAllDevBotProcesses(botIds)
-    .then(() => {
-      console.log(`[dev-bot] retomada pós-restart solicitada para ${botIds.length} bot(s) que estavam online.`);
-    })
-    .catch((error) => {
-      scheduleDevBotStartupRetry({
-        attempt,
-        label: "retomada pós-restart",
-        retry: () => scheduleRecoveredDevBotStartup(botIds, attempt + 1),
         error
       });
     });
