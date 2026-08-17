@@ -45,7 +45,7 @@ const GATEWAY_MESSAGE_CONTENT_LIMITED = 1 << 19;
 const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "fivem-absences", "account-age-security", "safe-bot", "moderation"];
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
 const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
-const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV === "production" ? 2 : 3);
+const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV === "production" ? 1 : 3);
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
