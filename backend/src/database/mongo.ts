@@ -4569,6 +4569,7 @@ export type MongoZtkWebhookLog = {
 export type MongoZtkWebhookPlayerStat = {
   _id: string;
   activeSessionStartedAt: Date | null;
+  appliedDominationEventKeys?: string[];
   botId: string;
   clanId: string;
   clanName: string;

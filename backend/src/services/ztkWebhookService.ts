@@ -863,33 +863,13 @@ function hasZtkTimestampSignal(rawPayload: unknown, rawText: string) {
     || /\b\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\b/.test(rawText);
 }
 
-async function updatePlayerStats(collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookPlayerStats"], clan: MongoZtkWebhookClan, log: MongoZtkWebhookLog) {
-  if (log.eventType === "domination" && log.participants?.length) {
-    const now = new Date();
-    await collection.bulkWrite(log.participants.map((participant) => ({
-      updateOne: {
-        filter: { botId: clan.botId, guildId: clan.guildId, clanId: clan._id, playerName: participant.name },
-        update: {
-          $inc: { dominations: 1 },
-          $set: {
-            clanName: log.clanName || clan.clanName,
-            lastSeenAt: log.eventTimestamp,
-            playerId: participant.id,
-            updatedAt: now
-          },
-          $setOnInsert: {
-            _id: randomUUID(),
-            botId: clan.botId,
-            clanId: clan._id,
-            guildId: clan.guildId,
-            onlineSeconds: 0,
-            playerName: participant.name,
-            recruitments: 0
-          }
-        },
-        upsert: true
-      }
-    })), { ordered: false });
+async function updatePlayerStats(
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookPlayerStats"],
+  clan: MongoZtkWebhookClan,
+  log: MongoZtkWebhookLog
+) {
+  if (log.eventType === "domination") {
+    await applyZtkDominationPlayerStats(collection, clan, log);
     return;
   }
 
@@ -904,7 +884,6 @@ async function updatePlayerStats(collection: Awaited<ReturnType<typeof getMongoC
     playerId: log.playerId,
     updatedAt: now
   };
-  if (log.eventType === "domination") inc.dominations = 1;
   if (log.eventType === "recruitment") inc.recruitments = 1;
   if (log.eventType === "player_connected") set.activeSessionStartedAt = log.eventTimestamp;
   if (log.eventType === "player_disconnected") {
@@ -915,26 +894,95 @@ async function updatePlayerStats(collection: Awaited<ReturnType<typeof getMongoC
     set.activeSessionStartedAt = null;
   }
 
+  const setOnInsert: Partial<MongoZtkWebhookPlayerStat> = {
+    _id: randomUUID(),
+    botId: clan.botId,
+    clanId: clan._id,
+    clanName: clan.clanName,
+    guildId: clan.guildId,
+    playerId: log.playerId,
+    playerName
+  };
+  if (!("dominations" in inc)) setOnInsert.dominations = 0;
+  if (!("onlineSeconds" in inc)) setOnInsert.onlineSeconds = 0;
+  if (!("recruitments" in inc)) setOnInsert.recruitments = 0;
+
   await collection.updateOne(
     key,
     {
       ...(Object.keys(inc).length ? { $inc: inc } : {}),
       $set: set,
+      $setOnInsert: setOnInsert
+    },
+    { upsert: true }
+  );
+}
+
+export function ztkDominationStatTargetsForTest(log: Pick<MongoZtkWebhookLog, "participants" | "playerId" | "playerName" | "recruiterName">) {
+  const source = log.participants?.length
+    ? log.participants
+    : (() => {
+        const playerName = sanitizeZtkParticipantName(log.playerName ?? log.recruiterName ?? "");
+        return isValidZtkParticipantName(playerName)
+          ? [{ id: clean(log.playerId, 80) || null, name: playerName, normalizedName: normalizeEntity(playerName) }]
+          : [];
+      })();
+  const seen = new Set<string>();
+  const targets: Array<{ key: string; playerId: string | null; playerName: string }> = [];
+  for (const participant of source) {
+    const playerName = sanitizeZtkParticipantName(participant.name);
+    if (!isValidZtkParticipantName(playerName)) continue;
+    const playerId = clean(participant.id, 80) || null;
+    const key = playerId ? `id:${playerId}` : `name:${normalizeEntity(playerName)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({ key, playerId, playerName });
+  }
+  return targets;
+}
+
+async function applyZtkDominationPlayerStats(
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookPlayerStats"],
+  clan: MongoZtkWebhookClan,
+  log: MongoZtkWebhookLog
+) {
+  const targets = ztkDominationStatTargetsForTest(log);
+  const now = new Date();
+  for (const target of targets) {
+    const filter = { botId: clan.botId, guildId: clan.guildId, clanId: clan._id, playerName: target.playerName };
+    const eventKey = `${log._id}:${target.key}`;
+    const update = {
+      $addToSet: { appliedDominationEventKeys: eventKey },
+      $inc: { dominations: 1 },
+      $set: {
+        clanName: log.clanName || clan.clanName,
+        lastSeenAt: log.eventTimestamp,
+        playerId: target.playerId,
+        updatedAt: now
+      },
       $setOnInsert: {
         _id: randomUUID(),
         botId: clan.botId,
         clanId: clan._id,
-        clanName: clan.clanName,
-        dominations: 0,
         guildId: clan.guildId,
         onlineSeconds: 0,
-        playerId: log.playerId,
-        playerName,
+        playerName: target.playerName,
         recruitments: 0
       }
-    },
-    { upsert: true }
-  );
+    };
+    const applied = await collection.updateOne(
+      { ...filter, appliedDominationEventKeys: { $ne: eventKey } },
+      update,
+      { upsert: false }
+    );
+    if (applied.modifiedCount === 1) continue;
+    if (await collection.findOne(filter, { projection: { _id: 1 } })) continue;
+    await collection.updateOne(
+      filter,
+      update,
+      { upsert: true }
+    );
+  }
 }
 
 async function topPlayers(
@@ -1122,25 +1170,18 @@ function rankingPeriodStartForClan(clan: MongoZtkWebhookClan, value: Date) {
   return clan.createdAt;
 }
 
-async function buildDominationRankings(
-  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
-  clan: MongoZtkWebhookClan
-): Promise<ZtkDominationRankingsDto> {
-  const now = new Date();
-  const todayStart = startOfDay(now);
-  const weekStart = rankingPeriodStartForClan(clan, now);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
-  const gangs = await collection.aggregate<{
-    dominations: number;
-    gangName: string;
-    lastDominatedAt: Date | null;
-    lastZone: string | null;
-    normalizedGangName: string;
-    participantTotal: number;
-    zoneCount: number;
-  }>([
-    { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", guildId: clan.guildId } },
+function validZtkParticipantMatch() {
+  return {
+    "participants.name": {
+      $not: ZTK_INVALID_PARTICIPANT_PATTERN,
+      $type: "string"
+    }
+  };
+}
+
+export function ztkDominationGangRankingPipelineForTest(clan: Pick<MongoZtkWebhookClan, "_id" | "botId" | "guildId">, weekStart: Date) {
+  return [
+    { $match: { botId: clan.botId, clanId: clan._id, eventTimestamp: { $gte: weekStart }, eventType: "domination", guildId: clan.guildId } },
     {
       $set: {
         rankingGangName: { $ifNull: ["$normalizedGangName", "$clanName"] },
@@ -1173,7 +1214,27 @@ async function buildDominationRankings(
     },
     { $sort: { dominations: -1, zoneCount: -1, participantTotal: -1, lastDominatedAt: -1, gangName: 1 } },
     { $limit: ZTK_RANKING_LIMIT }
-  ]).toArray();
+  ];
+}
+
+async function buildDominationRankings(
+  collection: Awaited<ReturnType<typeof getMongoCollections>>["ztkWebhookLogs"],
+  clan: MongoZtkWebhookClan
+): Promise<ZtkDominationRankingsDto> {
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const weekStart = rankingPeriodStartForClan(clan, now);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const seriesStart = startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000));
+  const gangs = await collection.aggregate<{
+    dominations: number;
+    gangName: string;
+    lastDominatedAt: Date | null;
+    lastZone: string | null;
+    normalizedGangName: string;
+    participantTotal: number;
+    zoneCount: number;
+  }>(ztkDominationGangRankingPipelineForTest(clan, weekStart)).toArray();
 
   const participants = await collection.aggregate<{
     avatarUrl: string | null;
@@ -1194,10 +1255,7 @@ async function buildDominationRankings(
     { $unwind: "$participants" },
     {
       $match: {
-        "participants.name": {
-          $not: ZTK_INVALID_PARTICIPANT_PATTERN,
-          $type: "string"
-        }
+        ...validZtkParticipantMatch()
       }
     },
     { $sort: { eventTimestamp: -1, _id: -1 } },
@@ -1234,6 +1292,7 @@ async function buildDominationRankings(
   }>([
     { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", guildId: clan.guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
+    { $match: validZtkParticipantMatch() },
     {
       $group: {
         _id: null,
@@ -1248,6 +1307,7 @@ async function buildDominationRankings(
   const dailySeries = await collection.aggregate<{ date: string; total: number }>([
     { $match: { botId: clan.botId, clanId: clan._id, eventType: "domination", eventTimestamp: { $gte: seriesStart }, guildId: clan.guildId, participants: { $type: "array" } } },
     { $unwind: "$participants" },
+    { $match: validZtkParticipantMatch() },
     {
       $group: {
         _id: { $dateToString: { date: "$eventTimestamp", format: "%Y-%m-%d", timezone: "America/Sao_Paulo" } },
@@ -1588,7 +1648,9 @@ function parseRivalGangs(lines: string[]) {
 }
 
 function parseParticipants(lines: string[]) {
-  return lines
+  const seen = new Set<string>();
+  const participants: Array<{ id: string | null; name: string; normalizedName: string }> = [];
+  for (const item of lines
     .map((line) => {
       const cleaned = sanitizeZtkParticipantName(line);
       if (!isValidZtkParticipantName(cleaned)) return null;
@@ -1598,7 +1660,13 @@ function parseParticipants(lines: string[]) {
         .replace(/\([0-9A-Za-z_-]{2,}\)/g, ""));
       return isValidZtkParticipantName(name) ? { id: idMatch?.[1] ?? null, name, normalizedName: normalizeEntity(name) } : null;
     })
-    .filter((item): item is { id: string | null; name: string; normalizedName: string } => Boolean(item));
+    .filter((item): item is { id: string | null; name: string; normalizedName: string } => Boolean(item))) {
+    const key = item.id ? `id:${item.id}` : `name:${item.normalizedName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    participants.push(item);
+  }
+  return participants;
 }
 
 function sanitizeZtkParticipantName(value: string) {
