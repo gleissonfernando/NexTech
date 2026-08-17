@@ -183,7 +183,9 @@ export function LogsSettingsPanel({
       return;
     }
 
-    if (draft.discordLogsEnabled && !draft.logChannelId && !automated?.enabled) {
+    const automaticLogsActive = Boolean(botId && automated?.enabled);
+
+    if (draft.discordLogsEnabled && !draft.logChannelId && !automaticLogsActive) {
       setStatus(null);
       setError("Selecione o canal que recebera os logs do Discord.");
       return;
@@ -209,10 +211,13 @@ export function LogsSettingsPanel({
       const saved = await patchGuildSettings(guild.id, draft, botId);
       if (botId && automated) {
         const savedAutomated = await saveAutomatedLogSettings(guild.id, botId, { enabled: automated.enabled, allowedRoleIds: automated.allowedRoleIds, enabledChannels: automated.enabledChannels });
-        setAutomated(savedAutomated);
+        const syncedAutomated = savedAutomated.enabled
+          ? await syncAutomatedLogStructure(guild.id, botId)
+          : savedAutomated;
+        setAutomated(syncedAutomated);
       }
       onSettingsChange(saved);
-      setStatus("Configuração de logs salva.");
+      setStatus(automaticLogsActive ? "Configuração salva. A estrutura automática de logs foi enviada para sincronização." : "Configuração de logs salva.");
     } catch (requestError) {
       setError(readErrorMessage(requestError, "Não foi possível salvar a configuração de logs."));
     } finally {
@@ -248,6 +253,7 @@ export function LogsSettingsPanel({
   }
 
   const disabled = !settings || !canManage || loading || loadingChannels || saving;
+  const automaticLogsActive = Boolean(botId && automated?.enabled);
 
   return (
     <div className="space-y-5">
@@ -264,19 +270,20 @@ export function LogsSettingsPanel({
           <label className="grid gap-2 text-sm">
             <span className="flex items-center gap-2 font-medium text-zinc-200">
               <Hash className="h-4 w-4 text-zinc-400" />
-              Canal de logs
+              Canal de logs manual
             </span>
             <select
               className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-[#FFD500]/60"
-              disabled={disabled || !draft.discordLogsEnabled}
+              disabled={disabled || !draft.discordLogsEnabled || automaticLogsActive}
               onChange={(event) => updateDraft("logChannelId", event.target.value || null)}
               value={draft.logChannelId ?? ""}
             >
-              <option value="">Selecione um canal</option>
+              <option value="">{automaticLogsActive ? "Não usado com estrutura automática" : "Selecione um canal"}</option>
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>#{channel.name}</option>
               ))}
             </select>
+            {automaticLogsActive ? <span className="text-xs text-zinc-500">A criação e o envio de logs usam os módulos marcados em Sistema de Logs do Discord.</span> : null}
           </label>
         </DestinationCard>
 
