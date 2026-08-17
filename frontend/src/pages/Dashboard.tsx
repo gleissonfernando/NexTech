@@ -4834,7 +4834,7 @@ function GoalItemsEditor({ canManage, items, onAdd, onPatch }: { canManage: bool
       </div>
       <div className="grid gap-3">
         {items.map((item, index) => (
-          <div className="rounded-lg border border-zinc-800 bg-black/25 p-3" key={item.id || index}>
+          <div className="rounded-lg border border-zinc-800 bg-black/25 p-3" key={`${item.createdAt ?? "goal-item"}:${index}`}>
             <div className="grid gap-3 lg:grid-cols-[90px_minmax(180px,1fr)_150px_160px_100px_90px_100px]">
               <TicketField disabled={!canManage} label="Emoji obrigatório" onChange={(value) => onPatch(index, { emoji: value })} value={item.emoji ?? ""} />
               <TicketField disabled={!canManage} label="Nome" onChange={(value) => onPatch(index, { id: slugTicketOption(value, index), name: value, updatedAt: new Date().toISOString() })} value={item.name} />
@@ -4845,9 +4845,9 @@ function GoalItemsEditor({ canManage, items, onAdd, onPatch }: { canManage: bool
                   <option value="optional">Opcional</option>
                 </select>
               </label>
-              <TicketField disabled={!canManage} label="Valor interno da meta" onChange={(value) => onPatch(index, { requiredAmount: Math.max(1, Number(value) || 1), updatedAt: new Date().toISOString() })} value={String(item.requiredAmount ?? 1)} />
+              <TicketField disabled={!canManage} label="Valor interno da meta" onChange={(value) => onPatch(index, { requiredAmount: Math.max(1, Number(value) || 1), updatedAt: new Date().toISOString() })} type="number" value={String(item.requiredAmount ?? 1)} />
               <TicketField disabled={!canManage} label="Cor" onChange={(value) => onPatch(index, { color: value })} type="color" value={item.color ?? "#FFD500"} />
-              <TicketField disabled={!canManage} label="Ordem" onChange={(value) => onPatch(index, { order: Math.max(0, Number(value) || index + 1), updatedAt: new Date().toISOString() })} value={String(item.order ?? index + 1)} />
+              <TicketField disabled={!canManage} label="Ordem" onChange={(value) => onPatch(index, { order: Math.max(0, Number(value) || index + 1), updatedAt: new Date().toISOString() })} type="number" value={String(item.order ?? index + 1)} />
               <label className="flex items-end gap-2 text-xs text-zinc-300"><span className="flex h-10 items-center gap-2 rounded-md border border-zinc-800 px-3"><input checked={item.enabled} disabled={!canManage} onChange={(event) => onPatch(index, { enabled: event.target.checked, updatedAt: new Date().toISOString() })} type="checkbox" />Ativo</span></label>
             </div>
           </div>
