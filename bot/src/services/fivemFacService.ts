@@ -604,7 +604,7 @@ async function approveAbsence(interaction: ButtonInteraction, context: BotContex
     await updateAbsenceMessage(interaction, settings, absence);
     await sendFacLog(guild, settings, roleResult.roleApplied ? "Solicitação aprovada com cargo concedido" : "Solicitação aprovada sem cargo concedido", absence, interaction.user.id, roleResult.error ?? null);
     await notifyAbsenceUser(guild, absence, roleResult.roleApplied ? settings.messages.approved : `${settings.messages.approved}\n\nA equipe foi avisada de que o cargo configurado não pôde ser aplicado automaticamente.`);
-    await settleAbsenceChannel(guild, settings, absence, `Solicitação de ausência aprovada por ${interaction.user.tag}`);
+    await settleAbsenceChannel(guild, settings, absence, `Solicitação de ausência aprovada por ${interaction.user.tag}`, "delete");
     await interaction.editReply(facNoticePayload({
       accentColor: roleResult.roleApplied ? 0x22c55e : 0xf59e0b,
       description: roleResult.roleApplied
@@ -667,7 +667,7 @@ async function rejectAbsence(interaction: ModalSubmitInteraction, context: BotCo
     await updateAbsenceMessage(interaction, settings, absence);
     await sendFacLog(guild, settings, removedInvalidRole ? "Solicitação reprovada e cargo indevido removido" : "Solicitação reprovada", absence, interaction.user.id, reason);
     await notifyAbsenceUser(guild, absence, `${settings.messages.rejected}\nMotivo: ${reason}`);
-    await settleAbsenceChannel(guild, settings, absence, `Solicitação de ausência reprovada por ${interaction.user.tag}`);
+    await settleAbsenceChannel(guild, settings, absence, `Solicitação de ausência reprovada por ${interaction.user.tag}`, "delete");
     await interaction.editReply(facNoticePayload({
       accentColor: 0xef4444,
       description: `A solicitação foi reprovada e o usuário foi notificado.\n\n**Motivo:** ${truncate(reason, 500)}`,
@@ -1029,8 +1029,16 @@ async function updateStoredAbsenceMessage(guild: Guild, absence: FivemFacAbsence
   await message?.edit(buildAbsenceReviewPayload(absence, guild)).catch(() => null);
 }
 
-async function settleAbsenceChannel(guild: Guild, settings: FivemFacSettings, absence: FivemFacAbsence, reason: string) {
-  if (!absence.privateChannelId || settings.channelCloseMode === "keep") {
+async function settleAbsenceChannel(
+  guild: Guild,
+  settings: FivemFacSettings,
+  absence: FivemFacAbsence,
+  reason: string,
+  forcedMode?: FivemFacSettings["channelCloseMode"]
+) {
+  const mode = forcedMode ?? settings.channelCloseMode;
+
+  if (!absence.privateChannelId || mode === "keep") {
     return;
   }
 
@@ -1040,7 +1048,7 @@ async function settleAbsenceChannel(guild: Guild, settings: FivemFacSettings, ab
     return;
   }
 
-  if (settings.channelCloseMode === "delete") {
+  if (mode === "delete") {
     if ("delete" in channel) {
       await channel.delete(reason).catch(() => null);
     }
