@@ -58,6 +58,14 @@ writeFileSync(path.join(target, "discloud.config"), [
 
 const runtimeEnv = {};
 for (const key of [
+  "APP_CONFIG_JSON",
+  "APP_CONFIG_B64",
+  "APP_CONFIG_BASE64",
+  "NEX_TECH_CONFIG_B64",
+  "MONGODB_URI",
+  "MONGO_URI",
+  "DATABASE_URL",
+  "BOT_API_TOKEN",
   "DISCORD_BOT_TOKEN",
   "UPDATE_CHANNEL_ID",
   "AUTO_UPDATE_CHANNEL_ID",
