@@ -37,7 +37,7 @@ export async function fetchBotProfile(): Promise<BotProfile> {
       connected: true
     };
   } catch (error) {
-    console.warn("[discord] não foi possível buscar perfil do bot:", error instanceof Error ? error.message : error);
+    console.warn("[discord] não foi possível buscar perfil do bot:", discordRequestError(error));
     return disconnectedBotProfile();
   }
 }
@@ -49,4 +49,24 @@ function disconnectedBotProfile(): BotProfile {
     avatarUrl: null,
     connected: false
   };
+}
+
+function discordRequestError(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  const status = error.response?.status;
+  const discordMessage = readDiscordErrorMessage(error.response?.data);
+  const statusText = status ? `Discord HTTP ${status}` : "Discord request";
+  return discordMessage ? `${statusText}: ${discordMessage}` : `${statusText}: ${error.message}`;
+}
+
+function readDiscordErrorMessage(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = (data as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }

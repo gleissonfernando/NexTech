@@ -2588,6 +2588,17 @@ export class ApiClient {
       recordApiRequest(config.method, config.url);
       return config;
     });
+
+    this.http.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (axios.isAxiosError(error)) {
+          error.message = formatApiClientError(error);
+        }
+
+        return Promise.reject(error);
+      }
+    );
   }
 
   setDiscordClientId(clientId: string) {
@@ -4988,6 +4999,28 @@ function cleanupApiRequestCounters(now: number) {
       apiRequestCounters.delete(key);
     }
   }
+}
+
+function formatApiClientError(error: import("axios").AxiosError) {
+  const method = error.config?.method?.toUpperCase() ?? "HTTP";
+  const url = error.config?.url ?? "request";
+  const status = error.response?.status;
+  const backendMessage = readResponseMessage(error.response?.data);
+  const statusText = status ? ` ${status}` : "";
+  const detail = backendMessage && backendMessage !== error.message
+    ? `${error.message}: ${backendMessage}`
+    : error.message;
+
+  return `[api-client] ${method} ${url} falhou com${statusText}: ${detail}`;
+}
+
+function readResponseMessage(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = (data as { message?: unknown; error?: unknown }).message ?? (data as { message?: unknown; error?: unknown }).error;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
 function readAuthorizationResponse(value: unknown): BotCommandAuthorization | null {

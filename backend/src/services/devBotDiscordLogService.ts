@@ -49,7 +49,7 @@ export async function sendDevBotUnexpectedExitLog(input: DevBotUnexpectedExitLog
       embeds: [buildUnexpectedExitEmbed(input)]
     });
   } catch (error) {
-    console.warn("[dev-bot-log] falha ao enviar log de queda do bot:", error instanceof Error ? error.message : error);
+    console.warn("[dev-bot-log] falha ao enviar log de queda do bot:", discordErrorDetails(error));
   }
 }
 
@@ -123,7 +123,7 @@ async function resolveBotLogChannels(inputs: DevBotResolvedLogInput[]) {
       if (isDiscordStatus(error, 404)) {
         channelCache.delete(input.botId);
       } else {
-        console.warn("[dev-bot-log] falha ao enviar aviso de resolução:", error instanceof Error ? error.message : error);
+        console.warn("[dev-bot-log] falha ao enviar aviso de resolução:", discordErrorDetails(error));
       }
     }
 
@@ -141,7 +141,7 @@ async function resolveBotLogChannels(inputs: DevBotResolvedLogInput[]) {
       await discordRequest("DELETE", `/channels/${candidate.channelId}`);
     } catch (error) {
       if (!isDiscordStatus(error, 404)) {
-        console.warn("[dev-bot-log] falha ao apagar canal temporario resolvido:", error instanceof Error ? error.message : error);
+        console.warn("[dev-bot-log] falha ao apagar canal temporario resolvido:", discordErrorDetails(error));
       }
     } finally {
       channelCache.delete(candidate.botId);
@@ -196,7 +196,7 @@ async function safeFetchBotLogChannels() {
       return null;
     }
 
-    console.warn("[dev-bot-log] falha ao listar canais de logs temporarios:", error instanceof Error ? error.message : error);
+    console.warn("[dev-bot-log] falha ao listar canais de logs temporarios:", discordErrorDetails(error));
     return null;
   }
 }
@@ -367,4 +367,33 @@ function warnLogTargetAccessOnce(message: string) {
 
   lastLogTargetWarningAt = now;
   console.warn(message);
+}
+
+function discordErrorDetails(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  const status = error.response?.status;
+  const method = error.config?.method?.toUpperCase() ?? "HTTP";
+  const url = sanitizeDiscordUrl(error.config?.url);
+  const message = readDiscordErrorMessage(error.response?.data) ?? error.message;
+  return `Discord ${method} ${url} falhou${status ? ` com ${status}` : ""}: ${message}`;
+}
+
+function sanitizeDiscordUrl(url: string | undefined) {
+  if (!url) {
+    return "request";
+  }
+
+  return url.replace(DISCORD_API, "");
+}
+
+function readDiscordErrorMessage(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = (data as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }

@@ -104,7 +104,7 @@ export async function cleanupObsoleteDevBotCommands() {
           console.log(`[dev-bot] comando obsoleto /${command.name} removido de ${bot.id} (${scope.label}).`);
         }
       } catch (error) {
-        console.warn(`[dev-bot] falha ao limpar comandos obsoletos de ${bot.id} (${scope.label}):`, error instanceof Error ? error.message : error);
+        console.warn(`[dev-bot] falha ao limpar comandos obsoletos de ${bot.id} (${scope.label}):`, readRuntimeError(error));
       }
     }
   }
@@ -123,13 +123,13 @@ async function listDevBotRuntimeConfigsWithRetry() {
       lastError = error;
       console.warn(
         `[dev-bot] não foi possível carregar bots para limpar comandos obsoletos (${attempt}/8):`,
-        error instanceof Error ? error.message : error
+        readRuntimeError(error)
       );
       await delay(10_000);
     }
   }
 
-  console.warn("[dev-bot] limpeza de comandos obsoletos ignorada:", lastError instanceof Error ? lastError.message : lastError);
+  console.warn("[dev-bot] limpeza de comandos obsoletos ignorada:", readRuntimeError(lastError));
   return [];
 }
 
@@ -421,6 +421,10 @@ function isMongoWriteBlockedError(error: unknown) {
 }
 
 function readRuntimeError(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    return discordRuntimeRequestError(error);
+  }
+
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -639,7 +643,7 @@ async function canUseGuildMemberIntent(bot: DevBotRuntimeConfig) {
   } catch (error) {
     console.warn(
       `[dev-bot:${bot.id}] não foi possível consultar intents do Discord; iniciando sem eventos de membros:`,
-      error instanceof Error ? error.message : error
+      readRuntimeError(error)
     );
     return false;
   }
@@ -662,7 +666,7 @@ async function canUseMessageContentIntent(bot: DevBotRuntimeConfig) {
   } catch (error) {
     console.warn(
       `[dev-bot:${bot.id}] não foi possível consultar o Message Content Intent:`,
-      error instanceof Error ? error.message : error
+      readRuntimeError(error)
     );
     return false;
   }
@@ -670,6 +674,31 @@ async function canUseMessageContentIntent(bot: DevBotRuntimeConfig) {
 
 function hasEnabledModule(bot: DevBotRuntimeConfig, moduleIds: string[]) {
   return moduleIds.some((moduleId) => bot.enabledModules.includes(moduleId));
+}
+
+function discordRuntimeRequestError(error: import("axios").AxiosError) {
+  const status = error.response?.status;
+  const method = error.config?.method?.toUpperCase() ?? "HTTP";
+  const url = sanitizeDiscordRuntimeUrl(error.config?.url);
+  const message = readDiscordRuntimeErrorMessage(error.response?.data) ?? error.message;
+  return `Discord ${method} ${url} falhou${status ? ` com ${status}` : ""}: ${message}`;
+}
+
+function sanitizeDiscordRuntimeUrl(url: string | undefined) {
+  if (!url) {
+    return "request";
+  }
+
+  return url.replace(DISCORD_API, "");
+}
+
+function readDiscordRuntimeErrorMessage(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = (data as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
 function botRuntimeError(message: string) {
