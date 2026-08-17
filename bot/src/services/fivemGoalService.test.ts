@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalChannelRequestModal, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, ensureFivemGoalChannelForUser, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -101,6 +101,17 @@ test("painel de solicitar sala de meta usa custom ids com escopo do servidor e b
   assert.match(serialized, /Solicitar Sala de Farm/);
   assert.match(serialized, /fivem_goal:request_channel:1533162050417721486:bot-dev-1/);
   assert.doesNotMatch(serialized, /fivem_goal:help:1533162050417721486:bot-dev-1/);
+});
+
+test("modal de solicitar sala de farm pede nome in game e id de usuario", () => {
+  const modal = createGoalChannelRequestModal("fivem_goal:request_channel_modal:1533162050417721486:bot-dev-1");
+  const serialized = JSON.stringify(modal.toJSON());
+
+  assert.match(serialized, /Solicitar Sala de Farm/);
+  assert.match(serialized, /farm_room_game_name/);
+  assert.match(serialized, /Nome in game/);
+  assert.match(serialized, /farm_room_user_id/);
+  assert.match(serialized, /ID de usuario/);
 });
 
 test("painel de registro de farm preserva a mensagem original no custom id", () => {
@@ -281,6 +292,58 @@ test("sala de farm salva só é reutilizada quando o canal ainda existe e é tex
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => false, messages: {} }), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => true, isTextBased: () => true, messages: {} }), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => true, messages: { fetch: async () => null } }), true);
+});
+
+test("sala de farm reutilizada atualiza nome com dados do modal", async () => {
+  const calls = { names: [] as string[] };
+  const existingChannel = {
+    id: "222222222222222222",
+    isDMBased: () => false,
+    isTextBased: () => true,
+    messages: {
+      fetch: async () => ({
+        find: () => undefined,
+        some: () => true
+      })
+    },
+    name: "meta-antiga",
+    parentId: null,
+    setName: async (name: string) => { calls.names.push(name); }
+  };
+  const guild = {
+    channels: {
+      cache: new Map(),
+      fetch: async (id: string) => id === existingChannel.id ? existingChannel : null
+    },
+    client: { user: { id: "999999999999999999" } },
+    emojis: { cache: new Map() },
+    id: "111111111111111111",
+    iconURL: () => null,
+    members: { me: { id: "999999999999999999", permissions: { has: () => true } } },
+    roles: { cache: new Map(), everyone: { id: "000000000000000000" } }
+  } as any;
+  const context = {
+    api: {
+      getFivemGoalChannelByUser: async () => ({ channelId: existingChannel.id }),
+      getFivemGoalSettings: async () => ({
+        botId: "bot",
+        categoryId: null,
+        channelNameTemplate: "meta-{username}",
+        enabled: true,
+        items: [],
+        managerRoleId: null,
+        managerRoleIds: [],
+        viewRoleId: null,
+        viewerRoleIds: []
+      }),
+      postLog: async () => null
+    }
+  } as any;
+
+  const channelId = await ensureFivemGoalChannelForUser(context, guild, "666666666666666666", "Tairan Cooper", null, "15774");
+
+  assert.equal(channelId, existingChannel.id);
+  assert.deepEqual(calls.names, ["📕┋tairan-cooper-|-15774"]);
 });
 
 function createGoalContextMock(overrides: Record<string, any> = {}) {

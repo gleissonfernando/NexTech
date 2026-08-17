@@ -36,6 +36,7 @@ const RANKING_PAGE_SIZE = 15;
 const RANKING_PANEL_PREFIX = `${PREFIX}:ranking`;
 const SUMMARY_PANEL_PREFIX = `${PREFIX}:summary`;
 const REQUEST_CHANNEL_CUSTOM_ID = `${PREFIX}:request_channel`;
+const REQUEST_CHANNEL_MODAL_CUSTOM_ID = `${PREFIX}:request_channel_modal`;
 const FARM_ROOM_CLOSE_CUSTOM_ID_PREFIX = `${PREFIX}:room:close`;
 const CLOSE_USER_GOAL_PREFIX = `${PREFIX}:close_user`;
 const EDIT_USER_SELECT_CUSTOM_ID = `${PREFIX}:edit:user`;
@@ -206,6 +207,11 @@ export async function ensureFivemGoalChannelForApprovedSet(
         } catch (error) {
           return goalSetIntegrationResult(existing.channelId, null, targetCategoryId, false, error instanceof Error ? `Não foi possível publicar o painel da Sala de Farm: ${error.message}` : "Não foi possível publicar o painel da Sala de Farm.");
         }
+      }
+
+      const desiredChannelName = gameId?.trim() ? renderApprovedSetChannelName(username, gameId) : null;
+      if (desiredChannelName && "name" in existingChannel && existingChannel.name !== desiredChannelName && "setName" in existingChannel) {
+        await existingChannel.setName(desiredChannelName, `Dados da Sala de Farm atualizados para ${userId}`).catch(() => null);
       }
 
       const previousCategoryId = "parentId" in existingChannel ? existingChannel.parentId ?? null : null;
@@ -411,7 +417,12 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
   if (!("customId" in interaction) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
 
   if (interaction.isButton() && isScopedCustomId(interaction.customId, REQUEST_CHANNEL_CUSTOM_ID, interaction.guildId)) {
-    await handleGoalChannelRequest(interaction, context);
+    await showGoalChannelRequestModal(interaction);
+    return true;
+  }
+
+  if (interaction.isModalSubmit() && isScopedCustomId(interaction.customId, REQUEST_CHANNEL_MODAL_CUSTOM_ID, interaction.guildId)) {
+    await submitGoalChannelRequestModal(interaction, context);
     return true;
   }
 
@@ -488,9 +499,48 @@ export async function handleFivemGoalInteraction(interaction: Interaction, conte
   return false;
 }
 
-async function handleGoalChannelRequest(interaction: ButtonInteraction, context: BotContext) {
+async function showGoalChannelRequestModal(interaction: ButtonInteraction) {
+  if (!interaction.guild) return;
+  await interaction.showModal(createGoalChannelRequestModal(scopedCustomId(REQUEST_CHANNEL_MODAL_CUSTOM_ID, interaction.guild.id, currentRuntimeBotId())));
+}
+
+export function createGoalChannelRequestModal(customId: string) {
+  const gameNameInput = new TextInputBuilder()
+    .setCustomId("farm_room_game_name")
+    .setLabel("Nome in game")
+    .setPlaceholder("Ex: Tairan Cooper")
+    .setMinLength(2)
+    .setMaxLength(80)
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  const userIdInput = new TextInputBuilder()
+    .setCustomId("farm_room_user_id")
+    .setLabel("ID de usuario")
+    .setPlaceholder("Ex: 15774")
+    .setMinLength(1)
+    .setMaxLength(32)
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle("Solicitar Sala de Farm")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(gameNameInput),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(userIdInput)
+    );
+}
+
+async function submitGoalChannelRequestModal(interaction: ModalSubmitInteraction, context: BotContext) {
   if (!interaction.guild) return;
   await interaction.deferReply({ ephemeral: true });
+  const gameName = normalizeFarmRoomModalValue(interaction.fields.getTextInputValue("farm_room_game_name"));
+  const gameId = normalizeFarmRoomModalValue(interaction.fields.getTextInputValue("farm_room_user_id"));
+  if (!gameName || !gameId) {
+    await interaction.editReply("Informe o nome in game e o ID de usuario para criar sua Sala de Farm.");
+    return;
+  }
   const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
   if (!settings?.enabled) {
     await interaction.editReply("O sistema de metas não está ativo neste servidor.");
@@ -507,13 +557,16 @@ async function handleGoalChannelRequest(interaction: ButtonInteraction, context:
     }).catch(() => null);
     return;
   }
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-  const channelId = await ensureFivemGoalChannelForUser(context, interaction.guild, interaction.user.id, member?.displayName ?? interaction.user.username);
+  const channelId = await ensureFivemGoalChannelForUser(context, interaction.guild, interaction.user.id, gameName, null, gameId);
   if (!channelId) {
     await interaction.editReply("Não foi possível criar seu canal de meta. Avise a administracao para conferir categoria e permissões do bot.");
     return;
   }
   await interaction.editReply(`Seu canal individual de meta esta pronto: <#${channelId}>`);
+}
+
+function normalizeFarmRoomModalValue(value: string) {
+  return value.trim().replace(/\s+/g, " ").slice(0, 80);
 }
 
 async function hasApprovedSetRegistration(context: BotContext, guildId: string, userId: string) {
