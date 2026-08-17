@@ -149,6 +149,33 @@ test("painel de farm registrado usa icone do servidor no lugar da foto enviada",
   assert.doesNotMatch(serialized, /https:\/\/cdn\.discordapp\.com\/image\.png/);
 });
 
+test("painel de farm registrado nao exibe token literal de emoji configurado indisponivel", () => {
+  const guild = {
+    client: {
+      emojis: { cache: { find: () => null, get: () => null } },
+      guilds: { cache: { get: () => null } },
+      user: {
+        displayAvatarURL: () => "https://cdn.discordapp.com/bot-avatar.png"
+      }
+    },
+    emojis: { cache: { find: () => null, get: () => null } },
+    iconURL: () => null
+  } as any;
+
+  const payload = createFarmRegisteredPayload(
+    "111111111111111111",
+    [{ id: "item", label: "Item", value: "Diamante" }],
+    112212,
+    guild,
+    ":caixa:"
+  );
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /Farm registrado/);
+  assert.doesNotMatch(serialized, /:caixa:/);
+  assert.match(serialized, /📦 Diamante: 112\.212/);
+});
+
 test("gatilho de meta ignora texto no canal de farm sem responder ou logar", async () => {
   const calls = { logs: 0, replies: 0, settings: 0 };
   const message = createGoalMessageMock({ attachments: [], authorId: "111111111111111111", ownerId: "111111111111111111", reply: async () => { calls.replies++; } });

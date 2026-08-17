@@ -43,6 +43,13 @@ const IDs = {
   public: "tempcall_public"
 } as const;
 
+const CREATE_MODAL_ID = "tempcall_create_modal";
+const CREATE_NAME_FIELD = "requested_user_name";
+const CREATE_ID_FIELD = "requested_user_id";
+const LIMIT_MODAL_ID = "tempcall_limit_modal";
+const LIMIT_FIELD = "limit";
+const ROOM_NAME_PREFIX = "📕┋";
+
 const emptyTimers = new Map<string, NodeJS.Timeout>();
 const configuredAutoDeleteTimers = new Map<string, NodeJS.Timeout>();
 const panelPublishLocks = new Map<string, Promise<string | null>>();
@@ -161,8 +168,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
   }
 
   if (interaction.customId === IDs.create) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await createCall(interaction, context, settings);
+    await showCreateCallModal(interaction);
     return;
   }
 
@@ -190,7 +196,7 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
 
     await interaction.showModal(
       new ModalBuilder()
-        .setCustomId("tempcall_limit_modal")
+        .setCustomId(LIMIT_MODAL_ID)
         .setTitle("Alterar limite da call")
         .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input))
     );
@@ -272,10 +278,24 @@ async function handleButton(interaction: ButtonInteraction, context: BotContext)
 }
 
 async function handleModal(interaction: ModalSubmitInteraction, context: BotContext) {
-  if (interaction.customId !== "tempcall_limit_modal") return;
+  if (interaction.customId === CREATE_MODAL_ID) {
+    const settings = await context.api.getTemporaryVoiceSettings(interaction.guildId!);
+
+    if (!settings.enabled) {
+      throw new Error("As calls temporárias estão desativadas no painel.");
+    }
+
+    const requestedName = interaction.fields.getTextInputValue(CREATE_NAME_FIELD);
+    const requestedId = interaction.fields.getTextInputValue(CREATE_ID_FIELD);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await createCall(interaction, context, settings, { requestedId, requestedName });
+    return;
+  }
+
+  if (interaction.customId !== LIMIT_MODAL_ID) return;
 
   const call = await ownedCall(interaction, context);
-  const raw = interaction.fields.getTextInputValue("limit").trim();
+  const raw = interaction.fields.getTextInputValue(LIMIT_FIELD).trim();
 
   if (!/^\d+$/.test(raw)) {
     throw new Error("O limite da call deve conter apenas números.");
@@ -296,6 +316,36 @@ async function handleModal(interaction: ModalSubmitInteraction, context: BotCont
   await channel.setUserLimit(limit, `Limite da call temporária alterado por ${interaction.user.tag}`);
   await context.api.updateTemporaryCall(interaction.guildId!, call.id, { userLimit: limit });
   await ephemeral(interaction, `✅ O limite da sua call foi alterado para ${limit}.`);
+}
+
+async function showCreateCallModal(interaction: ButtonInteraction) {
+  const nameInput = new TextInputBuilder()
+    .setCustomId(CREATE_NAME_FIELD)
+    .setLabel("Nome do usuário")
+    .setMinLength(1)
+    .setMaxLength(60)
+    .setPlaceholder("Ex: João Silva")
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  const idInput = new TextInputBuilder()
+    .setCustomId(CREATE_ID_FIELD)
+    .setLabel("ID do usuário")
+    .setMinLength(1)
+    .setMaxLength(20)
+    .setPlaceholder("Ex: 123")
+    .setRequired(true)
+    .setStyle(TextInputStyle.Short);
+
+  await interaction.showModal(
+    new ModalBuilder()
+      .setCustomId(CREATE_MODAL_ID)
+      .setTitle("Solicitar sala")
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(idInput)
+      )
+  );
 }
 
 async function handleUserSelect(interaction: UserSelectMenuInteraction | StringSelectMenuInteraction, context: BotContext) {
@@ -355,7 +405,12 @@ async function handleUserSelect(interaction: UserSelectMenuInteraction | StringS
   }
 }
 
-async function createCall(interaction: ButtonInteraction, context: BotContext, settings: TemporaryVoiceSettings) {
+async function createCall(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  context: BotContext,
+  settings: TemporaryVoiceSettings,
+  requestedRoom?: { requestedId: string; requestedName: string }
+) {
   const existing = await context.api.getTemporaryCallByOwner(interaction.guildId!, interaction.user.id);
 
   if (existing) {
@@ -371,7 +426,9 @@ async function createCall(interaction: ButtonInteraction, context: BotContext, s
   }
 
   const parent = settings.categoryId ? await interaction.guild!.channels.fetch(settings.categoryId).catch(() => null) : null;
-  const name = `Call de ${member.displayName}`.slice(0, 100);
+  const name = requestedRoom
+    ? formatRequestedRoomName(requestedRoom.requestedName, requestedRoom.requestedId)
+    : `Call de ${member.displayName}`.slice(0, 100);
   const channel = await interaction.guild!.channels.create({
     name,
     parent: parent?.type === ChannelType.GuildCategory ? parent.id : undefined,
@@ -420,6 +477,26 @@ async function createCall(interaction: ButtonInteraction, context: BotContext, s
     await channel.delete("Falha ao salvar a call temporária").catch(() => null);
     throw error;
   }
+}
+
+export function formatRequestedRoomName(requestedName: string, requestedId: string) {
+  const name = cleanRoomNamePart(requestedName, "Nome do usuário obrigatório.");
+  const id = cleanRoomNamePart(requestedId, "ID do usuário obrigatório.");
+  return `${ROOM_NAME_PREFIX}${name} ${id}`.slice(0, 100);
+}
+
+function cleanRoomNamePart(value: string, emptyMessage: string) {
+  const cleaned = value
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[@#`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    throw new Error(emptyMessage);
+  }
+
+  return cleaned;
 }
 
 async function setPrivacy(interaction: ButtonInteraction, context: BotContext, call: TemporaryCall, isPrivate: boolean) {

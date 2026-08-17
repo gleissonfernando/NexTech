@@ -2363,7 +2363,10 @@ function renderFarmConfiguredEmoji(value: string | null | undefined, guild: Guil
   const normalized = replaceSystemEmojis(raw, guild, guild.client)
     .replace(/:([a-zA-Z0-9_]{2,64}):/g, (match, alias: string) => isSystemEmojiKey(alias) ? farmSystemEmojiText(alias, guild, guild.client) : match)
     .trim();
-  return normalized || farmSystemEmojiText(fallbackKey, guild, guild.client);
+  if (!normalized || /^:[a-zA-Z0-9_]{2,64}:$/.test(normalized)) {
+    return farmSystemEmojiText(fallbackKey, guild, guild.client);
+  }
+  return normalized;
 }
 
 function goalItemSelectEmoji(item: FivemGoalItem, guild: Guild) {
