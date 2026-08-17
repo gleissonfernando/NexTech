@@ -6,6 +6,7 @@ import { runAutoUpdateLogger } from "./auto-update-logger.mjs";
 const root = process.cwd();
 const commitMessage = process.argv.slice(2).join(" ").trim() || `Manual Discloud release ${new Date().toISOString()}`;
 const appId = readDiscloudAppId();
+const childEnv = sanitizedEnvironment();
 
 function run(command, args, options = {}) {
   const useShell = process.platform === "win32";
@@ -13,14 +14,14 @@ function run(command, args, options = {}) {
   const result = useShell
     ? spawnSync([command, ...args.map(quoteShellArg)].join(" "), {
       cwd,
-      env: process.env,
+      env: childEnv,
       shell: true,
       stdio: options.capture ? "pipe" : "inherit",
       encoding: "utf8"
     })
     : spawnSync(command, args, {
     cwd,
-    env: process.env,
+    env: childEnv,
     shell: false,
     stdio: options.capture ? "pipe" : "inherit",
     encoding: "utf8"
@@ -52,6 +53,15 @@ function runDiscloud(args, options = {}) {
 
 function quoteShellArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function sanitizedEnvironment() {
+  const env = { ...process.env };
+  if (env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+    delete env.NODE_TLS_REJECT_UNAUTHORIZED;
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  }
+  return env;
 }
 
 function readDiscloudAppId() {

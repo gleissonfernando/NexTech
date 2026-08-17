@@ -104,6 +104,9 @@ function configuredEnvValue(key) {
   const packedValue = process.env.APP_CONFIG_JSON ? readPackedConfigValue(process.env.APP_CONFIG_JSON, key) : "";
   if (packedValue) return packedValue;
 
+  const runtimeValue = readRuntimeConfigValue(key);
+  if (runtimeValue) return runtimeValue;
+
   return "";
 }
 
@@ -114,6 +117,23 @@ function unquoteEnvValue(value) {
 function readPackedConfigValue(rawConfig, key) {
   try {
     const parsed = JSON.parse(rawConfig);
+    const value = parsed?.[key];
+    return value === null || value === undefined ? "" : String(value).trim();
+  } catch {
+    return "";
+  }
+}
+
+function readRuntimeConfigValue(key) {
+  const runtimeConfigFile = [".nex-tech-runtime-env.json", ".NexTech-runtime-env.json", ".orvitek-runtime-env.json"]
+    .find((candidate) => existsSync(path.join(root, candidate)));
+
+  if (!runtimeConfigFile) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(root, runtimeConfigFile), "utf8"));
     const value = parsed?.[key];
     return value === null || value === undefined ? "" : String(value).trim();
   } catch {
@@ -157,6 +177,12 @@ check("configuracao discloud.config", () => {
   }
 });
 
+check("TLS seguro no runtime", () => {
+  if (configuredEnvValue("NODE_TLS_REJECT_UNAUTHORIZED") === "0") {
+    fail("NODE_TLS_REJECT_UNAUTHORIZED=0 desativa validacao TLS e nao pode estar configurado para build/deploy/runtime.");
+  }
+});
+
 check("contrato de token interno do bot", () => {
   const backendAuth = readProjectFile("backend/src/middleware/auth.ts");
   const botApiClient = readProjectFile("bot/src/services/apiClient.ts");
@@ -196,7 +222,7 @@ check("MONGODB_URI segura para runtime", () => {
     fail("MONGODB_URI invalida: nao foi possivel identificar o host do MongoDB.");
   }
 
-  if (process.env.MONGODB_ALLOW_SINGLE_LABEL_HOST === "true") {
+  if (configuredEnvValue("MONGODB_ALLOW_SINGLE_LABEL_HOST") === "true") {
     return;
   }
 
