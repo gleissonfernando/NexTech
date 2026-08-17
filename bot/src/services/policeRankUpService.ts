@@ -201,9 +201,14 @@ async function requestRank(interaction: Interaction, context: BotContext) {
 
   const current = resolveCurrentRank(member, settings);
   const channel = await createRequestChannel(interaction.guild, member, settings, rank).catch(async (error) => {
+    const message = errorMessage(error);
     await context.api.createPoliceRankUpLog({ action: "rank_up.channel_create_failed", actorId: interaction.user.id, actorName: interaction.user.username, guildId: interaction.guild!.id, metadata: { error: error instanceof Error ? error.message : String(error), rankId: rank.id } });
-    throw error;
+    return { error: message, channel: null };
   });
+  if (!channel.channel) {
+    await interaction.editReply(`Não foi possível criar o canal da solicitação de patente: ${channel.error}`);
+    return true;
+  }
 
   let request: PoliceRankUpRequest;
   try {
@@ -212,21 +217,27 @@ async function requestRank(interaction: Interaction, context: BotContext) {
       currentRoleId: current?.roleId ?? null,
       guildId: interaction.guild.id,
       requestedRankId: rank.id,
-      temporaryChannelId: channel.id,
+      temporaryChannelId: channel.channel.id,
       userDisplayName: member.displayName,
       userId: interaction.user.id,
       username: interaction.user.username
     });
   } catch (error) {
-    await channel.delete("Solicitação de UP não persistida").catch(() => null);
+    await channel.channel.delete("Solicitação de UP não persistida").catch(() => null);
     await interaction.editReply(errorMessage(error));
     return true;
   }
 
-  const message = await channel.send(requestPanelPayload(request, settings, interaction.guild));
-  await context.api.updatePoliceRankUpRequestChannel(request.id, { messageId: message.id, temporaryChannelId: channel.id }).catch(() => null);
-  await notifyResponsibles(channel, settings, request);
-  await interaction.editReply(`Sua solicitação foi criada: ${channel}. Protocolo ${request.protocol}.`);
+  const message = await channel.channel.send(requestPanelPayload(request, settings, interaction.guild)).catch(async (error) => {
+    const reason = errorMessage(error);
+    await context.api.decidePoliceRankUpRequest(request.id, { actorId: interaction.client.user.id, actorName: interaction.client.user.username, errorReason: reason, result: "error" }).catch(() => null);
+    await interaction.editReply(`A solicitação foi registrada, mas não foi possível enviar o painel no canal criado: ${reason}`);
+    return null;
+  });
+  if (!message) return true;
+  await context.api.updatePoliceRankUpRequestChannel(request.id, { messageId: message.id, temporaryChannelId: channel.channel.id }).catch(() => null);
+  await notifyResponsibles(channel.channel, settings, request);
+  await interaction.editReply(`Sua solicitação foi criada: ${channel.channel}. Protocolo ${request.protocol}.`);
   return true;
 }
 
@@ -455,21 +466,27 @@ function approvalConfirmPayload(request: PoliceRankUpRequest, settings: PoliceRa
 async function createRequestChannel(guild: Guild, member: GuildMember, settings: PoliceRankUpSettings, rank: PoliceRankUpRank) {
   if (!settings.temporaryCategoryId) throw new Error("Categoria temporária não configurada.");
   const botMember = guild.members.me ?? await guild.members.fetchMe();
+  const category = await guild.channels.fetch(settings.temporaryCategoryId).catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) throw new Error("Categoria temporária inválida ou excluída.");
+  if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) throw new Error("O bot não possui permissão Gerenciar Canais.");
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     { id: botMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
     ...settings.responsibleUserIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
     ...settings.adminUserIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
-    ...[...settings.responsibleRoleIds, ...settings.adminRoleIds].map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
+    ...[...settings.responsibleRoleIds, ...settings.adminRoleIds]
+      .filter((id) => guild.roles.cache.has(id))
+      .map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }))
   ];
-  return guild.channels.create({
+  const channel = await guild.channels.create({
     name: channelName(settings, member, rank),
-    parent: settings.temporaryCategoryId,
+    parent: category.id,
     permissionOverwrites: overwrites,
     reason: "Solicitação de UP policial",
     type: ChannelType.GuildText
   });
+  return { channel };
 }
 
 async function updateRequestMessage(guild: Guild, context: BotContext, requestId: string) {

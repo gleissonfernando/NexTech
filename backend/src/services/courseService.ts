@@ -10,6 +10,7 @@ const DEFAULT_COURSE_DEPARTMENTS = ["Dp aduana", "Dp Norte"];
 const COURSE_DEPARTMENT_NAME_MIN = 2;
 const COURSE_DEPARTMENT_NAME_MAX = 80;
 const COURSE_DUPLICATE_DAY_MESSAGE = "Já existe um curso em andamento nesta data. Aguarde a finalização do curso atual para agendar um novo curso.";
+const COURSE_FORM_INSTRUCTOR_USER_IDS = new Set(["1426287249020158018"]);
 
 export type CourseDashboard = {
   courses: CourseDto[];
@@ -1189,7 +1190,7 @@ export async function getManageableCourses(botId: string | null, guildId: string
   const { courses } = await getMongoCollections();
   const all = await courses.find({ ...scope(botId, guildId), active: true }).sort({ name: 1 }).toArray();
 
-  if (isAdministrator || isCourseManager(settings, userId, roleIds)) {
+  if (isAdministrator || isCourseManager(settings, userId, roleIds) || COURSE_FORM_INSTRUCTOR_USER_IDS.has(userId)) {
     return all.map(mapCourse);
   }
 

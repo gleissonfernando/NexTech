@@ -3,7 +3,7 @@ import { currentRuntimeBotId, env } from "../config/env";
 import type { BotContext, LogCategory } from "../types";
 import type { DiscordLogDispatchEvent } from "../websocket/socketClient";
 import { getCachedGuildSettings } from "./guildSettingsCache";
-import { automatedLogChannelForType } from "./automatedLogService";
+import { automatedLogDestinationForType } from "./automatedLogService";
 import { isLogsRuntimeAuthorized } from "./logService";
 
 const CATEGORY_LABELS: Record<LogCategory, string> = {
@@ -55,16 +55,23 @@ async function deliverDiscordLog(context: BotContext, log: DiscordLogDispatchEve
   const settings = await getCachedGuildSettings(context, log.guildId, context.client.user?.id).catch(() => null);
   const category = logCategoryForType(log.type);
   const automated = await context.api.getAutomatedLogSettings(guild.id).catch(() => null);
-  const automatedChannelId = automated?.enabled ? automatedLogChannelForType(automated, log.type) : null;
+  const automatedDestination = automated?.enabled ? automatedLogDestinationForType(automated, log.type) : null;
 
   if (!settings) {
     return;
   }
 
-  if (!automatedChannelId && (!settings.discordLogsEnabled || !settings.discordLogCategories.includes(category))) {
+  if (automated?.enabled) {
+    if (!automatedDestination?.enabled || !automatedDestination.channelId) {
+      return;
+    }
+  } else if (!settings.discordLogsEnabled || !settings.discordLogCategories.includes(category)) {
     return;
   }
-  const targetChannelId = log.logChannelId ?? automatedChannelId ?? settings.logChannelId;
+
+  const targetChannelId = automated?.enabled
+    ? automatedDestination?.channelId
+    : log.logChannelId ?? settings.logChannelId;
   if (!targetChannelId) return;
   const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
 

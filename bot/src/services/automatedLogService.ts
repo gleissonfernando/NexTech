@@ -120,6 +120,12 @@ async function reconcileGuild(guild: Guild, context: BotContext, settings: Autom
 
   for (const [key, name] of Object.entries(CHANNELS) as Array<[keyof typeof CHANNELS, string]>) {
     if (!settings.enabledChannels[key]) {
+      const disabledChannel = findManagedLogChannel(all, category.id, resolved[key], key, name);
+
+      if (disabledChannel) {
+        await disabledChannel.delete("Remover canal de log desativado na dashboard").catch(() => null);
+      }
+
       resolved[key] = null;
       continue;
     }
@@ -160,6 +166,26 @@ async function reconcileGuild(guild: Guild, context: BotContext, settings: Autom
   });
 }
 
+function findManagedLogChannel(
+  channels: Awaited<ReturnType<Guild["channels"]["fetch"]>>,
+  categoryId: string,
+  channelId: string | null,
+  key: keyof typeof CHANNELS,
+  name: string
+) {
+  const byId = channelId ? channels.get(channelId) : null;
+
+  if (byId?.type === ChannelType.GuildText && byId.parentId === categoryId) {
+    return byId;
+  }
+
+  return channels.find((item) => (
+    item?.type === ChannelType.GuildText
+    && item.parentId === categoryId
+    && (item.name === name || LEGACY_CHANNELS[key].includes(item.name))
+  )) ?? null;
+}
+
 function overwrites(guild: Guild, settings: AutomatedLogSettings) {
   const list: Array<{ id: string; allow?: bigint[]; deny?: bigint[] }> = [
     {
@@ -192,15 +218,19 @@ function overwrites(guild: Guild, settings: AutomatedLogSettings) {
 }
 
 export function automatedLogChannelForType(settings: AutomatedLogSettings, type: string) {
+  return automatedLogDestinationForType(settings, type).channelId;
+}
+
+export function automatedLogDestinationForType(settings: AutomatedLogSettings, type: string) {
   const value = type.toLowerCase();
 
-  if (value.startsWith("message.") || value.includes("spam") || value.includes("link")) return selectedChannel(settings, "messages");
-  if (value.startsWith("voice.") || value.includes("call")) return selectedChannel(settings, "calls");
-  if (value.includes("verification")) return selectedChannel(settings, "verification");
-  if (value.includes("absence") || value.includes("ausencia") || value.includes("fivem.fac")) return selectedChannel(settings, "absence");
-  if (value.includes("warning") || value.includes("punish") || value.includes("moderation") || value.includes("security") || value.includes("self_bot") || value.includes("anti-ban")) return selectedChannel(settings, "punishment");
+  if (value.startsWith("message.") || value.includes("spam") || value.includes("link")) return selectedDestination(settings, "messages");
+  if (value.startsWith("voice.") || value.includes("call")) return selectedDestination(settings, "calls");
+  if (value.includes("verification")) return selectedDestination(settings, "verification");
+  if (value.includes("absence") || value.includes("ausencia") || value.includes("fivem.fac")) return selectedDestination(settings, "absence");
+  if (value.includes("warning") || value.includes("punish") || value.includes("moderation") || value.includes("security") || value.includes("self_bot") || value.includes("anti-ban")) return selectedDestination(settings, "punishment");
 
-  return selectedChannel(settings, "site");
+  return selectedDestination(settings, "site");
 }
 
 function activeChannelKeys(settings: AutomatedLogSettings) {
@@ -209,4 +239,12 @@ function activeChannelKeys(settings: AutomatedLogSettings) {
 
 function selectedChannel(settings: AutomatedLogSettings, key: keyof typeof CHANNELS) {
   return settings.enabledChannels[key] ? settings.channels[key] : null;
+}
+
+function selectedDestination(settings: AutomatedLogSettings, key: keyof typeof CHANNELS) {
+  return {
+    channelId: selectedChannel(settings, key),
+    enabled: settings.enabledChannels[key],
+    key
+  };
 }

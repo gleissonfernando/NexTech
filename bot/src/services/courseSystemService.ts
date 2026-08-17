@@ -109,6 +109,7 @@ const COMPONENT_DISPLAY_TEXT_SAFE_LIMIT = 3600;
 const MAX_EXAM_SELECT_OPTIONS = 25;
 const EXAM_TOTAL_SCORE = 10;
 const MAX_QUESTION_SCORE = 1;
+const COURSE_FORM_INSTRUCTOR_USER_IDS = new Set(["1426287249020158018"]);
 
 const startedCourseClients = new WeakSet<Client>();
 const examProvisioning = new Map<string, Promise<string>>();
@@ -973,9 +974,9 @@ async function leavePublication(interaction: ButtonInteraction, context: BotCont
 async function changePublicationStatus(interaction: ButtonInteraction, context: BotContext, publicationId: string, status: "started" | "cancelled" | "finished") {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const publication = await context.api.getCoursePublication(interaction.guildId!, publicationId);
-  const allowed = publication.instructorId === interaction.user.id;
+  const allowed = await canManagePublication(interaction, context, publication);
   if (!allowed) {
-    await interaction.editReply("Somente o instrutor que abriu este curso pode iniciar, finalizar ou cancelar.");
+    await interaction.editReply("Somente o instrutor autorizado deste curso pode iniciar, finalizar ou cancelar.");
     return;
   }
   const updated = await context.api.setCoursePublicationStatus(interaction.guildId!, publicationId, status, interaction.user.id).catch(async (error) => {
@@ -2354,10 +2355,14 @@ async function restoreTemporaryExamChannelCleanup(client: Client, context: BotCo
 
 async function manageableCourses(interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction, context: BotContext) {
   return context.api.getManageableCourses(interaction.guildId!, {
-    isAdministrator: isGuildOwnerOrAdministrator(interaction),
+    isAdministrator: isGuildOwnerOrAdministrator(interaction) || isCourseFormInstructorOverride(interaction.user.id),
     roleIds: memberRoleIds(interaction.member),
     userId: interaction.user.id
   });
+}
+
+export function isCourseFormInstructorOverride(userId: string) {
+  return COURSE_FORM_INSTRUCTOR_USER_IDS.has(userId);
 }
 
 async function getCoursePanelVisual(context: BotContext, guildId: string): Promise<PanelVisualConfig | null> {
@@ -2389,6 +2394,7 @@ async function canManagePublication(interaction: ChatInputCommandInteraction | B
 }
 
 async function canManageCourse(interaction: CourseActionInteraction, context: BotContext, courseId: string) {
+  if (isCourseFormInstructorOverride(interaction.user.id)) return true;
   const courses = await context.api.getManageableCourses(interaction.guildId!, {
     isAdministrator: isGuildOwnerOrAdministrator(interaction),
     roleIds: memberRoleIds(interaction.member),

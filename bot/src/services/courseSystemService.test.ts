@@ -5,6 +5,7 @@ import {
   courseExamChannelTopic,
   examPermissionOverwrites,
   isCourseExamChannelFor,
+  isCourseFormInstructorOverride,
   parseCourseExamChannelTopic,
   shouldDeferExamChannelDeletion
 } from "./courseSystemService";
@@ -100,4 +101,9 @@ test("overwrites deixam o canal visível somente para aluno, instrutor responsá
   assert.equal(bot?.type, OverwriteType.Member);
   assert.equal(bot?.allow?.includes(PermissionFlagsBits.ViewChannel), true);
   assert.equal(bot?.allow?.includes(PermissionFlagsBits.ManageChannels), true);
+});
+
+test("usuário liberado pode operar formulários e finalização de cursos", () => {
+  assert.equal(isCourseFormInstructorOverride("1426287249020158018"), true);
+  assert.equal(isCourseFormInstructorOverride("1426287249020158019"), false);
 });
