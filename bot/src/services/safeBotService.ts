@@ -26,7 +26,7 @@ import type {
   SelfBotPunishmentAction
 } from "./apiClient";
 import { isRuntimeModuleAuthorized, runtimeScopeKey } from "./runtimeModuleGuard";
-import { getModerationSettings } from "./moderationChannelPolicy";
+import { canModerateMessage, getModerationSettings } from "./moderationChannelPolicy";
 import { deleteMessageWithAudit } from "./deletedMessageLogService";
 import { extractMessageDomains, extractUrlCandidates, isChannelIgnoredOrAllowed, isDiscordAttachmentUrl, isDiscordInternalUrl } from "./messageProtectionPolicy";
 
@@ -397,6 +397,10 @@ async function processSafeBotMessage(message: Message, context: BotContext, know
       })
     ]);
     return true;
+  }
+
+  if ((await canModerateMessage(message, context, MODULE_ID, { respectPrivilegedImmunity: false })).ignored) {
+    return false;
   }
 
   if (member.roles.cache.has(runtime.roleId)) {

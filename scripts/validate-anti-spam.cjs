@@ -29,13 +29,13 @@ const checks = [
   ["Deteccao de imagens/GIFs/stickers/embeds/anexos", files.imageBot, ["message.stickers.size", "message.embeds", "gifCount", "attachmentCount", "deleteMediaSpamMessages"]],
   ["Exclusao em lote", files.imageBot, ["MediaMessageRef", "removedMessageCount", "removedMediaCount", "messageIds"]],
   ["Anti-spam texto geral", files.selfBot, ["anti-flood", "anti-texto-repetido", "anti-copypasta", "anti-mencoes", "anti-emojis", "anti-flood-multi-canais"]],
-  ["Anti-spam de links", files.linkBot + files.messageCreate, ["handleLinkAntiSpamMessage", "message.delete", "moderation.link_anti_spam"]],
+  ["Anti-spam de links", files.linkBot + files.messageCreate, ["handleLinkAntiSpamMessage", "deleteMessageWithAudit", "moderation.link_anti_spam"]],
   ["Punicoes", files.selfBot + files.imageBot, ["timeout", "kick", "ban", "delete_message", "warnMember", "applyPunishment"]],
   ["Logs e auditoria", files.route + files.selfBot, ["createLog", "logs:new", "sendLog", "punishmentSucceeded", "removedMessages"]],
   ["Persistencia Mongo", files.mongo + files.service, ["image_anti_spam_settings", "image_anti_spam_incidents", "channelIds", "mediaTypes", "messageIds"]],
-  ["Dashboard realtime", files.panel + files.route, ["image-anti-spam:settings_updated", "image-anti-spam:incident", "Canal de logs e punicoes"]],
+  ["Dashboard realtime", files.panel + files.route, ["image-anti-spam:settings_updated", "image-anti-spam:incident", "Canal de logs e punições"]],
   ["Cache e sincronizacao bot", files.imageBot + files.apiClient, ["settingsCache.delete", "onImageAntiSpamSettingsUpdated", "getImageAntiSpamSettings"]],
-  ["SafeBot filter liberado", files.safeBot + files.devBotService, ["shouldCheckSelfBotRuntime", "disableFilterChannel", "input.releaseModuleId === \"safe-bot\" && input.moduleId === \"safe-bot\""]]
+  ["SafeBot filter liberado", files.safeBot + files.devBotService, ["shouldCheckSelfBotRuntime", "disableFilterChannel", "input.releaseModuleId === \"safe-bot\"", "SELF_BOT_RUNTIME_MODULES.has(input.moduleId)"]]
 ];
 
 const failures = [];
