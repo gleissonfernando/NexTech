@@ -38,6 +38,7 @@
     "migrate:report-system-orgs": "node scripts/migrate-report-system-orgs.mjs",
     "migrate:tickets:isolation": "node scripts/audit-legacy-ticket-isolation.mjs",
     "release:discloud": "node scripts/release-discloud.mjs",
+    "release:discloud:bots": "node scripts/release-discloud-bots.mjs",
     "load:test": "node scripts/load-test.mjs",
     "validate:anti-spam": "node scripts/validate-anti-spam.cjs",
     "validate:moderation-whitelist": "npm run build && node scripts/validate-moderation-whitelist.cjs"

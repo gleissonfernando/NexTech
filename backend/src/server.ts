@@ -5,7 +5,13 @@ import { createSocketServer } from "./realtime/socket";
 import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
 import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
 import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
-import { cleanupObsoleteDevBotCommands, startRegisteredDevBots, stopAllDevBotProcesses } from "./services/devBotRuntimeService";
+import {
+  cleanupObsoleteDevBotCommands,
+  startDevBotRuntimeReconciler,
+  startRegisteredDevBots,
+  stopAllDevBotProcesses,
+  stopDevBotRuntimeReconciler
+} from "./services/devBotRuntimeService";
 import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
 import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, startServerBackupScheduler } from "./services/serverBackupService";
 import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
@@ -54,26 +60,34 @@ httpServer.listen(env.PORT, env.HOST, () => {
     .catch((error) => {
       console.warn("[bot-billing] rotina inicial falhou:", error instanceof Error ? error.message : error);
     });
-  const devBotRestartRecovery = markDevBotsOfflineAfterBackendRestart()
-    .then((restartRecovery) => {
-      if (restartRecovery.count > 0) {
-        console.log(`[dev-bot] ${restartRecovery.count} bot(s) marcado(s) como offline após restart do backend.`);
-      }
-      return restartRecovery;
-    })
-    .catch((error) => {
-      console.warn("[dev-bot] não foi possível reconciliar status no boot:", error instanceof Error ? error.message : error);
-      return { count: 0, botIds: [] };
-    });
+  const shouldRunDevBotRuntime = env.START_REGISTERED_DEV_BOTS || env.DEV_BOT_RUNTIME_RECONCILE_ENABLED;
+  const devBotRestartRecovery = shouldRunDevBotRuntime
+    ? markDevBotsOfflineAfterBackendRestart()
+      .then((restartRecovery) => {
+        if (restartRecovery.count > 0) {
+          console.log(`[dev-bot] ${restartRecovery.count} bot(s) marcado(s) como offline após restart do runtime de bots.`);
+        }
+        return restartRecovery;
+      })
+      .catch((error) => {
+        console.warn("[dev-bot] não foi possível reconciliar status no boot:", error instanceof Error ? error.message : error);
+        return { count: 0, botIds: [] };
+      })
+    : Promise.resolve({ count: 0, botIds: [] });
 
   void devBotRestartRecovery
     .then((restartRecovery) => {
       if (env.START_REGISTERED_DEV_BOTS) {
         scheduleRegisteredDevBotStartup(0);
-        return;
       }
 
-      console.log("[dev-bot] start automático desativado. Use START_REGISTERED_DEV_BOTS=true para habilitar.");
+      if (env.DEV_BOT_RUNTIME_RECONCILE_ENABLED) {
+        startDevBotRuntimeReconciler();
+      }
+
+      if (!shouldRunDevBotRuntime) {
+        console.log("[dev-bot] runtime de processos DEV desativado neste app.");
+      }
     })
     .catch((error) => {
       console.warn("[dev-bot] retomada pós-restart não pôde ser agendada:", error instanceof Error ? error.message : error);
@@ -95,12 +109,16 @@ httpServer.listen(env.PORT, env.HOST, () => {
         console.warn("[default-panel-emojis] falha ao processar pacote padrão:", error instanceof Error ? error.message : error);
       });
   }, 20_000).unref();
-  setTimeout(() => {
-    void cleanupObsoleteDevBotCommands()
-      .catch((error) => {
-        console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
-      });
-  }, env.DEV_BOT_COMMAND_CLEANUP_DELAY_MS ?? (env.START_REGISTERED_DEV_BOTS ? 15 * 60_000 : 60_000)).unref();
+  if (env.DEV_BOT_PROCESS_RUNNER_ENABLED) {
+    setTimeout(() => {
+      void cleanupObsoleteDevBotCommands()
+        .catch((error) => {
+          console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
+        });
+    }, env.DEV_BOT_COMMAND_CLEANUP_DELAY_MS ?? (shouldRunDevBotRuntime ? 15 * 60_000 : 60_000)).unref();
+  } else {
+    console.log("[dev-bot] limpeza de comandos ignorada neste app; runtime de processos DEV desativado.");
+  }
 });
 
 function shutdown(signal: string, exitCode = 0) {
@@ -110,7 +128,12 @@ function shutdown(signal: string, exitCode = 0) {
   const forceExit = setTimeout(() => process.exit(exitCode || 1), 25_000);
   forceExit.unref();
   const closeHttp = new Promise<void>((resolve) => httpServer.close(() => resolve()));
-  void Promise.allSettled([closeHttp, stopBackgroundJobWorker(), stopAllDevBotProcesses()]).finally(() => process.exit(exitCode));
+  void Promise.allSettled([
+    closeHttp,
+    stopBackgroundJobWorker(),
+    stopDevBotRuntimeReconciler(),
+    stopAllDevBotProcesses()
+  ]).finally(() => process.exit(exitCode));
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

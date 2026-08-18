@@ -3,7 +3,11 @@ import path from "node:path";
 import { buildCurrentReleaseMetadata } from "./auto-update-logger.mjs";
 
 const root = process.cwd();
-const target = path.join(root, ".discloud-package");
+const target = path.join(root, process.env.DISCLOUD_PACKAGE_DIR?.trim() || ".discloud-package");
+const packageName = process.env.DISCLOUD_PACKAGE_NAME?.trim() || "NexTech";
+const packageType = process.env.DISCLOUD_PACKAGE_TYPE?.trim() || "site";
+const packageId = process.env.DISCLOUD_PACKAGE_ID?.trim() || "nextech";
+const packageRam = process.env.DISCLOUD_PACKAGE_RAM?.trim() || "1024";
 
 const required = [
   "index.js",
@@ -45,11 +49,11 @@ cpSync(path.join(root, "bot/dist"), path.join(target, "bot/dist"), { recursive: 
 cpSync(path.join(root, "frontend/dist"), path.join(target, "frontend/dist"), { recursive: true });
 
 writeFileSync(path.join(target, "discloud.config"), [
-  "NAME=NexTech",
-  "TYPE=site",
-  "ID=nextech",
+  `NAME=${packageName}`,
+  `TYPE=${packageType}`,
+  `ID=${packageId}`,
   "MAIN=index.js",
-  "RAM=1024",
+  `RAM=${packageRam}`,
   "VERSION=latest",
   "BUILD=npm install --omit=dev",
   "START=npm start",
@@ -105,7 +109,17 @@ for (const key of [
     runtimeEnv[key] = value;
   }
 }
-for (const key of ["START_REGISTERED_DEV_BOTS", "DEV_BOT_START_CONCURRENCY", "DEV_BOT_NODE_MAX_OLD_SPACE_MB", "DEV_BOT_START_STAGGER_MS", "DEV_BOT_COMMAND_CLEANUP_DELAY_MS"]) {
+for (const key of [
+  "NEX_TECH_RUNTIME_ROLE",
+  "START_REGISTERED_DEV_BOTS",
+  "DEV_BOT_PROCESS_RUNNER_ENABLED",
+  "DEV_BOT_RUNTIME_RECONCILE_ENABLED",
+  "DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS",
+  "DEV_BOT_START_CONCURRENCY",
+  "DEV_BOT_NODE_MAX_OLD_SPACE_MB",
+  "DEV_BOT_START_STAGGER_MS",
+  "DEV_BOT_COMMAND_CLEANUP_DELAY_MS"
+]) {
   const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
     runtimeEnv[key] = value;

@@ -49,6 +49,7 @@ const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV
 const DEV_BOT_NODE_MAX_OLD_SPACE_MB = env.DEV_BOT_NODE_MAX_OLD_SPACE_MB ?? 128;
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
+const DEV_BOT_PROCESS_RUNNER_ENABLED = env.DEV_BOT_PROCESS_RUNNER_ENABLED;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
 const DEV_BOT_SUPERVISOR_LEASE_MS = 60_000;
 const DEV_BOT_SUPERVISOR_START_RETRY_MS = 3_000;
@@ -62,8 +63,15 @@ let supervisorLeaseTimer: NodeJS.Timeout | null = null;
 let supervisorLeaseHeld = false;
 let supervisorLeaseLocalOnly = false;
 let supervisorLeaseErrors = 0;
+let runtimeReconcileTimer: NodeJS.Timeout | null = null;
+let runtimeReconcileRunning = false;
 
 export async function startRegisteredDevBots() {
+  if (!DEV_BOT_PROCESS_RUNNER_ENABLED) {
+    console.log("[dev-bot] runtime local desativado; o worker externo deve iniciar os bots cadastrados.");
+    return 0;
+  }
+
   if (!(await waitForDevBotSupervisorLease())) {
     console.warn("[dev-bot] outro supervisor manteve a trava distribuida; bots cadastrados não serão iniciados nesta instância.");
     return 0;
@@ -147,6 +155,15 @@ async function waitForDevBotSupervisorLease() {
 }
 
 export async function startAllDevBotProcesses(botIds: string[]) {
+  if (!DEV_BOT_PROCESS_RUNNER_ENABLED) {
+    await Promise.all(botIds.map((botId) => updateDevBotRuntimeStatus(
+      botId,
+      "waiting_retry",
+      "Bot solicitado; aguardando worker de bots DEV iniciar o processo."
+    )));
+    return;
+  }
+
   if (!(await waitForDevBotSupervisorLease())) {
     throw new Error("Outra instancia e responsável por executar os bots cadastrados.");
   }
@@ -165,6 +182,17 @@ export async function stopSelectedDevBotProcesses(botIds: string[], options: Sto
 }
 
 export async function startDevBotProcess(botId: string) {
+  if (!DEV_BOT_PROCESS_RUNNER_ENABLED) {
+    const bot = await getDevBotRuntimeConfig(botId);
+    if (!bot) return null;
+    await updateDevBotRuntimeStatus(
+      botId,
+      "waiting_retry",
+      "Bot solicitado; aguardando worker de bots DEV iniciar o processo."
+    );
+    return bot;
+  }
+
   if (!(await ensureDevBotSupervisorLease())) {
     console.warn(`[dev-bot:${botId}] inicio ignorado porque outra instancia possui a trava de supervisor.`);
     return null;
@@ -263,6 +291,57 @@ export async function stopAllDevBotProcesses() {
     notifyBot: false
   })));
   await releaseDevBotSupervisorLease();
+}
+
+export function startDevBotRuntimeReconciler() {
+  if (!DEV_BOT_PROCESS_RUNNER_ENABLED) {
+    console.log("[dev-bot] reconciliador ignorado porque o runtime local está desativado.");
+    return;
+  }
+
+  if (runtimeReconcileTimer) return;
+
+  void reconcileDevBotRuntimeProcesses("startup");
+  runtimeReconcileTimer = setInterval(() => {
+    void reconcileDevBotRuntimeProcesses("interval");
+  }, env.DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS);
+  runtimeReconcileTimer.unref();
+}
+
+export async function stopDevBotRuntimeReconciler() {
+  if (runtimeReconcileTimer) clearInterval(runtimeReconcileTimer);
+  runtimeReconcileTimer = null;
+}
+
+async function reconcileDevBotRuntimeProcesses(reason: string) {
+  if (runtimeReconcileRunning) return;
+  runtimeReconcileRunning = true;
+
+  try {
+    if (!(await waitForDevBotSupervisorLease())) {
+      console.warn("[dev-bot] reconciliacao ignorada porque outro supervisor possui a trava.");
+      return;
+    }
+
+    const bots = await listDevBotRuntimeConfigsWithRetry();
+    const desiredIds = new Set(bots.filter((bot) => bot.desiredOnline).map((bot) => bot.id));
+    const toStop = [...runningBots.keys()].filter((botId) => !desiredIds.has(botId));
+    const toStart = bots.filter((bot) => bot.desiredOnline && !runningBots.has(bot.id));
+
+    await Promise.allSettled(toStop.map((botId) => stopDevBotProcess(botId, {
+      message: "Bot desligado porque o estado desejado foi desativado.",
+      notifyBot: true
+    })));
+
+    if (toStart.length > 0) {
+      console.log(`[dev-bot] reconciliacao ${reason}: iniciando ${toStart.length} bot(s) pendente(s).`);
+      await startDevBotRuntimeBatch(toStart);
+    }
+  } catch (error) {
+    console.warn("[dev-bot] reconciliacao falhou:", readRuntimeError(error));
+  } finally {
+    runtimeReconcileRunning = false;
+  }
 }
 
 async function ensureDevBotSupervisorLease() {
@@ -430,6 +509,10 @@ function readRuntimeError(error: unknown) {
 }
 
 async function startRuntime(bot: DevBotRuntimeConfig) {
+  if (runningBots.has(bot.id)) {
+    return;
+  }
+
   if (!bot.desiredOnline) {
     await updateDevBotRuntimeStatus(bot.id, "offline", "Bot mantido desligado pelo controle persistente DEV.");
     return;
