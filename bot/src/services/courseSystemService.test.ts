@@ -5,8 +5,10 @@ import {
   courseExamChannelTopic,
   examPermissionOverwrites,
   findCoursePublicationByPanelMessage,
+  isRecoverableCoursePublicationStatus,
   isCourseExamChannelFor,
   isCourseFormInstructorOverride,
+  isUnknownMessageError,
   parseCourseExamChannelTopic,
   shouldDeferExamChannelDeletion
 } from "./courseSystemService";
@@ -118,4 +120,20 @@ test("ação administrativa recupera publicação pelo painel clicado", () => {
   assert.equal(findCoursePublicationByPanelMessage(publications, "message-current", "channel-1")?.id, "publication-current");
   assert.equal(findCoursePublicationByPanelMessage(publications, "message-missing", "channel-1")?.id, "publication-old");
   assert.equal(findCoursePublicationByPanelMessage(publications, "message-missing", "channel-2"), null);
+});
+
+test("recovery considera apenas publicações de curso ainda operacionais", () => {
+  assert.equal(isRecoverableCoursePublicationStatus("open"), true);
+  assert.equal(isRecoverableCoursePublicationStatus("started"), true);
+  assert.equal(isRecoverableCoursePublicationStatus("proof"), true);
+  assert.equal(isRecoverableCoursePublicationStatus("finished"), false);
+  assert.equal(isRecoverableCoursePublicationStatus("cancelled"), false);
+  assert.equal(isRecoverableCoursePublicationStatus("closed"), false);
+});
+
+test("recovery reconhece mensagem apagada no Discord como publicação perdida", () => {
+  assert.equal(isUnknownMessageError({ code: 10008 }), true);
+  assert.equal(isUnknownMessageError({ code: "10008" }), true);
+  assert.equal(isUnknownMessageError({ code: 10003 }), false);
+  assert.equal(isUnknownMessageError(new Error("Unknown Message")), false);
 });

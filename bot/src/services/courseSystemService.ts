@@ -154,6 +154,12 @@ export function startCourseSystemService(client: Client, context: BotContext) {
       });
   });
   const restoreRuntimeState = () => {
+    void recoverActiveCourses(client, context).catch((error) => {
+      console.error("[COURSE RECOVERY ERROR]", {
+        error: error instanceof Error ? error.message : String(error),
+        stage: "startup"
+      });
+    });
     void restoreTemporaryExamChannelCleanup(client, context).catch((error) => {
       console.error("[courses] failed to restore temporary exam channel cleanup:", error instanceof Error ? error.message : error);
     });
@@ -1425,10 +1431,36 @@ async function syncCourseScheduledEventStatus(guild: Guild, course: Course, publ
 
 function scheduleCourseEventLifecycle(guild: Guild, context: BotContext, publication: CoursePublication, course?: Course | null) {
   clearCourseEventLifecycle(publication.id);
-  void guild;
-  void context;
-  void publication;
-  void course;
+  if (!publication.discordEventId || ["cancelled", "closed", "finished"].includes(publication.status)) return;
+
+  const startAt = publication.scheduledStartAt ? Date.parse(publication.scheduledStartAt) : Number.NaN;
+  const endAt = publication.scheduledEndAt ? Date.parse(publication.scheduledEndAt) : Number.NaN;
+  const generation = Symbol(publication.id);
+  courseEventLifecycleGenerations.set(publication.id, generation);
+
+  if (Number.isFinite(startAt) && startAt > Date.now()) {
+    scheduleCourseEventTimer(publication.id, "start", startAt - Date.now(), generation, () => runCourseEventTransition(guild, context, publication.id, "start", course));
+  } else if (Number.isFinite(startAt) && publication.status !== "finished") {
+    void runCourseEventTransition(guild, context, publication.id, "start", course).catch((error) => {
+      console.error("[COURSE RECOVERY ERROR]", {
+        error: error instanceof Error ? error.message : String(error),
+        publicationId: publication.id,
+        stage: "scheduled_event_start"
+      });
+    });
+  }
+
+  if (Number.isFinite(endAt) && endAt > Date.now()) {
+    scheduleCourseEventTimer(publication.id, "end", endAt - Date.now(), generation, () => runCourseEventTransition(guild, context, publication.id, "end", course));
+  } else if (Number.isFinite(endAt) && publication.status !== "open") {
+    void runCourseEventTransition(guild, context, publication.id, "end", course).catch((error) => {
+      console.error("[COURSE RECOVERY ERROR]", {
+        error: error instanceof Error ? error.message : String(error),
+        publicationId: publication.id,
+        stage: "scheduled_event_end"
+      });
+    });
+  }
 }
 
 function scheduleCourseEventTimer(publicationId: string, kind: "start" | "end", delayMs: number, generation: symbol, action: () => Promise<void>) {
@@ -1444,6 +1476,7 @@ function scheduleCourseEventTimer(publicationId: string, kind: "start" | "end", 
         console.error(`[courses] failed to ${kind} scheduled event for publication ${publicationId}:`, error instanceof Error ? error.message : error);
       });
     }, Math.min(Math.max(remainingMs, 0), MAX_COURSE_EVENT_TIMER_DELAY));
+    timeout.unref();
     const timers = courseEventLifecycleTimers.get(publicationId) ?? {};
     if (timers[kind]) clearTimeout(timers[kind]);
     timers[kind] = timeout;
@@ -2335,9 +2368,48 @@ async function refreshPublicationMessageByRecord(interaction: { guild: ChatInput
     context.api.getCoursePublicationEnrollments(interaction.guildId!, publication.id).catch(() => [])
   ]);
   const channel = await interaction.guild?.channels.fetch(publication.channelId).catch(() => null);
-  if (!channel?.isTextBased() || !("messages" in channel) || !publication.messageId) return;
-  const message = await channel.messages.fetch(publication.messageId).catch(() => null);
-  await message?.edit(coursePublicationPanel(course, publication, settings, interaction.guild!, enrollments)).catch(() => null);
+  if (!interaction.guild || channel?.type !== ChannelType.GuildText || !("messages" in channel)) return;
+  const textChannel = channel as TextChannel;
+  let shouldRepublish = !publication.messageId;
+  const message = publication.messageId
+    ? await textChannel.messages.fetch(publication.messageId).catch((error) => {
+      if (isUnknownMessageError(error)) {
+        shouldRepublish = true;
+        return null;
+      }
+      console.error("[COURSE RECOVERY ERROR]", {
+        courseId: publication.courseId,
+        error: error instanceof Error ? error.message : String(error),
+        publicationId: publication.id,
+        stage: "message_fetch"
+      });
+      return null;
+    })
+    : null;
+  if (message) {
+    await message.edit(coursePublicationPanel(course, publication, settings, interaction.guild, enrollments)).catch((error) => {
+      console.error("[COURSE RECOVERY ERROR]", {
+        courseId: publication.courseId,
+        error: error instanceof Error ? error.message : String(error),
+        messageId: message.id,
+        publicationId: publication.id,
+        stage: "message_edit"
+      });
+    });
+    return;
+  }
+  if (!shouldRepublish) return;
+
+  const nextMessage = await sendOrEditCoursePublicationPanel(textChannel, null, course, publication, settings, interaction.guild, false);
+  await context.api.updateCoursePublicationMessage(interaction.guild.id, publication.id, nextMessage.id).catch((error) => {
+    console.error("[COURSE RECOVERY ERROR]", {
+      courseId: publication.courseId,
+      error: error instanceof Error ? error.message : String(error),
+      messageId: nextMessage.id,
+      publicationId: publication.id,
+      stage: "message_republish_persist"
+    });
+  });
 }
 
 async function publishPublicCoursesPanel(client: Client, context: BotContext, guildId: string) {
@@ -2358,6 +2430,108 @@ async function publishPublicCoursesPanel(client: Client, context: BotContext, gu
     ? await message.edit(payload)
     : await (channel as TextChannel).send(payload);
   await context.api.updateCoursePanelMessage(guildId, nextMessage.id);
+}
+
+async function recoverActiveCourses(client: Client, context: BotContext) {
+  for (const guild of client.guilds.cache.values()) {
+    console.info("[COURSE RECOVERY]", { guildId: guild.id, stage: "start" });
+    const active = await loadRecoverableCoursePublications(context, guild.id);
+    for (const publication of active) {
+      await recoverCoursePublication(guild, context, publication).catch((error) => {
+        console.error("[COURSE RECOVERY ERROR]", {
+          courseId: publication.courseId,
+          error: error instanceof Error ? error.message : String(error),
+          publicationId: publication.id,
+          stage: "publication"
+        });
+      });
+    }
+    console.info("[COURSE RECOVERY]", { count: active.length, guildId: guild.id, stage: "done" });
+  }
+}
+
+async function loadRecoverableCoursePublications(context: BotContext, guildId: string) {
+  const publications = await Promise.all([
+    context.api.listCoursePublications(guildId, "open").catch(() => []),
+    context.api.listCoursePublications(guildId, "started").catch(() => []),
+    context.api.listCoursePublications(guildId, "proof").catch(() => [])
+  ]);
+  const byId = new Map<string, CoursePublication>();
+  for (const publication of publications.flat()) byId.set(publication.id, publication);
+  return [...byId.values()]
+    .filter((publication) => isRecoverableCoursePublicationStatus(publication.status))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+export function isRecoverableCoursePublicationStatus(status: CoursePublication["status"]) {
+  return status === "open" || status === "started" || status === "proof";
+}
+
+async function recoverCoursePublication(guild: Guild, context: BotContext, publication: CoursePublication) {
+  console.info("[COURSE RECOVERY]", {
+    channelId: publication.channelId,
+    messageId: publication.messageId,
+    publicationId: publication.id,
+    stage: "found",
+    status: publication.status
+  });
+  const [course, settings, enrollments] = await Promise.all([
+    context.api.getCourse(guild.id, publication.courseId).catch(() => null),
+    context.api.getCourseSettings(guild.id).catch(() => null),
+    context.api.getCoursePublicationEnrollments(guild.id, publication.id).catch(() => [])
+  ]);
+  if (!course || !settings) {
+    console.error("[COURSE RECOVERY ERROR]", {
+      courseFound: Boolean(course),
+      publicationId: publication.id,
+      settingsFound: Boolean(settings),
+      stage: "load_course_settings"
+    });
+    return;
+  }
+
+  const channel = await guild.channels.fetch(publication.channelId).catch(() => null);
+  if (channel?.type !== ChannelType.GuildText || !("messages" in channel)) {
+    await context.api.updateCoursePublicationEvent(guild.id, publication.id, {
+      syncError: `Canal de publicação ${publication.channelId} não encontrado no recovery.`
+    }).catch(() => null);
+    console.error("[COURSE RECOVERY ERROR]", {
+      channelId: publication.channelId,
+      publicationId: publication.id,
+      stage: "channel_missing"
+    });
+    return;
+  }
+
+  const textChannel = channel as TextChannel;
+  const existingMessage = publication.messageId
+    ? await textChannel.messages.fetch(publication.messageId).catch((error) => {
+      if (isUnknownMessageError(error)) return null;
+      throw error;
+    })
+    : null;
+  const nextMessage = existingMessage
+    ? await existingMessage.edit(coursePublicationPanel(course, publication, settings, guild, enrollments)).catch(() => null)
+    : await sendOrEditCoursePublicationPanel(textChannel, null, course, publication, settings, guild, false);
+  if (nextMessage?.id && nextMessage.id !== publication.messageId) {
+    await context.api.updateCoursePublicationMessage(guild.id, publication.id, nextMessage.id);
+    console.info("[COURSE RECOVERY]", {
+      messageId: nextMessage.id,
+      publicationId: publication.id,
+      stage: "message_republished"
+    });
+  } else if (nextMessage?.id) {
+    console.info("[COURSE RECOVERY]", {
+      messageId: nextMessage.id,
+      publicationId: publication.id,
+      stage: "message_ok"
+    });
+  }
+
+  scheduleCourseEventLifecycle(guild, context, publication, course);
+  if (publication.status === "started" || publication.status === "proof") {
+    scheduleCourseForgetfulnessCheck(guild, context, publication);
+  }
 }
 
 async function restoreTemporaryExamChannelCleanup(client: Client, context: BotContext) {
@@ -3235,14 +3409,15 @@ async function sendOrEditCoursePublicationPanel(
   course: Course,
   publication: CoursePublication,
   settings: CourseSettings,
-  guild: Guild
+  guild: Guild,
+  allowPublicationMentionOnCreate = true
 ) {
-  const payload = coursePublicationInitialPost(course, publication, settings, guild, !existingMessage);
+  const payload = coursePublicationInitialPost(course, publication, settings, guild, !existingMessage && allowPublicationMentionOnCreate);
   try {
     return existingMessage ? await existingMessage.edit(payload) : await channel.send(payload);
   } catch (error) {
     console.error(`[courses] failed to ${existingMessage ? "edit" : "send"} course panel publication=${publication.id} channel=${channel.id}; falling back to legacy panel:`, error instanceof Error ? error.stack ?? error.message : error);
-    const fallback = coursePublicationFallbackPanel(course, publication, settings, guild, !existingMessage);
+    const fallback = coursePublicationFallbackPanel(course, publication, settings, guild, !existingMessage && allowPublicationMentionOnCreate);
     if (existingMessage) {
       return existingMessage.edit(fallback).catch(() => channel.send(fallback));
     }
@@ -4756,6 +4931,11 @@ function scheduleExamChannelDeletion(channel: TextChannel, deleteAt: number, con
 function isUnknownChannelError(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) return false;
   return Number((error as { code: number | string }).code) === 10003;
+}
+
+export function isUnknownMessageError(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return Number((error as { code: number | string }).code) === 10008;
 }
 
 function examChannelName(studentName: string, courseName: string) {
