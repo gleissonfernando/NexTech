@@ -2222,7 +2222,7 @@ function createCorrectionConfirmPayload(token: string, userId: string, entry: Fi
       accent_color: 0xf59e0b,
       components: [
         { type: 10, content: [
-          "## ⚠️ Confirmar solicitação de correção",
+          "## ⚠️ Confirmar edição de meta",
           "",
           `Usuário: <@${userId}>`,
           `Item: ${entryLabel(entry)}`,
