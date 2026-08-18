@@ -65,10 +65,17 @@ export function registerEvents(client: Client, context: BotContext) {
   });
   client.once(Events.ClientReady, (readyClient) => runEvent("ready", () => handleReady(readyClient, context)));
   client.on(Events.InteractionCreate, (interaction) => {
-    const accepted = runEvent("interactionCreate", () => handleInteractionCreate(interaction, context));
-    if (!accepted && interaction.isRepliable()) {
-      void interaction.reply({ content: "O sistema está processando muitas solicitacoes. Tente novamente em instantes.", ephemeral: true }).catch(() => undefined);
-    }
+    void handleInteractionCreate(interaction, context).catch((error) => {
+      console.error(JSON.stringify({
+        action: "interactionCreate.immediate",
+        at: new Date().toISOString(),
+        error: error instanceof Error ? error.stack ?? error.message : String(error),
+        guildId: interaction.guildId,
+        level: "error",
+        module: "gateway-events",
+        userId: interaction.user.id
+      }));
+    });
   });
   client.on(Events.UserUpdate, (_oldUser, newUser) => {
     if (client.user && newUser.id === client.user.id) {
