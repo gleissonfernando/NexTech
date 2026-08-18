@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalChannelRequestModal, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, ensureFivemGoalChannelForUser, handleFivemGoalMessage, isAllowedGoalImage, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { canCloseFarmRoom, createEditMetaCorrectionModal, createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalChannelRequestModal, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, ensureFivemGoalChannelForUser, handleFivemGoalMessage, isAllowedGoalImage, isAllowedGoalImageUrl, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -8,11 +8,38 @@ test("painel inicial da sala de farm usa somente o modelo de fechamento", () => 
 
   assert.match(serialized, /SALA DE FARM/);
   assert.match(serialized, /Sala criada para organizar o registro do farm/);
+  assert.match(serialized, /Somente a gerência pode fechar este canal/);
   assert.match(serialized, /Fechar sala/);
   assert.match(serialized, /Fechar Canal/);
   assert.match(serialized, /fivem_goal:room:close:987654321098765432/);
   assert.match(serialized, /<@&123456789012345678>/);
   assert.doesNotMatch(serialized, /Adicionar Meta|Histórico|Ranking|Atualizar|Solicitar Revisao/);
+});
+
+test("dono da sala de farm nao pode fechar o proprio canal sem cargo de gerencia", async () => {
+  const allowed = await canCloseFarmRoom(createCloseFarmRoomInteractionMock({
+    roleIds: [],
+    userId: "111111111111111111"
+  }) as any, "111111111111111111", {
+    correctionManagement: { allowAdministrators: false, managerRoleId: null },
+    managerRoleId: "222222222222222222",
+    managerRoleIds: []
+  } as any);
+
+  assert.equal(allowed, false);
+});
+
+test("gerencia pode fechar sala de farm", async () => {
+  const allowed = await canCloseFarmRoom(createCloseFarmRoomInteractionMock({
+    roleIds: ["222222222222222222"],
+    userId: "333333333333333333"
+  }) as any, "111111111111111111", {
+    correctionManagement: { allowAdministrators: false, managerRoleId: null },
+    managerRoleId: "222222222222222222",
+    managerRoleIds: []
+  } as any);
+
+  assert.equal(allowed, true);
 });
 
 test("relatório final agrupa registros por item configurado", () => {
@@ -287,6 +314,30 @@ test("modal de registro de farm inclui select de item e campo de quantidade", ()
   assert.doesNotMatch(serialized, /fivem_goal:item:/);
 });
 
+test("modal de editar meta pede link da foto valor e motivo", () => {
+  const modal = createEditMetaCorrectionModal("fivem_goal:edit:reason:token:entry-1", {
+    createdAt: "2026-08-18T12:00:00.000Z",
+    fields: [{ id: "item", label: "Item", value: "Euro Sujo" }],
+    id: "entry-1",
+    quantity: 50000
+  } as any);
+  const serialized = JSON.stringify(modal.toJSON());
+
+  assert.match(serialized, /Link da foto/);
+  assert.match(serialized, /image_url/);
+  assert.match(serialized, /Valor correto/);
+  assert.match(serialized, /quantity/);
+  assert.match(serialized, /Motivo da edição/);
+  assert.match(serialized, /reason/);
+});
+
+test("modal de editar meta aceita link de foto sem extensao fixa", () => {
+  assert.equal(isAllowedGoalImageUrl("https://cdn.discordapp.com/attachments/123/456"), true);
+  assert.equal(isAllowedGoalImageUrl("https://exemplo.com/comprovante?id=123"), true);
+  assert.equal(isAllowedGoalImageUrl("http://exemplo.com/arquivo"), true);
+  assert.equal(isAllowedGoalImageUrl("texto sem link"), false);
+});
+
 test("sala de farm salva só é reutilizada quando o canal ainda existe e é texto", () => {
   assert.equal(isReusableFarmRoomChannel(null), false);
   assert.equal(isReusableFarmRoomChannel({ isDMBased: () => false, isTextBased: () => false, messages: {} }), false);
@@ -357,6 +408,25 @@ function createGoalContextMock(overrides: Record<string, any> = {}) {
       postLog: async () => null,
       ...overrides
     }
+  };
+}
+
+function createCloseFarmRoomInteractionMock(input: { roleIds: string[]; userId: string }) {
+  return {
+    guild: {
+      id: "999999999999999999",
+      members: {
+        fetch: async () => ({
+          permissions: { has: () => false },
+          roles: {
+            cache: {
+              some: (predicate: (role: { id: string }) => boolean) => input.roleIds.some((id) => predicate({ id }))
+            }
+          }
+        })
+      }
+    },
+    user: { id: input.userId }
   };
 }
 

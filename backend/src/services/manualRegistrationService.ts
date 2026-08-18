@@ -313,6 +313,108 @@ export async function createManualRegistrationSubmission(input: {
   return toSubmissionDto(submission);
 }
 
+export async function ensureFarmRoomManualRegistration(input: {
+  botId?: string | null;
+  channelId: string;
+  gameId: string;
+  guildId: string;
+  userAvatar?: string | null;
+  userId: string;
+  username: string;
+}) {
+  const now = new Date();
+  const botId = normalizeBotId(input.botId);
+  const fields = [
+    { id: "nome_personagem", label: "Nome do personagem", value: input.username.slice(0, 1500) },
+    { id: "id_fivem", label: "ID in-game", value: input.gameId.slice(0, 1500) }
+  ];
+  const { manualRegistrationSubmissions } = await getMongoCollections();
+  const active = await manualRegistrationSubmissions.findOne({
+    ...scopeQuery(input.guildId, botId),
+    userId: input.userId,
+    status: { $in: MANUAL_REGISTRATION_BLOCKING_STATUSES }
+  });
+
+  if (active) {
+    const saved = await manualRegistrationSubmissions.findOneAndUpdate(
+      { _id: active._id, ...scopeQuery(input.guildId, botId) },
+      {
+        $set: {
+          approvedAt: active.approvedAt ?? now,
+          approvedBy: active.approvedBy ?? input.userId,
+          channelId: input.channelId,
+          fields,
+          logStatus: active.logStatus ?? "sent",
+          registrationType: "manual",
+          registrationVersion: 2,
+          requestedName: input.username,
+          status: "approved",
+          updatedAt: now,
+          userAvatar: input.userAvatar ?? active.userAvatar ?? null,
+          username: input.username
+        },
+        $unset: {
+          rejectedAt: "",
+          rejectedBy: "",
+          rejectionReason: ""
+        }
+      },
+      { returnDocument: "after" }
+    );
+    if (!saved) throw conflict("Não foi possível atualizar o cadastro da Sala de Farm.");
+    await writeManualRegistrationLog({ action: "submission.farm_room_registered", botId, data: { channelId: input.channelId, source: "farm_room_modal", updatedExisting: true }, executorId: input.userId, guildId: input.guildId, submissionId: saved._id, targetUserId: input.userId });
+    emitManualRegistrationUpdated(input.guildId, botId);
+    return toSubmissionDto(saved);
+  }
+
+  const submission: MongoManualRegistrationSubmission = {
+    _id: randomUUID(),
+    approvedAt: now,
+    approvedBy: input.userId,
+    botId,
+    channelId: input.channelId,
+    createdAt: now,
+    fields,
+    guildId: input.guildId,
+    logError: null,
+    logMessageId: null,
+    logStatus: "sent",
+    messageId: null,
+    registrationType: "manual",
+    registrationVersion: 2,
+    removedAt: null,
+    removedBy: null,
+    removalReason: null,
+    requestedName: input.username,
+    requestedRoleId: null,
+    rejectedAt: null,
+    rejectedBy: null,
+    rejectionReason: null,
+    status: "approved",
+    updatedAt: now,
+    userAvatar: input.userAvatar ?? null,
+    userId: input.userId,
+    username: input.username
+  };
+
+  await ensureGuild(input.guildId);
+  try {
+    await manualRegistrationSubmissions.insertOne(submission);
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    const duplicate = await manualRegistrationSubmissions.findOne({
+      ...scopeQuery(input.guildId, botId),
+      userId: input.userId,
+      status: { $in: MANUAL_REGISTRATION_BLOCKING_STATUSES }
+    });
+    if (duplicate) return ensureFarmRoomManualRegistration(input);
+    throw error;
+  }
+  await writeManualRegistrationLog({ action: "submission.farm_room_registered", botId, data: { channelId: input.channelId, source: "farm_room_modal", updatedExisting: false }, executorId: input.userId, guildId: input.guildId, submissionId: submission._id, targetUserId: input.userId });
+  emitManualRegistrationUpdated(input.guildId, botId);
+  return toSubmissionDto(submission);
+}
+
 export async function createManualRegistrationDashboardSubmission(input: {
   actorId: string;
   botId: string;

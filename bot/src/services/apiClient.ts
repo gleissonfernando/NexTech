@@ -3366,6 +3366,18 @@ export class ApiClient {
     return data.submission;
   }
 
+  async ensureFarmRoomManualRegistration(input: {
+    channelId: string;
+    gameId: string;
+    guildId: string;
+    userAvatar?: string | null;
+    userId: string;
+    username: string;
+  }) {
+    const { data } = await this.http.post<{ submission: ManualRegistrationSubmission }>("/manual-registration/bot/farm-room-submissions", input);
+    return data.submission;
+  }
+
   async getLatestManualRegistrationSubmission(guildId: string, userId: string) {
     const { data } = await this.http.get<{ submission: ManualRegistrationSubmission | null }>(`/manual-registration/bot/${guildId}/users/${userId}/submission`);
     return data.submission;

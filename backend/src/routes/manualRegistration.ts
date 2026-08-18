@@ -14,6 +14,7 @@ import {
   failManualRegistrationApproval,
   getLatestManualRegistrationSubmission,
   getManualRegistrationSettings,
+  ensureFarmRoomManualRegistration,
   listManualRegistrationLogs,
   listManualRegistrationSubmissions,
   requestManualRegistrationPanelPublish,
@@ -100,6 +101,15 @@ const submissionSchema = z.object({
   userId: snowflakeSchema,
   username: z.string().max(120)
   ,registrationType: z.enum(["request", "manual"]).optional()
+});
+
+const farmRoomSubmissionSchema = z.object({
+  channelId: snowflakeSchema,
+  gameId: z.string().min(1).max(80),
+  guildId: snowflakeSchema,
+  userAvatar: z.string().max(2048).nullable().optional(),
+  userId: snowflakeSchema,
+  username: z.string().min(1).max(120)
 });
 
 const messageSchema = z.object({
@@ -248,6 +258,18 @@ manualRegistrationRouter.post("/bot/submissions", requireBot, async (req, res, n
 
     return res.status(201).json({
       submission: await createManualRegistrationSubmission({ ...input, botId })
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+manualRegistrationRouter.post("/bot/farm-room-submissions", requireBot, async (req, res, next) => {
+  try {
+    const input = farmRoomSubmissionSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    return res.status(201).json({
+      submission: await ensureFarmRoomManualRegistration({ ...input, botId })
     });
   } catch (error) {
     return next(error);
