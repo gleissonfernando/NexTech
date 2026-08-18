@@ -281,6 +281,7 @@ check("sintaxe JS de producao", () => {
   const files = [
     "index.js",
     "scripts/start-production.mjs",
+    "scripts/start-dev-bot-worker.mjs",
     ...listFiles(path.join(root, "backend/dist"), (file) => file.endsWith(".js")),
     ...listFiles(path.join(root, "bot/dist"), (file) => file.endsWith(".js"))
   ];

@@ -36,6 +36,7 @@ mkdirSync(path.join(target, "frontend"), { recursive: true });
 
 cpSync(path.join(root, "index.js"), path.join(target, "index.js"));
 cpSync(path.join(root, "scripts/start-production.mjs"), path.join(target, "scripts/start-production.mjs"));
+cpSync(path.join(root, "scripts/start-dev-bot-worker.mjs"), path.join(target, "scripts/start-dev-bot-worker.mjs"));
 cpSync(path.join(root, "scripts/auto-update-logger.mjs"), path.join(target, "scripts/auto-update-logger.mjs"));
 cpSync(path.join(root, "backend/dist"), path.join(target, "backend/dist"), { recursive: true });
 if (existsSync(path.join(root, "backend/assets"))) {

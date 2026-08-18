@@ -7,11 +7,13 @@ import {
   getBotGuildConfig,
   getBotGuildModuleConfig,
   getBotApiPermissions,
+  listDevBotRuntimeConfigs,
   syncDevBotGuilds,
   syncDevBotProfile,
   updateBotGuildModuleRuntimeStatus,
   updateDevBotRuntimeStatus
 } from "../services/devBotService";
+import { env } from "../config/env";
 import { getMaintenanceState } from "../services/maintenanceService";
 import { recordNexTechSaleDeliveryResult } from "../services/nexTechSalesService";
 import {
@@ -130,6 +132,20 @@ const salesTicketPasswordRevealSchema = z.object({
 });
 
 botDevApiRouter.use(requireBot);
+
+botDevApiRouter.get("/worker/runtime-configs", async (_req, res, next) => {
+  try {
+    const bots = (await listDevBotRuntimeConfigs())
+      .filter((bot) => bot.token !== env.DISCORD_BOT_TOKEN);
+
+    return res.json({
+      bots,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 botDevApiRouter.get("/maintenance", async (req, res, next) => {
   try {

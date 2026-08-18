@@ -230,10 +230,11 @@ process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
 ensureBuild();
-startProcess("backend", "node", ["backend/dist/server.js"], { restartDelayMs: 5_000 });
 if (process.env.NEX_TECH_RUNTIME_ROLE === "dev-bot-worker") {
-  console.log("[start] runtime dev-bot-worker ativo; bot principal não será iniciado neste app.");
+  console.log("[start] runtime dev-bot-worker ativo; iniciando supervisor externo de bots DEV.");
+  startProcess("dev-bot-worker", "node", ["scripts/start-dev-bot-worker.mjs"], { critical: true });
 } else {
+  startProcess("backend", "node", ["backend/dist/server.js"], { restartDelayMs: 5_000 });
   startBotAfterBackendReady();
 }
 
