@@ -81,7 +81,7 @@ run("node", ["scripts/prepare-discloud-package.mjs"], {
     DISCLOUD_PACKAGE_DIR: packageDir,
     DISCLOUD_PACKAGE_NAME: "NexTech Bots",
     DISCLOUD_PACKAGE_ID: appId,
-    DISCLOUD_PACKAGE_TYPE: "site",
+    DISCLOUD_PACKAGE_TYPE: "bot",
     DISCLOUD_PACKAGE_RAM: process.env.DISCLOUD_BOTS_RAM?.trim() || "1024",
     NEX_TECH_RUNTIME_ROLE: "dev-bot-worker",
     START_REGISTERED_DEV_BOTS: "false",

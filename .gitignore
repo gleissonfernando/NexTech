@@ -15,6 +15,7 @@ build
 .NexTech-runtime-env.json
 *-runtime-env.json
 .discloud-package/
+.discloud-bots-package/
 coverage
 dev-logs
 logs
