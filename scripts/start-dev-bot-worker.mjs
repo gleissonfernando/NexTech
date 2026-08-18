@@ -148,6 +148,10 @@ function stopBot(botId, reason) {
   runtime.child.kill("SIGTERM");
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function shutdown(code) {
   shuttingDown = true;
   clearInterval(interval);
