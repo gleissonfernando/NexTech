@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import type { MongoBotBillingInvoice, MongoDevBot } from "../database/mongo";
 import { evaluateBotBillingShutdown, normalizeBillingRecipientUserIds } from "./botBillingService";
+import { resolveMonthlyBillingRecipientIds } from "./monthlyBillingService";
 
 const now = new Date("2026-08-04T15:00:00.000Z");
 
@@ -124,5 +125,24 @@ test("normaliza destinatários de cobrança por DM", () => {
   assert.deepEqual(
     normalizeBillingRecipientUserIds([" 1426287249020158018 ", "<@1426287249020158018>", "abc", "1234", "987654321098765432"]),
     ["1426287249020158018", "987654321098765432"]
+  );
+});
+
+test("mensalidade usa destinatários cadastrados no bot antes do cliente", () => {
+  assert.deepEqual(
+    resolveMonthlyBillingRecipientIds(
+      {
+        billingRecipientUserIds: ["1426287249020158018", "invalid", "1426287249020158018", "987654321098765432"]
+      },
+      { discordUserId: "111111111111111111" }
+    ),
+    ["1426287249020158018", "987654321098765432"]
+  );
+});
+
+test("mensalidade mantém cliente como fallback quando bot não tem destinatário", () => {
+  assert.deepEqual(
+    resolveMonthlyBillingRecipientIds({ billingRecipientUserIds: [] }, { discordUserId: "111111111111111111" }),
+    ["111111111111111111"]
   );
 });

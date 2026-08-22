@@ -8,7 +8,7 @@ import {
   type MongoMonthlyBillingSettings,
   type MongoMonthlyBillingType
 } from "../database/mongo";
-import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
 
 const DISCORD_ID_PATTERN = /^\d{5,32}$/;
@@ -318,45 +318,51 @@ export async function sendMonthlyBillingCharge(customerId: string, actor: AuthSe
   };
   await monthlyBillingCharges.insertOne(charge);
   await monthlyBillingCustomers.updateOne({ _id: customer._id }, { $set: { lastChargeAt: now, lastChargeStatus: "pending", lastChargeError: null, updatedAt: now } });
-  const user = await users.findOne({ discordId: customer.discordUserId });
-  const rendered = renderMonthlyBillingTemplate(typeSettings.messageTemplate, customer, bot, computed, typeSettings);
-  const payload = {
-    actionLinks: {
-      paymentUrl: customer.paymentUrl ?? DEFAULT_PAYMENT_URL,
-      receiptUrl: customer.receiptUrl ?? DEFAULT_SUPPORT_URL,
-      supportUrl: customer.supportUrl ?? DEFAULT_SUPPORT_URL
-    },
-    botId: bot._id,
-    contractId: customer._id,
-    dashboardUrl: customer.paymentUrl ?? DEFAULT_PAYMENT_URL,
-    event: charge.notificationType,
-    invoice: {
-      amountInCents: computed.totalDueInCents,
-      currency: "BRL" as const,
-      dueDate: computed.oldestDueDate?.toISOString() ?? computed.nextDueDate.toISOString(),
-      id: charge._id,
-      pixCopyPaste: typeSettings.pixKey ?? DEFAULT_PIX_COPY_PASTE,
-      pixExpiresAt: null,
-      pixQrCode: typeSettings.pixQrCodeUrl ?? DEFAULT_PIX_QR_CODE_URL,
-      status: computed.overdueMonths > 0 ? "atrasada" : "pendente"
-    },
-    items: [{ name: `${billingTypeLabel(billingType)} - ${customer.planName}`, quantity: Math.max(1, computed.overdueMonths), status: computed.statusLabel }],
-    messageTemplate: rendered,
-    planName: customer.planName,
-    serverId: bot.mainGuildId,
-    serverName: bot.mainGuildName ?? bot.mainGuildId,
-    serviceName: bot.name,
-    user: {
-      discordAvatar: user?.avatarUrl ?? user?.avatar ?? null,
-      discordDisplayName: customer.customerName,
-      discordUserId: customer.discordUserId,
-      discordUsername: user?.username ?? null,
-      email: user?.email ?? null
-    }
-  };
-  emitRealtimeToRoom(devBotRealtimeRoom(bot._id), "contract-billing:send_dm", payload);
-  emitRealtime("contract-billing:send_dm", payload);
-  await writeMonthlyLog(bot, customer, "charge_requested", actor, "Cobrança enviada para fila de DM.", { billingType, chargeId: charge._id });
+  const recipientIds = resolveMonthlyBillingRecipientIds(bot, customer);
+  const recipientUsers = new Map((await users.find({ discordId: { $in: recipientIds } }).toArray()).map((user) => [user.discordId, user]));
+  const payloads = recipientIds.map((recipientId) => {
+    const recipientUser = recipientUsers.get(recipientId) ?? null;
+    const recipientCustomer = { ...customer, discordUserId: recipientId };
+    const rendered = renderMonthlyBillingTemplate(typeSettings.messageTemplate, recipientCustomer, bot, computed, typeSettings);
+    return {
+      actionLinks: {
+        paymentUrl: customer.paymentUrl ?? DEFAULT_PAYMENT_URL,
+        receiptUrl: customer.receiptUrl ?? DEFAULT_SUPPORT_URL,
+        supportUrl: customer.supportUrl ?? DEFAULT_SUPPORT_URL
+      },
+      botId: bot._id,
+      contractId: customer._id,
+      dashboardUrl: customer.paymentUrl ?? DEFAULT_PAYMENT_URL,
+      event: charge.notificationType,
+      invoice: {
+        amountInCents: computed.totalDueInCents,
+        currency: "BRL" as const,
+        dueDate: computed.oldestDueDate?.toISOString() ?? computed.nextDueDate.toISOString(),
+        id: charge._id,
+        pixCopyPaste: typeSettings.pixKey ?? DEFAULT_PIX_COPY_PASTE,
+        pixExpiresAt: null,
+        pixQrCode: typeSettings.pixQrCodeUrl ?? DEFAULT_PIX_QR_CODE_URL,
+        status: computed.overdueMonths > 0 ? "atrasada" : "pendente"
+      },
+      items: [{ name: `${billingTypeLabel(billingType)} - ${customer.planName}`, quantity: Math.max(1, computed.overdueMonths), status: computed.statusLabel }],
+      messageTemplate: rendered,
+      planName: customer.planName,
+      serverId: bot.mainGuildId,
+      serverName: bot.mainGuildName ?? bot.mainGuildId,
+      serviceName: bot.name,
+      user: {
+        discordAvatar: recipientUser?.avatarUrl ?? recipientUser?.avatar ?? null,
+        discordDisplayName: customer.customerName,
+        discordUserId: recipientId,
+        discordUsername: recipientUser?.username ?? null,
+        email: recipientUser?.email ?? null
+      }
+    };
+  });
+  for (const payload of payloads) {
+    emitRealtimeToRoom(devBotRealtimeRoom(bot._id), "contract-billing:send_dm", payload);
+  }
+  await writeMonthlyLog(bot, customer, "charge_requested", actor, "Cobrança enviada para fila de DM.", { billingType, chargeId: charge._id, recipientUserIds: recipientIds });
   return { chargeId: charge._id, dashboard: await listMonthlyBillingDashboard() };
 }
 
@@ -650,6 +656,16 @@ function validateChargeableCustomer(customer: MongoMonthlyBillingCustomer, compu
   if (customer.status === "cancelled" || customer.status === "deleted") throw Object.assign(new Error("Cliente cancelado/removido não recebe cobrança."), { statusCode: 409 });
   if (!DISCORD_ID_PATTERN.test(customer.discordUserId)) throw Object.assign(new Error("Cliente sem Discord válido para receber DM."), { statusCode: 400 });
   if (computed.totalDueInCents <= 0 || computed.overdueMonths <= 0) throw Object.assign(new Error("Cobrança não enviada: pagamento em dia ou sem débito vencido."), { statusCode: 409 });
+}
+
+export function resolveMonthlyBillingRecipientIds(
+  bot: Pick<MongoDevBot, "billingRecipientUserIds"> | null,
+  customer: Pick<MongoMonthlyBillingCustomer, "discordUserId">
+) {
+  const configured = Array.isArray(bot?.billingRecipientUserIds)
+    ? bot.billingRecipientUserIds.filter((id) => DISCORD_ID_PATTERN.test(id))
+    : [];
+  return [...new Set(configured.length ? configured : [customer.discordUserId])];
 }
 
 async function resolveBulkCustomerIds(customerIds: string[], filters: MonthlyBillingBulkFilters) {

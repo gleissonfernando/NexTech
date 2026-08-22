@@ -10,7 +10,7 @@ import type {
   MongoUser
 } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
-import { devBotRealtimeRoom, emitRealtime, emitRealtimeToRoom } from "../realtime/events";
+import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
 import type { AuthSessionUser } from "../types/session";
 import { updateMonthlyBillingChargeResult } from "./monthlyBillingService";
 import type { PlanActor } from "./planService";
@@ -302,7 +302,6 @@ export async function emitContractInvoiceDm(
   );
   for (const payload of payloads) {
     emitRealtimeToRoom(devBotRealtimeRoom(invoice.botId), "contract-billing:send_dm", payload);
-    emitRealtime("contract-billing:send_dm", payload);
     await contractAuditLogs.insertOne(auditLog("dm_requested", payload.user.discordUserId, contract._id, invoice.botId, actorId(actor), null, notificationType, null));
   }
   return payloads[0] ?? null;
