@@ -1897,7 +1897,7 @@ async function submitIdentificationName(interaction: ModalSubmitInteraction, con
   const rpFullName = interaction.fields.getTextInputValue("rpFullName");
   let errorMessage = "Não foi possível salvar o nome.";
   const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId!, { rpFullName }).catch((error) => {
-    errorMessage = error instanceof Error ? error.message : errorMessage;
+    errorMessage = courseExamIdentificationUserError(error, errorMessage);
     return null;
   });
   if (!attempt) {
@@ -1931,7 +1931,7 @@ async function submitIdentificationId(interaction: ModalSubmitInteraction, conte
   const rpId = interaction.fields.getTextInputValue("rpId");
   let errorMessage = "Não foi possível salvar o ID.";
   const attempt = await context.api.updateCourseExamIdentification(interaction.guildId!, attemptId!, { rpId }).catch((error) => {
-    errorMessage = error instanceof Error ? error.message : errorMessage;
+    errorMessage = courseExamIdentificationUserError(error, errorMessage);
     return null;
   });
   if (!attempt) {
@@ -1996,6 +1996,36 @@ async function updateIdentificationMessage(interaction: ModalSubmitInteraction, 
   if (!messageId || !interaction.channel?.isTextBased() || !("messages" in interaction.channel)) return;
   const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
   await message?.edit(await identificationPanelForAttempt(interaction, context, attempt)).catch(() => null);
+}
+
+export function courseExamIdentificationUserError(error: unknown, fallback: string) {
+  const backendMessage = extractApiResponseMessage(error);
+  const message = backendMessage || (error instanceof Error ? error.message : "");
+
+  if (message.includes("ID RP deve conter apenas números")) {
+    return "ID inválido. É permitido usar apenas números.";
+  }
+
+  if (message.includes("Nome completo RP deve ter pelo menos 3 caracteres")) {
+    return "Nome inválido. Informe o nome completo com pelo menos 3 caracteres.";
+  }
+
+  return fallback;
+}
+
+function extractApiResponseMessage(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const response = (error as { response?: { data?: unknown } }).response;
+  const data = response?.data;
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const message = (data as { message?: unknown; error?: unknown }).message ?? (data as { message?: unknown; error?: unknown }).error;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
 async function identificationPanelForAttempt(interaction: { guildId: string | null; guild: ButtonInteraction["guild"] }, context: BotContext, attempt: CourseExamAttempt) {

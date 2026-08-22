@@ -3,6 +3,7 @@ import test from "node:test";
 import { OverwriteType, PermissionFlagsBits } from "discord.js";
 import {
   courseExamChannelTopic,
+  courseExamIdentificationUserError,
   examPermissionOverwrites,
   findCoursePublicationByPanelMessage,
   isRecoverableCoursePublicationStatus,
@@ -12,6 +13,30 @@ import {
   parseCourseExamChannelTopic,
   shouldDeferExamChannelDeletion
 } from "./courseSystemService";
+
+test("erro de identificação do ID RP não expõe detalhes internos da API", () => {
+  const technicalError = new Error("[api-client] PATCH /courses/bot/1197567547936079922/exam-attempts/2edd46e3-684b-49c1-beb8-2242e1694818/identification falhou com 400: Request failed with status code 400: ID RP deve conter apenas números.");
+
+  assert.equal(
+    courseExamIdentificationUserError(technicalError, "Não foi possível salvar o ID."),
+    "ID inválido. É permitido usar apenas números."
+  );
+});
+
+test("erro de identificação usa a mensagem da resposta quando disponível", () => {
+  const apiError = {
+    response: {
+      data: {
+        message: "Nome completo RP deve ter pelo menos 3 caracteres."
+      }
+    }
+  };
+
+  assert.equal(
+    courseExamIdentificationUserError(apiError, "Não foi possível salvar o nome."),
+    "Nome inválido. Informe o nome completo com pelo menos 3 caracteres."
+  );
+});
 
 test("marcador do canal de prova preserva os estados preparing, ready e finished", () => {
   const publicationId = "publication-1";
