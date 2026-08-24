@@ -21,6 +21,7 @@ import { env } from "../config/env";
 import type { BotContext } from "../types";
 import type { ManualPaymentOrder, ManualPaymentOrderStatus, ManualPaymentReceiptAttachment, ManualPaymentService, ManualPaymentSettings } from "./apiClient";
 import { renderComponentsV2Panel } from "./panelVisualRenderer";
+import { isRuntimeModuleAuthorized, runtimeModuleDenialMessage, getRuntimeModuleAuthorization } from "./runtimeModuleGuard";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "manual_pay";
@@ -54,6 +55,17 @@ export function startManualPaymentService(client: Client<true>, context: BotCont
 
 export async function handleManualPaymentInteraction(interaction: Interaction, context: BotContext) {
   if (!("customId" in interaction) || !interaction.customId.startsWith(`${PREFIX}:`)) return false;
+  if (interaction.guildId) {
+    const authorization = await getRuntimeModuleAuthorization(context, interaction.guildId, "manual-payments");
+    if (!authorization.allowed) {
+      const message = runtimeModuleDenialMessage(authorization, "Pagamento manual");
+      if (interaction.isRepliable()) {
+        if (interaction.deferred || interaction.replied) await interaction.followUp({ content: message, ephemeral: true }).catch(() => null);
+        else await interaction.reply({ content: message, ephemeral: true }).catch(() => null);
+      }
+      return true;
+    }
+  }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:buy:`)) { await startPurchase(interaction, context); return true; }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:copy_key:`)) { await copyPixData(interaction, context, "key"); return true; }
   if (interaction.isButton() && interaction.customId.startsWith(`${PREFIX}:copy_code:`)) { await copyPixData(interaction, context, "code"); return true; }
@@ -79,6 +91,7 @@ export async function handleManualPaymentInteraction(interaction: Interaction, c
 export async function handleManualPaymentMessage(message: Message, context: BotContext) {
   if (!message.guild || message.author.bot || message.webhookId) return false;
   if (!message.content.trim() && message.attachments.size === 0 && message.embeds.length === 0) return false;
+  if (!(await isRuntimeModuleAuthorized(context, message.guild.id, "manual-payments"))) return false;
 
   try {
     const runtime = await context.api.getManualPaymentRuntime(message.guild.id).catch((error) => {
@@ -466,6 +479,7 @@ async function enforcePaymentChannelPrivacy(guild: Guild, settings: ManualPaymen
 
 async function reconcileOpenPaymentChannelPrivacy(client: Client<true>, context: BotContext) {
   for (const guild of client.guilds.cache.values()) {
+    if (!(await isRuntimeModuleAuthorized(context, guild.id, "manual-payments"))) continue;
     const runtime = await context.api.getManualPaymentRuntime(guild.id).catch((error) => {
       console.warn(`[manual-payments] falha ao carregar pedidos ativos do servidor ${guild.id}:`, error instanceof Error ? error.message : error);
       return null;

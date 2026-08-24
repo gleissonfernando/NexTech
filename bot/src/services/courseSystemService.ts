@@ -39,6 +39,7 @@ import { currentRuntimeBotId, env } from "../config/env";
 import { showModalAndResetSelect } from "../utils/selectMenuReset";
 import { componentsV2Payload, renderComponentsV2Panel, resolvePanelImageUrl, type PanelVisualConfig } from "./panelVisualRenderer";
 import type { Course, CourseDepartment, CourseEnrollment, CourseExamAnswer, CourseExamAttempt, CourseExamQuestion, CourseExamSettings, CourseForgetfulnessHistory, CourseForgetfulnessHistoryPage, CoursePublication, CourseSettings, CourseStudentHistory, CourseStudentHistoryPage, CourseInstructorReport } from "./apiClient";
+import { isRuntimeModuleAuthorized } from "./runtimeModuleGuard";
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 
 type CourseActionInteraction = ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
@@ -1072,6 +1073,7 @@ async function recordInstructorTrackingEvent(guild: Guild, context: BotContext, 
 
 async function restoreCourseForgetfulnessTracking(client: Client, context: BotContext) {
   for (const guild of client.guilds.cache.values()) {
+    if (!(await isRuntimeModuleAuthorized(context, guild.id, "courses"))) continue;
     await scanAndSendCourseForgetfulnessReminders(guild, context).catch((error) => {
       console.error(`[courses] COURSE_OVERDUE restore failed guild=${guild.id}:`, error instanceof Error ? error.message : error);
     });
@@ -1084,7 +1086,10 @@ async function restoreCourseForgetfulnessTracking(client: Client, context: BotCo
 
   const timer = setInterval(() => {
     for (const guild of client.guilds.cache.values()) {
-      void scanAndSendCourseForgetfulnessReminders(guild, context).catch((error) => {
+      void isRuntimeModuleAuthorized(context, guild.id, "courses").then((authorized) => {
+        if (!authorized) return;
+        return scanAndSendCourseForgetfulnessReminders(guild, context);
+      }).catch((error) => {
         console.error(`[courses] COURSE_OVERDUE daily scan failed guild=${guild.id}:`, error instanceof Error ? error.message : error);
       });
     }
@@ -2443,6 +2448,7 @@ async function refreshPublicationMessageByRecord(interaction: { guild: ChatInput
 }
 
 async function publishPublicCoursesPanel(client: Client, context: BotContext, guildId: string) {
+  if (!(await isRuntimeModuleAuthorized(context, guildId, "courses"))) return;
   const [settings, courses, panelVisual] = await Promise.all([
     context.api.getCourseSettings(guildId),
     context.api.getManageableCourses(guildId, { isAdministrator: true, roleIds: [], userId: client.user?.id ?? "00000" }),
@@ -2464,6 +2470,7 @@ async function publishPublicCoursesPanel(client: Client, context: BotContext, gu
 
 async function recoverActiveCourses(client: Client, context: BotContext) {
   for (const guild of client.guilds.cache.values()) {
+    if (!(await isRuntimeModuleAuthorized(context, guild.id, "courses"))) continue;
     console.info("[COURSE RECOVERY]", { guildId: guild.id, stage: "start" });
     const active = await loadRecoverableCoursePublications(context, guild.id);
     for (const publication of active) {
@@ -2566,6 +2573,7 @@ async function recoverCoursePublication(guild: Guild, context: BotContext, publi
 
 async function restoreTemporaryExamChannelCleanup(client: Client, context: BotContext) {
   for (const guild of client.guilds.cache.values()) {
+    if (!(await isRuntimeModuleAuthorized(context, guild.id, "courses"))) continue;
     const settings = await context.api.getCourseSettings(guild.id).catch(() => null);
     if (!settings) continue;
     await guild.channels.fetch().catch(() => null);
