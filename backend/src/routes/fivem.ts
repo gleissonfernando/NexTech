@@ -646,7 +646,7 @@ fivemRouter.post("/:guildId/goals/panel", requireAuth, async (req, res, next) =>
 fivemRouter.get("/bot/goals/:guildId", requireBot, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({
       configs: await listFivemGoalConfigs(guildId, botId, true),
       settings: await getFivemGoalSettings(guildId, botId),
@@ -660,7 +660,7 @@ fivemRouter.get("/bot/goals/:guildId", requireBot, async (req, res, next) => {
 fivemRouter.get("/bot/goals/:guildId/ranking", requireBot, async (req, res, next) => {
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json(await getFivemGoalRankingRuntime(guildId, botId));
   } catch (error) {
     return next(error);
@@ -674,7 +674,7 @@ fivemRouter.post("/bot/goals/ranking-panel-state", requireBot, async (req, res, 
       guildId: guildIdSchema,
       messageId: optionalSnowflakeSchema
     }).parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ settings: await updateFivemGoalRankingPanelState(input.guildId, botId, input.messageId ?? null, input.channelId ?? undefined) });
   } catch (error) {
     return next(error);
@@ -817,7 +817,7 @@ fivemRouter.post("/bot/hierarchy/panel-lock", requireBot, async (req, res, next)
 fivemRouter.get("/bot/goals/channel/:channelId", requireBot, async (req, res, next) => {
   try {
     const channelId = snowflakeSchema.parse(req.params.channelId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ channel: await getFivemGoalUserChannelByChannel(channelId, botId) });
   } catch (error) {
     return next(error);
@@ -827,7 +827,7 @@ fivemRouter.get("/bot/goals/channel/:channelId", requireBot, async (req, res, ne
 fivemRouter.delete("/bot/goals/channel/:channelId", requireBot, async (req, res, next) => {
   try {
     const channelId = snowflakeSchema.parse(req.params.channelId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ channel: await deleteFivemGoalUserChannelByChannel(channelId, botId) });
   } catch (error) {
     return next(error);
@@ -838,7 +838,7 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/channel", requireBot, async (
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ channel: await getFivemGoalUserChannelByUser(guildId, userId, botId) });
   } catch (error) {
     return next(error);
@@ -849,7 +849,7 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/runtime", requireBot, async (
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json(await getFivemGoalUserRuntime(guildId, userId, botId));
   } catch (error) {
     return next(error);
@@ -860,7 +860,7 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/correction-candidates", requi
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ entries: await listCurrentFivemGoalCorrectionCandidates(guildId, botId, userId) });
   } catch (error) {
     return next(error);
@@ -872,7 +872,7 @@ fivemRouter.get("/bot/goals/:guildId/users/:userId/corrections/pending", require
     const guildId = guildIdSchema.parse(req.params.guildId);
     const userId = snowflakeSchema.parse(req.params.userId);
     const roomId = optionalSnowflakeSchema.parse(req.query.roomId) ?? null;
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ corrections: await listPendingFivemGoalCorrections(guildId, botId, userId, roomId || null) });
   } catch (error) {
     return next(error);
@@ -883,7 +883,7 @@ fivemRouter.post("/bot/goals/:guildId/corrections", requireBot, async (req, res,
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = goalCorrectionRequestSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.status(201).json({ correction: await requestFivemGoalCorrection({ ...input, botId, guildId }) });
   } catch (error) {
     return next(error);
@@ -894,7 +894,7 @@ fivemRouter.post("/bot/goals/:guildId/corrections/cancel", requireBot, async (re
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = goalCorrectionCancelSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({ correction: await cancelFivemGoalCorrectionRequest({ ...input, botId, guildId }) });
   } catch (error) {
     return next(error);
@@ -904,7 +904,7 @@ fivemRouter.post("/bot/goals/:guildId/corrections/cancel", requireBot, async (re
 fivemRouter.post("/bot/goals/channels", requireBot, async (req, res, next) => {
   try {
     const input = goalUserChannelSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.status(201).json({ channel: await upsertFivemGoalUserChannel({ ...input, botId }) });
   } catch (error) {
     return next(error);
@@ -915,7 +915,7 @@ fivemRouter.post("/bot/goals/:guildId/items", requireBot, async (req, res, next)
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = botGoalItemCreateSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     const current = await getFivemGoalSettings(guildId, botId);
     const now = new Date().toISOString();
     const idBase = input.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
@@ -948,7 +948,7 @@ fivemRouter.patch("/bot/goals/:guildId/items/:itemId", requireBot, async (req, r
     const guildId = guildIdSchema.parse(req.params.guildId);
     const itemId = z.string().min(1).max(80).parse(req.params.itemId);
     const input = botGoalItemActionSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     const current = await getFivemGoalSettings(guildId, botId);
     const now = new Date().toISOString();
     const { fivemGoalEntries } = await getMongoCollections();
@@ -970,7 +970,7 @@ fivemRouter.post("/bot/goals/:guildId/finalize", requireBot, async (req, res, ne
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = botGoalFinalizeSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json(await finalizeCurrentFivemGoalPeriod({
       actorId: input.actorId,
       botId,
@@ -986,7 +986,7 @@ fivemRouter.post("/bot/goals/:guildId/finalize/complete", requireBot, async (req
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = botGoalFinalizeCompleteSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json(await completeFivemGoalPeriodFinalization({
       actorId: input.actorId,
       botId,
@@ -1009,7 +1009,7 @@ fivemRouter.post("/bot/goals/:guildId/finalize/fail", requireBot, async (req, re
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = botGoalFinalizeFailSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({
       period: await failFivemGoalPeriodFinalization({
         actorId: input.actorId,
@@ -1035,7 +1035,7 @@ fivemRouter.post("/bot/goals/:guildId/finalize-user", requireBot, async (req, re
   try {
     const guildId = guildIdSchema.parse(req.params.guildId);
     const input = botGoalUserFinalizeSchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json(await finalizeFivemGoalUserPeriod({
       actorId: input.actorId,
       botId,
@@ -1050,7 +1050,7 @@ fivemRouter.post("/bot/goals/:guildId/finalize-user", requireBot, async (req, re
 fivemRouter.post("/bot/goals/entries", requireBot, async (req, res, next) => {
   try {
     const input = goalEntrySchema.parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.status(201).json({ entry: await createFivemGoalEntry({ ...input, botId }) });
   } catch (error) {
     return next(error);
@@ -1064,7 +1064,7 @@ fivemRouter.post("/bot/goals/panel-state", requireBot, async (req, res, next) =>
       guildId: guildIdSchema,
       messageId: optionalSnowflakeSchema
     }).parse(req.body);
-    const botId = await resolveRequestBotId(req);
+    const botId = await readRequiredFivemGoalBotId(req);
     return res.json({
       settings: await updateFivemGoalRequestPanelState(input.guildId, botId, input.messageId ?? null, input.channelId)
     });
@@ -1434,6 +1434,12 @@ async function readRequiredBotId(req: Parameters<typeof resolveRequestBotId>[0])
     throw createRouteError("Bot vinculado obrigatório para o módulo FiveM.", 400);
   }
 
+  return botId;
+}
+
+async function readRequiredFivemGoalBotId(req: Parameters<typeof resolveRequestBotId>[0]) {
+  const botId = await readRequiredBotId(req);
+  await assertBotFivemGoalsLicense(botId);
   return botId;
 }
 

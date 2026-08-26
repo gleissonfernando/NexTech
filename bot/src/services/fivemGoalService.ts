@@ -541,7 +541,11 @@ async function submitGoalChannelRequestModal(interaction: ModalSubmitInteraction
     await interaction.editReply("Informe o nome in game e o ID de usuario para criar sua Sala de Farm.");
     return;
   }
-  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch(() => null);
+  const settings = await context.api.getFivemGoalSettings(interaction.guild.id).catch((error) => ({ error }));
+  if ("error" in settings) {
+    await interaction.editReply(readApiError(settings.error, "Não foi possível validar o sistema de metas neste servidor."));
+    return;
+  }
   if (!settings?.enabled) {
     await interaction.editReply("O sistema de metas não está ativo neste servidor.");
     return;
