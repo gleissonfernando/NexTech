@@ -1598,13 +1598,12 @@ async function publishGoalRequestPanel(guild: Guild, context: BotContext): Promi
   }
 }
 
-export function createGoalRequestPanelPayload(_title: string, _description: string, guildId?: string | null, botId?: string | null, guild?: Guild | null) {
+export function createGoalRequestPanelPayload(title: string, description: string, guildId?: string | null, botId?: string | null, guild?: Guild | null) {
   const requestCustomId = scopedCustomId(REQUEST_CHANNEL_CUSTOM_ID, guildId, botId);
   const iconUrl = guild?.iconURL({ size: 256 }) ?? null;
   const client = guild?.client ?? null;
-  const mainContent = [
-    `# ${systemEmojiText("VORTEXtrabalho", guild, client)} CRIAR SALA DE FARM`,
-    "",
+  const panelTitle = title?.trim() || "CRIAR SALA DE FARM";
+  const panelDescription = description?.trim() || [
     "**Bem-vindo(a) ao Sistema de Farm!**",
     "",
     "Clique no botão abaixo para criar sua sala privada automaticamente.",
@@ -1612,6 +1611,11 @@ export function createGoalRequestPanelPayload(_title: string, _description: stri
     `${systemEmojiText("visto", guild, client)} Apenas você terá acesso à sua sala`,
     `${systemEmojiText("prancheta", guild, client)} Use com organização`,
     `${systemEmojiText("interrogacao", guild, client)} Para dúvidas, chame a gerência`
+  ].join("\n");
+  const mainContent = [
+    `# ${systemEmojiText("VORTEXtrabalho", guild, client)} ${panelTitle}`,
+    "",
+    panelDescription
   ].join("\n");
   return {
     allowedMentions: { parse: [] as never[] },

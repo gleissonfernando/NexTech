@@ -120,14 +120,23 @@ test("canal de meta aprovado pelo set usa prefixo com nome e id in-game", () => 
   assert.equal(renderApprovedSetChannelName("Tairan cooper", "15774"), "📕┋tairan-cooper-|-15774");
 });
 
-test("painel de solicitar sala de meta usa custom ids com escopo do servidor e bot", () => {
+test("painel de solicitar sala de meta usa configuracao do dashboard e custom ids com escopo", () => {
   const payload = createGoalRequestPanelPayload("Sistema de Metas FiveM", "Solicite seu canal.", "1533162050417721486", "bot-dev-1");
   const serialized = JSON.stringify(payload);
 
-  assert.match(serialized, /CRIAR SALA DE FARM/);
+  assert.match(serialized, /Sistema de Metas FiveM/);
+  assert.match(serialized, /Solicite seu canal\./);
   assert.match(serialized, /Solicitar Sala de Farm/);
   assert.match(serialized, /fivem_goal:request_channel:1533162050417721486:bot-dev-1/);
   assert.doesNotMatch(serialized, /fivem_goal:help:1533162050417721486:bot-dev-1/);
+});
+
+test("painel de solicitar sala de meta preserva texto padrao quando configuracao vem vazia", () => {
+  const payload = createGoalRequestPanelPayload("", "", "1533162050417721486", "bot-dev-1");
+  const serialized = JSON.stringify(payload);
+
+  assert.match(serialized, /CRIAR SALA DE FARM/);
+  assert.match(serialized, /Bem-vindo\(a\) ao Sistema de Farm/);
 });
 
 test("modal de solicitar sala de farm pede nome in game e id de usuario", () => {
