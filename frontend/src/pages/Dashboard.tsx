@@ -4407,6 +4407,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
       targetValue: 1,
       totalParticipants: 0,
       type: "personalizada",
+      unit: "Unidades",
       updatedAt: new Date().toISOString(),
       viewerRoleIds: []
     });
@@ -4605,6 +4606,7 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
                           <option value="farm">Farm</option>
                         </select>
                       </label>
+                      <TicketField disabled={!canManage} label="Unidade" onChange={(value) => patchDraft({ unit: value || "Unidades" })} value={draft.unit ?? "Unidades"} />
                       <label className="block text-xs font-medium text-zinc-400">Periodicidade
                         <select className="mt-1 h-10 w-full rounded-md border border-zinc-800 bg-[#09090b] px-3 text-sm text-zinc-100" disabled={!canManage} onChange={(event) => patchDraft({ name: draft.name || periodDefaultName(event.target.value as FivemGoalConfig["period"]), period: event.target.value as FivemGoalConfig["period"] })} value={draft.period}>
                           <option value="weekly">Semanal</option>

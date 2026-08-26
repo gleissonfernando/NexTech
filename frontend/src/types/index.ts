@@ -1926,6 +1926,7 @@ export type FivemGoalConfig = {
   targetValue: number;
   totalParticipants: number;
   type: string;
+  unit: string;
   updatedAt: string;
   updatedBy?: string | null;
   viewerRoleIds: string[];

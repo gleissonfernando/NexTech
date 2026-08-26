@@ -282,6 +282,7 @@ const goalConfigSchema = z.object({
   status: z.enum(["active", "paused", "finished"]).optional(),
   targetValue: z.coerce.number().int().min(1).max(1_000_000_000).optional(),
   type: z.string().max(80).optional(),
+  unit: z.string().max(40).optional(),
   viewerRoleIds: z.array(snowflakeSchema).max(100).optional()
 });
 const goalUserChannelSchema = z.object({

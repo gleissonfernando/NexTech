@@ -1188,6 +1188,7 @@ export type FivemGoalConfig = {
   status: "active" | "paused" | "finished";
   targetValue: number;
   type: string;
+  unit: string;
   viewerRoleIds: string[];
 };
 export type FivemGoalEntry = { attachmentId: string | null; channelId: string; correctionRequestId: string | null; createdAt: string; fields: Array<{ id: string; label: string; value: string }>; guildId: string; id: string; imageUrl: string; itemId: string | null; metaId: string | null; periodId: string | null; quantity: number | null; registeredAt: string | null; replacedByRegistrationId: string | null; replacementForRegistrationId: string | null; sourceMessageId: string | null; status: "confirmed" | "correction_requested" | "corrected" | "correction_expired" | "invalidated"; userId: string };
