@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canCloseFarmRoom, createEditMetaCorrectionModal, createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalChannelRequestModal, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, ensureFivemGoalChannelForUser, handleFivemGoalMessage, isAllowedGoalImage, isAllowedGoalImageUrl, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
+import { canCloseFarmRoom, createEditMetaCorrectionModal, createFarmRegisteredPayload, createFarmRoomPanelPayload, createFinalUserGoalReportContent, createGoalChannelRequestModal, createGoalRegistrationModal, createGoalRequestPanelPayload, createImageReviewPayload, ensureFivemGoalChannelForApprovedSet, ensureFivemGoalChannelForUser, handleFivemGoalInteraction, handleFivemGoalMessage, isAllowedGoalImage, isAllowedGoalImageUrl, isReusableFarmRoomChannel, renderApprovedSetChannelName } from "./fivemGoalService";
 
 test("painel inicial da sala de farm usa somente o modelo de fechamento", () => {
   const payload = createFarmRoomPanelPayload(null, { managerRoleId: "123456789012345678" }, "987654321098765432");
@@ -148,6 +148,23 @@ test("modal de solicitar sala de farm pede nome in game e id de usuario", () => 
   assert.match(serialized, /Nome in game/);
   assert.match(serialized, /farm_room_user_id/);
   assert.match(serialized, /ID de usuario/);
+});
+
+test("modal de solicitar sala de farm mostra erro da API quando metas nao podem ser validadas", async () => {
+  const replies: string[] = [];
+  const interaction = createGoalRequestModalSubmitMock({
+    editReply: async (content: string) => { replies.push(content); }
+  });
+  const context = createGoalContextMock({
+    getFivemGoalSettings: async () => {
+      throw { response: { data: { message: "O sistema de metas FiveM não foi liberado para este cliente." } } };
+    }
+  });
+
+  const handled = await handleFivemGoalInteraction(interaction as any, context as any);
+
+  assert.equal(handled, true);
+  assert.deepEqual(replies, ["O sistema de metas FiveM não foi liberado para este cliente."]);
 });
 
 test("painel de registro de farm preserva a mensagem original no custom id", () => {
@@ -436,6 +453,29 @@ function createCloseFarmRoomInteractionMock(input: { roleIds: string[]; userId: 
       }
     },
     user: { id: input.userId }
+  };
+}
+
+function createGoalRequestModalSubmitMock(overrides: { editReply?: (content: string) => Promise<void> } = {}) {
+  return {
+    customId: "fivem_goal:request_channel_modal:999999999999999999:bot-dev-1",
+    deferReply: async () => null,
+    editReply: overrides.editReply ?? (async () => null),
+    fields: {
+      getTextInputValue: (id: string) => id === "farm_room_game_name" ? "Tairan Cooper" : "15774"
+    },
+    guild: {
+      id: "999999999999999999"
+    },
+    guildId: "999999999999999999",
+    isButton: () => false,
+    isModalSubmit: () => true,
+    isStringSelectMenu: () => false,
+    isUserSelectMenu: () => false,
+    user: {
+      displayAvatarURL: () => "https://cdn.discordapp.com/avatar.png",
+      id: "111111111111111111"
+    }
   };
 }
 
