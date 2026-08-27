@@ -238,11 +238,12 @@ export type MongoTicket = {
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
   allowedRoleIds?: string[];
-  status: "OPEN" | "PENDING" | "CLOSED" | "IN_ANALYSIS" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
+  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
   closeReason?: string | null;
   finalResult?: string | null;
   internalNotes?: string | null;
   closedById?: string | null;
+  lastUserCallAt?: Date | null;
   isIncomplete?: boolean;
   logs?: Record<string, string | null>;
   createdAt: Date;

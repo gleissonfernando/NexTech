@@ -186,8 +186,10 @@ export type TicketRecord = {
   responsibleUserId?: string | null;
   status: string;
   closeReason?: string | null;
+  closedById?: string | null;
   finalResult?: string | null;
   isIncomplete?: boolean;
+  lastUserCallAt?: string | null;
   createdAt: string;
   closedAt?: string | null;
 };
@@ -2893,6 +2895,19 @@ export class ApiClient {
   async updateTicketStatus(ticketId: string, input: Record<string, unknown>) {
     const { data } = await this.http.patch<{ ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/status`, input);
     return data.ticket;
+  }
+
+  async beginTicketClose(ticketId: string, input: { closedById: string; closeReason: string; finalResult: string; internalNotes?: string | null }) {
+    try {
+      const { data } = await this.http.post<{ closing: boolean; ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/close/begin`, input);
+      return data;
+    } catch (error) {
+      if (typeof error === "object" && error && "response" in error) {
+        const response = (error as { response?: { data?: { closing?: boolean; ticket?: TicketRecord | null }; status?: number } }).response;
+        if (response?.status === 409) return { closing: false, ticket: response.data?.ticket ?? null };
+      }
+      throw error;
+    }
   }
 
   async updateTicketChannel(ticketId: string, channelId: string | null) {

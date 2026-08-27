@@ -43,6 +43,8 @@ const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
 const TICKET_STATUS_PREFIX = "ticket_status:";
 const CLOSE_MODAL_PREFIX = "ticket_close:";
+const CLOSE_CONFIRM_PREFIX = "ticket_close_confirm:";
+const CLOSE_CANCEL_PREFIX = "ticket_close_cancel:";
 const OPEN_MODAL_PREFIX = "ticket_open:";
 const OPEN_BUTTON_ID = "ticket_open_button";
 const OPEN_CATEGORY_PREFIX = "ticket_open_category:";
@@ -58,6 +60,7 @@ const openTicketSessions = new Map<string, { botId: string | null; clientStatus:
 const ticketCreationLocks = new Map<string, Promise<void>>();
 const OPEN_TICKET_SESSION_TTL_MS = 10 * 60 * 1000;
 const PENDING_TICKET_LEASE_MS = 2 * 60 * 1000;
+const USER_CALL_COOLDOWN_MS = Number(process.env.TICKET_USER_CALL_COOLDOWN_SECONDS ?? "60") * 1000;
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
   { label: "Em análise", value: "IN_ANALYSIS" },
@@ -202,6 +205,23 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
 
   if (interaction.isButton() && interaction.customId.startsWith(TICKET_ACTION_PREFIX)) {
     await handleTicketAction(interaction, context);
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(CLOSE_CONFIRM_PREFIX)) {
+    const parsed = parseScopedComponentId(interaction.customId, CLOSE_CONFIRM_PREFIX, "confirm");
+    if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
+      await interaction.reply({ content: "Ticket inválido.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    await interaction.showModal(createTicketCloseModal(parsed.targetId, interaction.guildId, interaction.client.user?.id ?? null));
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(CLOSE_CANCEL_PREFIX)) {
+    await interaction.update({ components: [], content: "Fechamento cancelado." }).catch(async () => {
+      await interaction.reply({ content: "Fechamento cancelado.", flags: MessageFlags.Ephemeral }).catch(() => null);
+    });
     return true;
   }
 
@@ -367,7 +387,7 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   const subject = normalizeTicketDescription(interaction.fields.getTextInputValue("description"));
   const clientLabel = clientStatus === "yes" ? "Sim" : "Não";
   if (!subject) {
-    await interaction.reply({ content: "A descrição do ticket precisa conter pelo menos três palavras. Descreva resumidamente o que aconteceu.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: "Informe o motivo do ticket.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -591,7 +611,7 @@ async function createTicketForInteraction(
   await context.api.recordTicketEvent(ticket.ticket.id, {
     authorId: interaction.user.id,
     content: `Ticket criado na categoria ${option.label}. Assunto: ${subject}. Cliente: ${clientLabel}.`,
-    eventType: "ticket.created",
+    eventType: "TICKET_CREATED",
     guildId: guild.id,
     metadata: {
       categoryId: option.value,
@@ -607,6 +627,25 @@ async function createTicketForInteraction(
   await sendTicketOpeningLog(guild, settings, interaction.user.id, option, channel.id, ticket.ticket.id, subject, clientLabel).catch((error) => {
     logTicketTechnical("opening_log_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
   });
+
+  await sendTicketOpenedDm(guild, interaction.user.id, {
+    channelId: channel.id,
+    createdAt: new Date().toISOString(),
+    guildName: guild.name,
+    status: "Aguardando atendimento",
+    ticketId: ticket.ticket.id
+  }).then((sent) => {
+    if (!sent) {
+      logTicketTechnical("opening_dm_failed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id });
+    }
+    return context.api.recordTicketEvent(ticket.ticket.id, {
+      authorId: interaction.client.user?.id ?? null,
+      content: sent ? "DM de abertura enviada ao usuário." : "Não foi possível enviar DM ao usuário.",
+      eventType: sent ? "TICKET_OPENING_DM_SENT" : "TICKET_OPENING_DM_FAILED",
+      guildId: guild.id,
+      metadata: { channelId: channel.id }
+    });
+  }).catch(() => null);
 
   logTicketTechnical("request_completed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id, totalMs: elapsed(startedAt) });
   await interaction.editReply(`Ticket criado: <#${channel.id}>`);
@@ -653,7 +692,7 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
   }
 
   if (action === "close") {
-    await interaction.showModal(createTicketCloseModal(ticketId, interaction.guildId, interaction.client.user?.id ?? null));
+    await handleTicketCloseRequest(interaction, context, ticketId);
     return;
   }
 
@@ -664,6 +703,11 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
 
   if (action === "category") {
     await handleTicketCategoryButton(interaction, context, ticketId);
+    return;
+  }
+
+  if (action === "call") {
+    await handleTicketUserCall(interaction, context, ticketId);
     return;
   }
 
@@ -689,14 +733,15 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
 
   const claim = await context.api.claimTicket(ticketId, interaction.user.id);
   if (!claim.claimed) {
-    await interaction.followUp({ content: "Este atendimento já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
+    const responsible = claim.ticket?.responsibleUserId ? `<@${claim.ticket.responsibleUserId}>` : "outro responsável";
+    await interaction.followUp({ content: `Este ticket já está sendo atendido por ${responsible}.`, flags: MessageFlags.Ephemeral }).catch(() => null);
     return;
   }
   const updatedTicket = claim.ticket;
   await context.api.recordTicketEvent(ticketId, {
     authorId: interaction.user.id,
     content: `Ticket assumido por ${interaction.user.tag}.`,
-    eventType: "ticket.claimed",
+    eventType: "TICKET_CLAIMED",
     guildId: interaction.guildId!
   }).catch(() => null);
   await interaction.message.edit(createOpenTicketPayload({
@@ -706,10 +751,87 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     mentionRoleId: updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
     openerId: updatedTicket?.openerId ?? ticket.openerId,
     responsibleUserId: interaction.user.id,
-    status: "Em análise",
+    status: "Em atendimento",
     subject: updatedTicket?.subject ?? ticket.subject,
     ticketId
   })).catch(() => null);
+}
+
+async function handleTicketCloseRequest(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
+  if (!ticket) {
+    await interaction.reply({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (isTicketClosedLike(ticket.status)) {
+    await interaction.reply({ content: "Este ticket já foi encerrado.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.reply({ content: "Você não possui permissão da equipe para finalizar este ticket.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.reply({
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(scopedComponentId(CLOSE_CONFIRM_PREFIX, "confirm", interaction.guildId, interaction.client.user?.id ?? null, ticketId))
+          .setLabel("Confirmar fechamento")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(scopedComponentId(CLOSE_CANCEL_PREFIX, "cancel", interaction.guildId, interaction.client.user?.id ?? null, ticketId))
+          .setLabel("Cancelar")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    ],
+    content: "Deseja realmente fechar este ticket?",
+    flags: MessageFlags.Ephemeral
+  });
+}
+
+async function handleTicketUserCall(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const ticket = await getTicketOrRecover(interaction, context, ticketId);
+  if (!ticket || !interaction.guild || interaction.channel?.type !== ChannelType.GuildText) {
+    await interaction.editReply("Não consegui localizar o canal ou o registro deste ticket.");
+    return;
+  }
+  if (isTicketClosedLike(ticket.status)) {
+    await interaction.editReply("Este ticket já foi encerrado.");
+    return;
+  }
+  if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
+    await interaction.editReply("Você não possui permissão da equipe para chamar o usuário deste ticket.");
+    return;
+  }
+  const lastCallAt = ticket.lastUserCallAt ? Date.parse(ticket.lastUserCallAt) : 0;
+  const remainingMs = lastCallAt + USER_CALL_COOLDOWN_MS - Date.now();
+  if (remainingMs > 0) {
+    await interaction.editReply(`Aguarde ${Math.ceil(remainingMs / 1000)}s para chamar o usuário novamente.`);
+    return;
+  }
+
+  const ticketUrl = ticketChannelUrl(interaction.guild.id, interaction.channel.id);
+  await interaction.channel.send({
+    allowedMentions: { users: [ticket.openerId] },
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setLabel("Acessar meu ticket").setEmoji("🎫").setStyle(ButtonStyle.Link).setURL(ticketUrl)
+      )
+    ],
+    content: `<@${ticket.openerId}> A equipe responsável pelo seu ticket está aguardando sua resposta.`
+  });
+  const dmSent = await sendTicketCallDm(interaction.guild, ticket.openerId, ticketUrl);
+  const calledAt = new Date().toISOString();
+  await context.api.updateTicketStatus(ticketId, { lastUserCallAt: calledAt }).catch(() => null);
+  await context.api.recordTicketEvent(ticketId, {
+    authorId: interaction.user.id,
+    content: dmSent ? "Usuário chamado por DM." : "Usuário chamado no canal; não foi possível enviar DM.",
+    eventType: "USER_CALLED",
+    guildId: interaction.guild.id,
+    metadata: { channelId: interaction.channel.id, dmSent, ticketUrl }
+  }).catch(() => null);
+  await interaction.editReply(dmSent ? "Usuário chamado no canal e por DM." : "Usuário chamado no canal. Não foi possível enviar DM ao usuário.");
 }
 
 async function handleTicketStatus(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -821,7 +943,7 @@ async function handleTicketMemberModal(interaction: ModalSubmitInteraction, cont
   await context.api.recordTicketEvent(ticketId, {
     authorId: interaction.user.id,
     content: `Membro ${targetId} ${action === "add" ? "adicionado" : action === "remove" ? "removido" : "definido como responsável"} por ${interaction.user.tag}.`,
-    eventType: `ticket.member_${action}`,
+    eventType: action === "add" ? "MEMBER_ADDED" : action === "remove" ? "MEMBER_REMOVED" : "TICKET_TRANSFERRED",
     guildId: interaction.guild.id,
     metadata: { targetId }
   }).catch(() => null);
@@ -850,13 +972,13 @@ function createTicketRenameModal(ticketId: string, guildId: string | null, botId
     .setCustomId(scopedComponentId(TICKET_RENAME_MODAL_PREFIX, "rename", guildId, botId, ticketId))
     .setTitle("Renomear Ticket")
     .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
-      new TextInputBuilder()
+    new TextInputBuilder()
         .setCustomId("subject")
         .setLabel("Novo assunto do ticket")
-        .setPlaceholder("Informe o novo assunto com pelo menos três palavras")
+        .setPlaceholder("Informe o novo assunto")
         .setRequired(true)
         .setStyle(TextInputStyle.Short)
-        .setMinLength(3)
+        .setMinLength(1)
         .setMaxLength(100)
     ));
 }
@@ -879,7 +1001,7 @@ async function handleTicketRenameModal(interaction: ModalSubmitInteraction, cont
   }
   const subject = normalizeTicketSubject(interaction.fields.getTextInputValue("subject"));
   if (!subject) {
-    await interaction.editReply("O assunto do ticket precisa conter pelo menos três palavras. Descreva resumidamente o motivo do atendimento.");
+    await interaction.editReply("Informe o assunto do ticket.");
     return;
   }
 
@@ -903,7 +1025,7 @@ async function handleTicketRenameModal(interaction: ModalSubmitInteraction, cont
   await context.api.recordTicketEvent(ticket.id, {
     authorId: interaction.user.id,
     content: `Ticket renomeado de "${oldSubject}" para "${subject}".`,
-    eventType: "ticket.renamed",
+    eventType: "TICKET_RENAMED",
     guildId: interaction.guild.id,
     metadata: { newSubject: subject, oldSubject }
   }).catch(() => null);
@@ -1045,14 +1167,23 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     return;
   }
 
-  const ticket = await context.api.updateTicketStatus(ticketId, {
-    closedAt: new Date().toISOString(),
+  if (isTicketClosedLike(currentTicket.status)) {
+    await interaction.editReply("Este ticket já foi encerrado.");
+    return;
+  }
+
+  const closing = await context.api.beginTicketClose(ticketId, {
     closedById: interaction.user.id,
     closeReason: interaction.fields.getTextInputValue("reason"),
     finalResult: interaction.fields.getTextInputValue("result"),
-    internalNotes: interaction.fields.getTextInputValue("notes") || null,
-    status: "CLOSED"
+    internalNotes: interaction.fields.getTextInputValue("notes") || null
   });
+
+  if (!closing.closing) {
+    await interaction.editReply(closing.ticket?.status === "CLOSING" ? "Este ticket já está em fechamento." : "Este ticket já foi encerrado.");
+    return;
+  }
+  const ticket = closing.ticket;
 
   if (!ticket || !interaction.channel || !("messages" in interaction.channel)) {
     await interaction.editReply("Não consegui localizar o ticket para gerar o transcript.");
@@ -1066,7 +1197,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     channelId: ticket.channelId,
     channelName: (interaction.channel as TextChannel).name,
     closeReason: ticket.closeReason,
-    closedAt: new Date().toISOString(),
+    closedAt: ticket.closedAt ?? new Date().toISOString(),
     closedById: interaction.user.id,
     finalResult: ticket.finalResult,
     generateTemporaryPassword: true,
@@ -1091,7 +1222,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
   await context.api.recordTicketEvent(ticketId, {
     authorId: interaction.user.id,
     content: `Transcript ${transcript.transcript.id} gerado. DM ao autor: ${dmSent ? "enviada" : "falhou"}.`,
-    eventType: "transcript.generated",
+    eventType: "TRANSCRIPT_CREATED",
     guildId: interaction.guildId!,
     metadata: {
       dmSent,
@@ -1102,6 +1233,13 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
   }).catch(() => null);
 
   await sendTranscriptLog(interaction.guild!, context, transcript, ticket, interaction.user.id);
+  await context.api.recordTicketEvent(ticketId, {
+    authorId: interaction.user.id,
+    content: "Ticket encerrado com transcript enviado aos destinos configurados.",
+    eventType: "TICKET_CLOSED",
+    guildId: interaction.guildId!,
+    metadata: { transcriptId: transcript.transcript.id }
+  }).catch(() => null);
   await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}.`);
 }
 
@@ -1249,16 +1387,14 @@ function cleanupOpenTicketSessions() {
   }
 }
 
-function normalizeTicketSubject(value: string) {
+export function normalizeTicketSubject(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim().slice(0, 100);
-  const words = normalized.split(" ").filter(Boolean);
-  return words.length >= 3 ? normalized : null;
+  return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeTicketDescription(value: string) {
+export function normalizeTicketDescription(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim().slice(0, 1000);
-  const words = normalized.split(" ").filter(Boolean);
-  return words.length >= 3 ? normalized : null;
+  return normalized.length > 0 ? normalized : null;
 }
 
 function activeTicketOptions(settings: GuildSettings | null | undefined) {
@@ -1305,14 +1441,14 @@ function createOpenTicketModal(token: string, settings: GuildSettings) {
         ),
       new LabelBuilder()
         .setLabel("O que aconteceu?")
-        .setDescription("Digite aqui o que aconteceu com pelo menos três palavras")
+        .setDescription("Digite o motivo do seu atendimento")
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId("description")
-            .setPlaceholder("Digite aqui o que aconteceu...")
+            .setPlaceholder("Digite o motivo do seu atendimento...")
             .setRequired(true)
             .setStyle(TextInputStyle.Paragraph)
-            .setMinLength(3)
+            .setMinLength(1)
             .setMaxLength(1000)
         ),
       new LabelBuilder()
@@ -1431,7 +1567,7 @@ function ticketPreOpenComponents(
       type: 10,
       content: [
         `## ${systemEmojiText("prancheta", guild)} Abrir Novo Ticket`,
-        `${systemStatusEmoji("warning", guild)} Selecione corretamente a categoria e informe um assunto com pelo menos três palavras. As informações serão utilizadas para direcionar o atendimento.`,
+        `${systemStatusEmoji("warning", guild)} Selecione corretamente a categoria e informe o motivo do atendimento. As informações serão utilizadas para direcionar o atendimento.`,
         "",
         `**Categoria:** ${selectedOption ? `${selectedOption.emoji ? `${selectedOption.emoji} ` : ""}${selectedOption.label}` : "Não selecionada"}`,
         `**Cliente:** ${selectedClient ?? "Não informado"}`,
@@ -2049,6 +2185,7 @@ function createOpenTicketPayload(input: {
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "rename", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Renomear Ticket").setStyle(ButtonStyle.Secondary)
   );
   const secondActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "call", guildId, botId, ticketId)).setEmoji("🔔").setLabel("Chamar Usuário").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "category", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Alterar Categoria").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "close", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
   );
@@ -2072,7 +2209,7 @@ function createOpenTicketPayload(input: {
       `Servidor: ${guild?.name ?? "Não informado"}`,
       `Data: ${formatTicketDate(createdAt)}`,
       `Hora: ${formatTicketTime(createdAt)}`,
-      `Responsável atual: ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum"}`,
+      `Responsável atual: ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum atendente assumiu este ticket."}`,
       `Status: ${status}`,
       `Prioridade: ${priorityLabel(priority ?? "normal")}`,
       `ID do Ticket: #${ticketId}`,
@@ -2169,6 +2306,64 @@ async function sendTranscriptDm(guild: Guild, transcript: TranscriptCreateResult
     ].join("\n")
   });
   return true;
+}
+
+async function sendTicketOpenedDm(guild: Guild, userId: string, input: { channelId: string; createdAt: string; guildName: string; status: string; ticketId: string }) {
+  try {
+    const user = await guild.client.users.fetch(userId).catch(() => null);
+    if (!user) return false;
+    const url = ticketChannelUrl(guild.id, input.channelId);
+    await user.send({
+      allowedMentions: { parse: [] },
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setLabel("Acessar Ticket").setEmoji("🎫").setStyle(ButtonStyle.Link).setURL(url)
+        )
+      ],
+      content: [
+        "## 🎫 Ticket aberto com sucesso",
+        "",
+        "Seu ticket foi criado.",
+        "",
+        `Número: #${input.ticketId}`,
+        `Servidor: ${input.guildName}`,
+        `Status: ${input.status}`,
+        `Aberto em: <t:${Math.floor(Date.parse(input.createdAt) / 1000)}:F>`,
+        "",
+        "Nossa equipe foi avisada e responderá assim que possível."
+      ].join("\n")
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendTicketCallDm(guild: Guild, userId: string, ticketUrl: string) {
+  try {
+    const user = await guild.client.users.fetch(userId).catch(() => null);
+    if (!user) return false;
+    await user.send({
+      allowedMentions: { parse: [] },
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setLabel("Acessar meu ticket").setEmoji("🎫").setStyle(ButtonStyle.Link).setURL(ticketUrl)
+        )
+      ],
+      content: "A equipe responsável pelo seu ticket está aguardando sua resposta."
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ticketChannelUrl(guildId: string, channelId: string) {
+  return `https://discord.com/channels/${guildId}/${channelId}`;
+}
+
+function isTicketClosedLike(status: string | null | undefined) {
+  return ["CLOSING", "CLOSED", "ARCHIVED", "RESOLVED", "DENIED", "INCOMPLETE"].includes(String(status ?? "").toUpperCase());
 }
 
 async function sendTranscriptLog(guild: Guild, context: BotContext, transcript: TranscriptCreateResult, ticket: { categoryName?: string | null; subject: string; openerId: string; responsibleUserId?: string | null; createdAt: string; finalResult?: string | null }, closedById: string) {

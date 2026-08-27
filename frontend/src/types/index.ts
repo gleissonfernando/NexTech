@@ -1122,7 +1122,9 @@ export type Ticket = {
   channelId?: string | null;
   openerId: string;
   subject: string;
-  status: "OPEN" | "PENDING" | "CLOSED";
+  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
+  closedById?: string | null;
+  lastUserCallAt?: string | null;
   createdAt: string;
   closedAt?: string | null;
 };

@@ -20,8 +20,10 @@ export type TicketDto = {
   responsibleUserId?: string | null;
   status: MongoTicket["status"];
   closeReason?: string | null;
+  closedById?: string | null;
   finalResult?: string | null;
   isIncomplete?: boolean;
+  lastUserCallAt?: string | null;
   createdAt: string;
   closedAt?: string | null;
 };
@@ -110,6 +112,7 @@ export async function createTicket(input: CreateTicketInput) {
       finalResult: null,
       internalNotes: null,
       closedById: null,
+      lastUserCallAt: null,
       isIncomplete: false,
       logs: {},
       createdAt: new Date(),
@@ -204,7 +207,9 @@ export async function listTickets(guildId?: string, botId?: string | null) {
       finalResult: ticket.finalResult ?? null,
       isIncomplete: Boolean(ticket.isIncomplete),
       createdAt: ticket.createdAt.toISOString(),
-      closedAt: ticket.closedAt?.toISOString() ?? null
+      closedAt: ticket.closedAt?.toISOString() ?? null,
+      closedById: ticket.closedById ?? null,
+      lastUserCallAt: ticket.lastUserCallAt?.toISOString() ?? null
     }));
   } catch {
     return memoryTickets
@@ -241,7 +246,7 @@ export async function getTicketById(ticketId: string, botId?: string | null) {
   }
 }
 
-export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "responsibleRoleId" | "categoryId" | "categoryName" | "panelId" | "subject" | "ticketType" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete">>) {
+export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "responsibleRoleId" | "categoryId" | "categoryName" | "panelId" | "subject" | "ticketType" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete" | "lastUserCallAt">>) {
   const { tickets } = await getMongoCollections();
   const $set: Partial<MongoTicket> = {};
   for (const [key, value] of Object.entries(input) as Array<[keyof typeof input, unknown]>) {
@@ -258,6 +263,34 @@ export async function updateTicketStatus(ticketId: string, botId: string | null,
   );
   const updated = await tickets.findOne({ _id: ticketId });
   return updated ? toDto(updated) : null;
+}
+
+export async function beginTicketClosing(ticketId: string, botId: string | null, input: Pick<MongoTicket, "closedById" | "closeReason" | "finalResult"> & Pick<Partial<MongoTicket>, "internalNotes">) {
+  const { tickets } = await getMongoCollections();
+  const ticket = await getTicketById(ticketId, botId);
+  if (!ticket) return { closing: false, ticket: null };
+  const now = new Date();
+  const closed = await tickets.findOneAndUpdate(
+    {
+      _id: ticketId,
+      status: { $in: ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"] }
+    },
+    {
+      $set: {
+        closedAt: now,
+        closedById: input.closedById,
+        closeReason: input.closeReason,
+        finalResult: input.finalResult,
+        internalNotes: input.internalNotes ?? null,
+        status: "CLOSING"
+      },
+      $unset: { activeKey: "" }
+    },
+    { returnDocument: "after" }
+  );
+  if (closed) return { closing: true, ticket: toDto(closed) };
+  const existing = await tickets.findOne({ _id: ticketId });
+  return { closing: false, ticket: existing ? toDto(existing) : null };
 }
 
 export async function updateTicketChannel(ticketId: string, botId: string | null, channelId: string | null) {
@@ -355,7 +388,9 @@ function toDto(ticket: MongoTicket): TicketDto {
     finalResult: ticket.finalResult ?? null,
     isIncomplete: Boolean(ticket.isIncomplete),
     createdAt: ticket.createdAt.toISOString(),
-    closedAt: ticket.closedAt?.toISOString() ?? null
+    closedAt: ticket.closedAt?.toISOString() ?? null,
+    closedById: ticket.closedById ?? null,
+    lastUserCallAt: ticket.lastUserCallAt?.toISOString() ?? null
   };
 }
 

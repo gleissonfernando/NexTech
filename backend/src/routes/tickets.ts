@@ -6,7 +6,7 @@ import { emitRealtime } from "../realtime/events";
 import { canManageDashboardGuild, canReadDashboardGuild, getAccessibleGuildIds } from "../services/dashboardGuildAccessService";
 import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotService";
 import { createLog } from "../services/logService";
-import { claimTicket, createTicket, findOpenTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketChannel, updateTicketStatus } from "../services/ticketService";
+import { beginTicketClosing, claimTicket, createTicket, findOpenTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketChannel, updateTicketStatus } from "../services/ticketService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const ticketSchema = z.object({
@@ -22,7 +22,7 @@ const ticketSchema = z.object({
   moduleType: z.enum(["default", "police"]).optional().default("default"),
   panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
   ticketType: z.string().min(1).max(80).optional().nullable()
 });
 
@@ -35,10 +35,11 @@ const ticketStatusSchema = z.object({
   finalResult: z.string().optional().nullable(),
   internalNotes: z.string().optional().nullable(),
   isIncomplete: z.boolean().optional(),
+  lastUserCallAt: z.string().datetime().optional().nullable(),
   panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
   responsibleUserId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
   subject: z.string().min(1).max(120).optional(),
   ticketType: z.string().min(1).max(80).optional().nullable()
 });
@@ -53,6 +54,13 @@ const ticketEventSchema = z.object({
 
 const ticketClaimSchema = z.object({
   responsibleUserId: z.string().min(1)
+});
+
+const ticketCloseBeginSchema = z.object({
+  closedById: z.string().min(1),
+  closeReason: z.string().min(1),
+  finalResult: z.string().min(1),
+  internalNotes: z.string().optional().nullable()
 });
 
 export const ticketsRouter = Router();
@@ -183,11 +191,31 @@ ticketsRouter.patch("/bot/:ticketId/status", async (req, res, next) => {
     }
     const input = ticketStatusSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
+    const lastUserCallAt = input.lastUserCallAt === undefined
+      ? undefined
+      : input.lastUserCallAt === null
+        ? null
+        : new Date(input.lastUserCallAt);
     const ticket = await updateTicketStatus(req.params.ticketId, botId, {
       ...input,
-      closedAt: input.closedAt ? new Date(input.closedAt) : undefined
+      closedAt: input.closedAt ? new Date(input.closedAt) : undefined,
+      lastUserCallAt
     });
     return res.json({ ticket });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ticketsRouter.post("/bot/:ticketId/close/begin", async (req, res, next) => {
+  try {
+    if (!isBotRequest(req)) {
+      return res.status(403).json({ message: "Rota disponível apenas para o bot." });
+    }
+    const input = ticketCloseBeginSchema.parse(req.body);
+    const botId = await resolveRequestBotId(req);
+    const result = await beginTicketClosing(req.params.ticketId, botId, input);
+    return res.status(result.closing ? 200 : 409).json(result);
   } catch (error) {
     return next(error);
   }
