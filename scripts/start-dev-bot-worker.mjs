@@ -13,10 +13,10 @@ const backendUrl = normalizeUrl(
   || "https://nextech.discloud.app"
 );
 const botApiToken = process.env.BOT_API_TOKEN || packedConfigValue("BOT_API_TOKEN") || "";
-const concurrency = numberEnv("DEV_BOT_START_CONCURRENCY", 2, 1, 64);
-const staggerMs = numberEnv("DEV_BOT_START_STAGGER_MS", 30_000, 1_000, 600_000);
-const reconcileMs = numberEnv("DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS", 60_000, 15_000, 900_000);
-const childHeapMb = numberEnv("DEV_BOT_NODE_MAX_OLD_SPACE_MB", 128, 64, 512);
+const concurrency = numberEnv("DEV_BOT_START_CONCURRENCY", 1, 1, 64);
+const staggerMs = numberEnv("DEV_BOT_START_STAGGER_MS", 45_000, 1_000, 600_000);
+const reconcileMs = numberEnv("DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS", 120_000, 15_000, 900_000);
+const childHeapMb = numberEnv("DEV_BOT_NODE_MAX_OLD_SPACE_MB", 96, 64, 512);
 const runningBots = new Map();
 const restartTimers = new Map();
 let reconcileRunning = false;

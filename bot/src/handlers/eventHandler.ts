@@ -9,7 +9,7 @@ import { isLogsRuntimeAuthorized, logMessageBulkDelete } from "../services/logSe
 import { handleMessageUpdate } from "../events/messageUpdate";
 import { handlePresenceEvent } from "../events/presenceUpdate";
 import { handleReady } from "../events/ready";
-import { env, isBotModuleEnabled } from "../config/env";
+import { env, isBotModuleEnabled, isManagedRuntimeBot } from "../config/env";
 import { isLinkAntiSpamEnabled } from "../services/linkAntiSpamService";
 import { isMaintenanceModeActive } from "../services/maintenanceService";
 import { handleApplicationEmojiGuildCreate, handleApplicationEmojiGuildDelete, handleApplicationEmojiGuildUpdate, syncGuildApplicationEmojis } from "../services/applicationEmojiSyncService";
@@ -41,7 +41,7 @@ const PRESENCE_COALESCE_MS = 250;
 const pendingPresenceEvents = new Map<string, { oldPresence: Presence | null; newPresence: Presence; timer: NodeJS.Timeout }>();
 
 export function registerEvents(client: Client, context: BotContext) {
-  const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
+  const managedRuntimeBot = isManagedRuntimeBot();
 
   client.on(Events.Error, (error) => {
     console.error("[discord] erro no client:", error);

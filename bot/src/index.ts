@@ -15,21 +15,22 @@ import { BotSocketClient } from "./websocket/socketClient";
 
 const intents = [GatewayIntentBits.Guilds];
 const managedRuntimeBot = Boolean(env.DASHBOARD_BOT_ID.trim());
+const managedRuntimeDefaults = managedRuntimeBot && process.env.NEX_TECH_RUNTIME_ROLE !== "dev-bot-worker";
 const needsVoiceRecorder = isBotModuleEnabled("voice-recorder");
-const needsMusic = isBotModuleEnabled("music") || managedRuntimeBot;
-const needsTagVerification = isBotModuleEnabled("tag-verification") || managedRuntimeBot;
-const needsLivePresence = isBotModuleEnabled("live") || isBotModuleEnabled("auto-activity-clock") || managedRuntimeBot;
-const needsVoiceEvents = managedRuntimeBot || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
-const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeBot;
+const needsMusic = isBotModuleEnabled("music") || managedRuntimeDefaults;
+const needsTagVerification = isBotModuleEnabled("tag-verification") || managedRuntimeDefaults;
+const needsLivePresence = isBotModuleEnabled("live") || isBotModuleEnabled("auto-activity-clock") || managedRuntimeDefaults;
+const needsVoiceEvents = managedRuntimeDefaults || isBotModuleEnabled("anti-abuse") || isBotModuleEnabled("anti-disconnect") || isBotModuleEnabled("temporary-voice") || isBotModuleEnabled("logs");
+const needsAntiBan = isBotModuleEnabled("anti-ban") || managedRuntimeDefaults;
 const needsMemberEvents = ["welcome", "leave", "roles", "logs", "fivem-absences", "fivem-hierarchy", "account-age-security", "anti-ban", "tag-verification"].some(isBotModuleEnabled)
   || isSelfBotModuleEnabled()
-  || managedRuntimeBot;
+  || managedRuntimeDefaults;
 const selfBotModuleEnabled = isSelfBotModuleEnabled();
 const needsLegacyMessageModeration = !selfBotModuleEnabled && (isBotModuleEnabled("image-anti-spam") || isLinkAntiSpamEnabled());
-const needsMessageLogs = managedRuntimeBot || isBotModuleEnabled("logs") || env.BOT_MESSAGE_LOGS_ENABLED;
+const needsMessageLogs = managedRuntimeDefaults || isBotModuleEnabled("logs") || env.BOT_MESSAGE_LOGS_ENABLED;
 const needsMessageEvents = needsLegacyMessageModeration
   || selfBotModuleEnabled
-  || managedRuntimeBot
+  || managedRuntimeDefaults
   || needsMusic
   || isBotModuleEnabled("manual-payments")
   || isBotModuleEnabled("fivem-ammunition")
@@ -40,7 +41,7 @@ const needsMessageEvents = needsLegacyMessageModeration
   || isBotModuleEnabled("temporary-voice")
   || needsMessageLogs;
 
-if (needsTagVerification || (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) || managedRuntimeBot || isBotModuleEnabled("fivem-hierarchy")) {
+if (needsTagVerification || (env.BOT_MEMBER_EVENTS_ENABLED && needsMemberEvents) || managedRuntimeDefaults || isBotModuleEnabled("fivem-hierarchy")) {
   intents.push(GatewayIntentBits.GuildMembers);
 }
 
@@ -71,7 +72,7 @@ if (needsVoiceRecorder || needsMusic || needsVoiceEvents) {
 
 const partials = [Partials.Channel, Partials.GuildMember, Partials.User];
 
-if (needsMessageLogs || (!selfBotModuleEnabled && isBotModuleEnabled("image-anti-spam")) || managedRuntimeBot) {
+if (needsMessageLogs || (!selfBotModuleEnabled && isBotModuleEnabled("image-anti-spam")) || managedRuntimeDefaults) {
   partials.push(Partials.Message);
 }
 

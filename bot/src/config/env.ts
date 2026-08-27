@@ -208,6 +208,10 @@ export function currentRuntimeBotId() {
   return runtimeBotId;
 }
 
+export function isManagedRuntimeBot() {
+  return Boolean(env.DASHBOARD_BOT_ID.trim()) && process.env.NEX_TECH_RUNTIME_ROLE !== "dev-bot-worker";
+}
+
 export function setRuntimeEnabledModules(moduleIds: string[], botId?: string | null) {
   runtimeEnabledModules = new Set([
     ...moduleIds.map((moduleId) => moduleId.trim()).filter(Boolean),
