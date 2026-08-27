@@ -389,11 +389,21 @@ function parseJsonResponse(text: string) {
 }
 
 function appIdsForBots(devBots: DevBotDto[], appById: Map<string, unknown>) {
-  const explicitIds = env.DISCLOUD_APP_IDS.split(",").map((item) => item.trim()).filter(Boolean);
-  const pairs = devBots.map((bot) => ({
-    bot,
-    appId: resolveAppId(bot, null)
-  })).filter((item): item is { bot: DevBotDto; appId: string } => Boolean(item.appId));
+  const explicitIds = parseCsvSet(env.DISCLOUD_APP_IDS);
+  const mappedAppIds = new Set(parseAppIdMap().values());
+  const allowedAppIds = new Set([...explicitIds, ...mappedAppIds]);
+  const pairs = devBots
+    .map((bot) => ({
+      bot,
+      appId: resolveAppId(bot, null)
+    }))
+    .filter((item): item is { bot: DevBotDto; appId: string } => {
+      if (!item.appId) {
+        return false;
+      }
+
+      return allowedAppIds.size === 0 ? false : allowedAppIds.has(item.appId);
+    });
   const used = new Set(pairs.map((item) => item.appId));
 
   for (const appId of explicitIds) {
@@ -423,7 +433,17 @@ function resolveAppId(bot: DevBotDto | undefined | null, fallback: string | null
     if (mapped) return mapped;
   }
 
-  return bot?.clientId ?? fallback;
+  const explicitIds = parseCsvSet(env.DISCLOUD_APP_IDS);
+
+  if (fallback && (explicitIds.size === 0 || explicitIds.has(fallback))) {
+    return fallback;
+  }
+
+  return null;
+}
+
+function parseCsvSet(value: string) {
+  return new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
 }
 
 function parseAppIdMap() {
@@ -471,7 +491,8 @@ function normalizeSnapshot(input: {
   const normalizedStatus = normalizeDiscloudStatus(rawStatus);
   const alerts = alertsForMetrics(normalizedStatus, cpu, readNumber(status.memoryUsage), disk.percent);
   const startedAt = readDate(status.startedAt);
-  const addedAt = readDateFromTimestamp(readNumber(app.addedTimestamp));
+  const lastRestart = readString(status.lastRestart) ?? readString(status.last_restart);
+  const addedAt = readDateFromTimestamp(readNumber(app.addedAtTimestamp) ?? readNumber(app.addedTimestamp));
 
   return {
     botId: input.bot.id,
@@ -483,7 +504,7 @@ function normalizeSnapshot(input: {
     status: normalizedStatus,
     region: readString(app.region),
     plan: readString(app.plan),
-    uptime: readString(status.lastRestart),
+    uptime: lastRestart,
     onlineSince: startedAt,
     lastStartedAt: startedAt,
     nodeVersion: readString(app.lang) || "node",
@@ -507,9 +528,12 @@ function normalizeSnapshot(input: {
 }
 
 function normalizeTerminal(logs: unknown) {
+  const apps = readPayloadValue(logs, "apps");
+  const terminal = readPayloadValue(apps, "terminal") ?? readPayloadValue(logs, "terminal") ?? logs;
+
   return {
-    full: String(readPayloadValue(logs, "big") ?? readPayloadValue(logs, "full") ?? readPayloadValue(logs, "logs") ?? readPayloadValue(logs, "message") ?? ""),
-    small: String(readPayloadValue(logs, "small") ?? readPayloadValue(logs, "summary") ?? ""),
+    full: String(readPayloadValue(terminal, "big") ?? readPayloadValue(terminal, "full") ?? readPayloadValue(logs, "logs") ?? readPayloadValue(logs, "message") ?? ""),
+    small: String(readPayloadValue(terminal, "small") ?? readPayloadValue(terminal, "summary") ?? ""),
     updatedAt: new Date().toISOString()
   };
 }

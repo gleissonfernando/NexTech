@@ -4253,27 +4253,43 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
 
   useEffect(() => {
     if (!guild) return;
+    const guildId = guild.id;
     let active = true;
     setLoading(true);
-    Promise.all([getFivemGoals(guild.id, botId), getGuildLiveOptions(guild.id, botId)])
-      .then(([dashboard, options]) => {
+    async function loadGoals() {
+      try {
+        const dashboard = await getFivemGoals(guildId, botId);
         if (!active) return;
+
         setSettings(dashboard.settings);
         setEntries(dashboard.entries);
         setConfigs(dashboard.configs ?? []);
         setSubmissions(dashboard.submissions ?? []);
         setReport(dashboard.report ?? null);
         setDraft(null);
-        setChannels(options.channels);
-        setCategories((options.categories ?? []).map((category) => ({ ...category, parentId: null, type: "text" as const })));
-        setRoles(options.roles);
-      })
-      .catch(() => {
-        if (active) setError("Não foi possível carregar metas FiveM.");
-      })
-      .finally(() => {
+
+        try {
+          const options = await getGuildLiveOptions(guildId, botId);
+          if (!active) return;
+
+          setChannels(options.channels);
+          setCategories((options.categories ?? []).map((category) => ({ ...category, parentId: null, type: "text" as const })));
+          setRoles(options.roles);
+        } catch (optionsError) {
+          if (!active) return;
+          setChannels([]);
+          setCategories([]);
+          setRoles([]);
+          setError(readResponseMessage(optionsError) ?? "Não foi possível carregar os canais e cargos auxiliares das metas FiveM.");
+        }
+      } catch (error) {
+        if (active) setError(readResponseMessage(error) ?? "Não foi possível carregar metas FiveM.");
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    }
+
+    void loadGoals();
     return () => {
       active = false;
     };
