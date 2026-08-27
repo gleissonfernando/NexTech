@@ -2313,26 +2313,29 @@ async function sendTicketOpenedDm(guild: Guild, userId: string, input: { channel
     const user = await guild.client.users.fetch(userId).catch(() => null);
     if (!user) return false;
     const url = ticketChannelUrl(guild.id, input.channelId);
-    await user.send({
+    const payload = componentsV2Payload({
+      accentColor: 0x5865f2,
       allowedMentions: { parse: [] },
       components: [
+        { type: 10, content: [
+          "## 🎫 Ticket aberto com sucesso",
+          "",
+          "Seu ticket foi criado.",
+          "",
+          `Número: #${input.ticketId}`,
+          `Servidor: ${input.guildName}`,
+          `Status: ${input.status}`,
+          `Aberto em: <t:${Math.floor(Date.parse(input.createdAt) / 1000)}:F>`,
+          "",
+          "Nossa equipe foi avisada e responderá assim que possível."
+        ].join("\n") },
+        { type: 14, divider: true, spacing: 1 },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setLabel("Acessar Ticket").setEmoji("🎫").setStyle(ButtonStyle.Link).setURL(url)
         )
-      ],
-      content: [
-        "## 🎫 Ticket aberto com sucesso",
-        "",
-        "Seu ticket foi criado.",
-        "",
-        `Número: #${input.ticketId}`,
-        `Servidor: ${input.guildName}`,
-        `Status: ${input.status}`,
-        `Aberto em: <t:${Math.floor(Date.parse(input.createdAt) / 1000)}:F>`,
-        "",
-        "Nossa equipe foi avisada e responderá assim que possível."
-      ].join("\n")
-    });
+      ]
+    }) as MessageCreateOptions;
+    await user.send(payload);
     return true;
   } catch {
     return false;
@@ -2343,15 +2346,22 @@ async function sendTicketCallDm(guild: Guild, userId: string, ticketUrl: string)
   try {
     const user = await guild.client.users.fetch(userId).catch(() => null);
     if (!user) return false;
-    await user.send({
+    const payload = componentsV2Payload({
+      accentColor: 0x5865f2,
       allowedMentions: { parse: [] },
       components: [
+        { type: 10, content: [
+          "## 🔔 A equipe está aguardando sua resposta",
+          "",
+          "A equipe responsável pelo seu ticket está aguardando sua resposta."
+        ].join("\n") },
+        { type: 14, divider: true, spacing: 1 },
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setLabel("Acessar meu ticket").setEmoji("🎫").setStyle(ButtonStyle.Link).setURL(ticketUrl)
         )
-      ],
-      content: "A equipe responsável pelo seu ticket está aguardando sua resposta."
-    });
+      ]
+    }) as MessageCreateOptions;
+    await user.send(payload);
     return true;
   } catch {
     return false;
