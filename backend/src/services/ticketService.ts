@@ -217,8 +217,11 @@ export async function getTicketByChannel(channelId: string, botId?: string | nul
   const normalizedBotId = normalizeBotId(botId);
   try {
     const { tickets } = await getMongoCollections();
-    const ticket = await tickets.findOne({ channelId, ...scopedQuery(guildId, normalizedBotId) });
-    return ticket ? toDto(ticket) : null;
+    for (const query of ticketChannelLookupQueries(channelId, guildId, normalizedBotId)) {
+      const ticket = await tickets.findOne(query);
+      if (ticket) return toDto(ticket);
+    }
+    return null;
   } catch {
     return memoryTickets.find((ticket) => ticket.channelId === channelId && ticket.botId === normalizedBotId && (!guildId || ticket.guildId === guildId)) ?? null;
   }
@@ -228,8 +231,11 @@ export async function getTicketById(ticketId: string, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   try {
     const { tickets } = await getMongoCollections();
-    const ticket = await tickets.findOne({ _id: ticketId, ...scopedQuery(undefined, normalizedBotId) });
-    return ticket ? toDto(ticket) : null;
+    for (const query of ticketIdLookupQueries(ticketId, normalizedBotId)) {
+      const ticket = await tickets.findOne(query);
+      if (ticket) return toDto(ticket);
+    }
+    return null;
   } catch {
     return memoryTickets.find((ticket) => ticket.id === ticketId && ticket.botId === normalizedBotId) ?? null;
   }
@@ -244,29 +250,35 @@ export async function updateTicketStatus(ticketId: string, botId: string | null,
     }
   }
   const closesReservation = input.status ? !isActiveTicketStatus(input.status) : false;
+  const ticket = await getTicketById(ticketId, botId);
+  if (!ticket) return null;
   await tickets.updateOne(
-    { _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) },
+    { _id: ticketId },
     closesReservation ? { $set, $unset: { activeKey: "" } } : { $set }
   );
-  const ticket = await tickets.findOne({ _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) });
-  return ticket ? toDto(ticket) : null;
+  const updated = await tickets.findOne({ _id: ticketId });
+  return updated ? toDto(updated) : null;
 }
 
 export async function updateTicketChannel(ticketId: string, botId: string | null, channelId: string | null) {
   const { tickets } = await getMongoCollections();
-  const scope = { _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) };
-  await tickets.updateOne(scope, { $set: { channelId } });
-  const ticket = await tickets.findOne(scope);
-  return ticket ? toDto(ticket) : null;
+  const ticket = await getTicketById(ticketId, botId);
+  if (!ticket) return null;
+  await tickets.updateOne({ _id: ticketId }, { $set: { channelId } });
+  const updated = await tickets.findOne({ _id: ticketId });
+  return updated ? toDto(updated) : null;
 }
 
 export async function claimTicket(ticketId: string, botId: string | null, userId: string) {
   try {
     const { tickets } = await getMongoCollections();
+    const ticket = await getTicketById(ticketId, botId);
+    if (!ticket) {
+      return { claimed: false, ticket: null };
+    }
     const claimed = await tickets.findOneAndUpdate(
       {
         _id: ticketId,
-        ...scopedQuery(undefined, normalizeBotId(botId)),
         responsibleUserId: { $in: [null, ""] },
         status: { $nin: ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"] }
       },
@@ -283,10 +295,11 @@ export async function claimTicket(ticketId: string, botId: string | null, userId
       return { claimed: true, ticket: toDto(claimed) };
     }
 
-    const existing = await tickets.findOne({ _id: ticketId, ...scopedQuery(undefined, normalizeBotId(botId)) });
+    const existing = await tickets.findOne({ _id: ticketId });
     return { claimed: false, ticket: existing ? toDto(existing) : null };
   } catch (error) {
-    const ticket = memoryTickets.find((item) => item.id === ticketId && item.botId === normalizeBotId(botId));
+    const normalizedBotId = normalizeBotId(botId);
+    const ticket = memoryTickets.find((item) => item.id === ticketId && (item.botId === normalizedBotId || (!normalizedBotId && item.botId === null)));
     if (!ticket || ticket.responsibleUserId || ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"].includes(ticket.status)) {
       return { claimed: false, ticket: ticket ?? null };
     }
@@ -349,6 +362,22 @@ function toDto(ticket: MongoTicket): TicketDto {
 function normalizeBotId(botId: string | null | undefined) {
   const normalized = botId?.trim();
   return normalized ? normalized : null;
+}
+
+export function ticketIdLookupQueries(ticketId: string, botId: string | null): Array<Record<string, unknown>> {
+  const queries: Array<Record<string, unknown>> = [{ _id: ticketId, ...scopedQuery(undefined, botId) }];
+  if (botId) {
+    queries.push({ _id: ticketId });
+  }
+  return queries;
+}
+
+export function ticketChannelLookupQueries(channelId: string, guildId: string | undefined, botId: string | null): Array<Record<string, unknown>> {
+  const queries: Array<Record<string, unknown>> = [{ channelId, ...scopedQuery(guildId, botId) }];
+  if (botId) {
+    queries.push(guildId ? { channelId, guildId } : { channelId });
+  }
+  return queries;
 }
 
 function scopedQuery(guildId: string | undefined, botId: string | null) {
