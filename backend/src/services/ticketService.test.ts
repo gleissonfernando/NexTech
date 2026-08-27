@@ -22,7 +22,8 @@ test("busca de ticket por id tenta o escopo do bot e depois o legado sem botId",
         { botId: null },
         { botId: { $exists: false } }
       ]
-    }
+    },
+    { _id: "ticket-1" }
   ]);
 });
 
@@ -39,6 +40,7 @@ test("busca de ticket por canal tenta o escopo do bot e depois o legado", () => 
         { botId: null },
         { botId: { $exists: false } }
       ]
-    }
+    },
+    { channelId: "channel-1", guildId: "guild-1" }
   ]);
 });

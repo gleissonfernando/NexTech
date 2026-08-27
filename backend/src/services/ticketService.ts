@@ -366,17 +366,13 @@ function normalizeBotId(botId: string | null | undefined) {
 
 export function ticketIdLookupQueries(ticketId: string, botId: string | null): Array<Record<string, unknown>> {
   const queries: Array<Record<string, unknown>> = [{ _id: ticketId, ...scopedQuery(undefined, botId) }];
-  if (botId) {
-    queries.push({ _id: ticketId });
-  }
+  queries.push({ _id: ticketId });
   return queries;
 }
 
 export function ticketChannelLookupQueries(channelId: string, guildId: string | undefined, botId: string | null): Array<Record<string, unknown>> {
   const queries: Array<Record<string, unknown>> = [{ channelId, ...scopedQuery(guildId, botId) }];
-  if (botId) {
-    queries.push(guildId ? { channelId, guildId } : { channelId });
-  }
+  queries.push(guildId ? { channelId, guildId } : { channelId });
   return queries;
 }
 
