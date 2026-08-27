@@ -4,7 +4,8 @@ import {
   defaultFivemGoalSettings,
   fivemGoalPeriodContains,
   nextFivemGoalPeriodWindow,
-  resolveFivemGoalPeriodWindow
+  resolveFivemGoalPeriodWindow,
+  selectFivemGoalPeriodForRead
 } from "./fivemGoalService";
 
 const previousPeriod = {
@@ -40,4 +41,25 @@ test("janela semanal configurada separa registros no horario exato do fechamento
   const atCut = resolveFivemGoalPeriodWindow(settings, new Date("2026-08-02T18:00:00.000Z"));
   assert.equal(atCut.start.toISOString(), nextPeriod.startAt.toISOString());
   assert.equal(atCut.end.toISOString(), nextPeriod.endAt.toISOString());
+});
+
+test("leitura do periodo prefere ativo e usa o periodo em fechamento quando necessario", () => {
+  const blockedPeriod = {
+    _id: "blocked",
+    endAt: new Date("2026-08-17T18:00:00.000Z"),
+    startAt: new Date("2026-08-10T18:00:00.000Z"),
+    status: "CLOSING" as const,
+    updatedAt: new Date("2026-08-11T10:00:00.000Z")
+  };
+  const activePeriod = {
+    _id: "active",
+    endAt: new Date("2026-08-24T18:00:00.000Z"),
+    startAt: new Date("2026-08-17T18:00:00.000Z"),
+    status: "ACTIVE" as const,
+    updatedAt: new Date("2026-08-17T19:00:00.000Z")
+  };
+
+  assert.equal(selectFivemGoalPeriodForRead([blockedPeriod, activePeriod])?._id, "active");
+  assert.equal(selectFivemGoalPeriodForRead([blockedPeriod])?._id, "blocked");
+  assert.equal(selectFivemGoalPeriodForRead([]), null);
 });

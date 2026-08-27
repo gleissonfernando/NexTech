@@ -617,6 +617,31 @@ async function getOrCreateActiveFivemGoalPeriod(guildId: string, botId?: string 
   });
 }
 
+export function selectFivemGoalPeriodForRead(periods: Array<Pick<MongoFivemGoalPeriod, "_id" | "endAt" | "startAt" | "status" | "updatedAt">>) {
+  const activePeriods = periods.filter((period) => period.status === "ACTIVE");
+  if (activePeriods.length > 0) {
+    return activePeriods.sort((a, b) => b.startAt.getTime() - a.startAt.getTime() || b.updatedAt.getTime() - a.updatedAt.getTime())[0] ?? null;
+  }
+
+  const blockedPeriods = periods.filter((period) => period.status === "CLOSING" || period.status === "ERRO_NO_FECHAMENTO");
+  if (blockedPeriods.length > 0) {
+    return blockedPeriods.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.startAt.getTime() - a.startAt.getTime())[0] ?? null;
+  }
+
+  return null;
+}
+
+async function getFivemGoalPeriodForRead(guildId: string, botId?: string | null, now = new Date()): Promise<Pick<MongoFivemGoalPeriod, "_id" | "endAt" | "startAt" | "status">> {
+  const normalizedBotId = normalizeBotId(botId);
+  const { fivemGoalPeriods } = await getMongoCollections();
+  const periods = await fivemGoalPeriods.find({
+    ...scopeQuery(guildId, normalizedBotId),
+    status: { $in: ["ACTIVE", "CLOSING", "ERRO_NO_FECHAMENTO"] }
+  }).sort({ updatedAt: -1, startAt: -1 }).limit(20).toArray();
+  const selected = selectFivemGoalPeriodForRead(periods);
+  return selected ?? getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId, now);
+}
+
 function periodRecordWindowQuery(period: Pick<MongoFivemGoalPeriod, "_id" | "startAt" | "endAt">) {
   const window = { $gte: period.startAt, $lt: period.endAt };
   return {
@@ -691,7 +716,7 @@ async function buildFivemGoalReportForPeriod(
 
 export async function getFivemGoalRankingRuntime(guildId: string, botId?: string | null): Promise<FivemGoalRankingRuntimeDto> {
   const normalizedBotId = normalizeBotId(botId);
-  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const period = await getFivemGoalPeriodForRead(guildId, normalizedBotId);
   const { fivemGoalEntries, manualRegistrationSubmissions } = await getMongoCollections();
   const [settings, entries, registrations] = await Promise.all([
     getFivemGoalSettings(guildId, normalizedBotId),
@@ -774,7 +799,7 @@ export async function getCurrentWeekFivemGoalReport(
   knownConfigs?: FivemGoalConfigDto[]
 ): Promise<FivemGoalReportDto> {
   const normalizedBotId = normalizeBotId(botId);
-  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const period = await getFivemGoalPeriodForRead(guildId, normalizedBotId);
   return buildFivemGoalReportForPeriod(guildId, normalizedBotId, period, knownConfigs);
 }
 
@@ -1559,7 +1584,7 @@ export async function listFivemGoalConfigs(guildId: string, botId?: string | nul
     await ensureDefaultGoalConfigFromLegacy(await getFivemGoalSettings(guildId, normalizedBotId), null);
   }
   const { fivemGoalConfigs, fivemGoalSubmissions } = await getMongoCollections();
-  const activePeriod = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const activePeriod = await getFivemGoalPeriodForRead(guildId, normalizedBotId);
   const [rows, progress] = await Promise.all([
     fivemGoalConfigs.find({ ...scopeQuery(guildId, normalizedBotId), deletedAt: null }).sort({ order: 1, createdAt: 1 }).limit(100).toArray(),
     fivemGoalSubmissions.aggregate<{ _id: string; currentValue: number; totalParticipants: number }>([
@@ -1783,7 +1808,7 @@ export async function listFivemGoalEntries(guildId: string, botId?: string | nul
 
 export async function listCurrentFivemGoalCorrectionCandidates(guildId: string, botId: string | null, userId: string) {
   const normalizedBotId = normalizeBotId(botId);
-  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const period = await getFivemGoalPeriodForRead(guildId, normalizedBotId);
   const { fivemGoalEntries } = await getMongoCollections();
   const cutoffs = await getFivemGoalUserClosureCutoffs(guildId, normalizedBotId, period._id, [userId]);
   const rows = await fivemGoalEntries.find({
@@ -2011,7 +2036,7 @@ export async function listFivemGoalSubmissions(guildId: string, botId?: string |
 
 export async function getFivemGoalUserRuntime(guildId: string, userId: string, botId?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
-  const period = await getOrCreateActiveFivemGoalPeriod(guildId, normalizedBotId);
+  const period = await getFivemGoalPeriodForRead(guildId, normalizedBotId);
   const { fivemGoalSubmissions } = await getMongoCollections();
   const [configs, submissions, cutoffs] = await Promise.all([
     listFivemGoalConfigs(guildId, normalizedBotId, true),
