@@ -8614,7 +8614,7 @@ function TicketPanelConfigurator({
     setDraft((current) => ({
       ...current,
       ticketPanelOptions: current.ticketPanelOptions.map((option, optionIndex) => (
-        optionIndex === index ? normalizeTicketOptionDraft({ ...option, ...patch }, index) : option
+        optionIndex === index ? { ...normalizeTicketOptionDraft({ ...option, ...patch }, index), draftId: option.draftId } : option
       ))
     }));
   }
@@ -8640,7 +8640,8 @@ function TicketPanelConfigurator({
           priority: "normal" as const,
           supportRoleIds: [],
           ticketType: "support",
-          value: `atendimento-${current.ticketPanelOptions.length + 1}`
+          value: `atendimento-${current.ticketPanelOptions.length + 1}`,
+          draftId: crypto.randomUUID()
         }
       ].slice(0, 25)
     }));
@@ -8668,7 +8669,10 @@ function TicketPanelConfigurator({
       nextOptions[targetIndex] = currentOption;
       return {
         ...current,
-        ticketPanelOptions: nextOptions.map((option, optionIndex) => normalizeTicketOptionDraft({ ...option, position: optionIndex + 1 }, optionIndex))
+        ticketPanelOptions: nextOptions.map((option, optionIndex) => ({
+          ...normalizeTicketOptionDraft({ ...option, position: optionIndex + 1 }, optionIndex),
+          draftId: option.draftId
+        }))
       };
     });
   }
@@ -8676,7 +8680,7 @@ function TicketPanelConfigurator({
   function buildPayload() {
     return {
       ...draft,
-      ticketPanelOptions: draft.ticketPanelOptions.map(normalizeTicketOptionDraft)
+      ticketPanelOptions: draft.ticketPanelOptions.map(({ draftId: _draftId, ...option }, index) => normalizeTicketOptionDraft(option, index))
     };
   }
 
@@ -8806,7 +8810,7 @@ function TicketPanelConfigurator({
           </div>
 
           {draft.ticketPanelOptions.map((option, index) => (
-            <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3" key={`${option.value}-${index}`}>
+            <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3" key={option.draftId}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-white">{option.emoji ? `${option.emoji} ` : ""}{option.label}</p>
@@ -9422,18 +9426,19 @@ function normalizeReportCategory(category: ReportSystemCategory, index: number):
   };
 }
 
-type TicketPanelDraft = Pick<
-  GuildSettings,
-  | "ticketCategoryId"
-  | "ticketPanelChannelId"
-  | "ticketPanelTitle"
-  | "ticketPanelDescription"
-  | "ticketPanelInfoText"
-  | "ticketPanelFooterText"
-  | "ticketPanelColor"
-  | "ticketPanelPlaceholder"
-  | "ticketPanelOptions"
->;
+type TicketPanelOptionDraft = TicketPanelOption & { draftId: string };
+
+type TicketPanelDraft = {
+  ticketCategoryId: string | null;
+  ticketPanelChannelId: string | null;
+  ticketPanelTitle: string;
+  ticketPanelDescription: string;
+  ticketPanelInfoText: string;
+  ticketPanelFooterText: string;
+  ticketPanelColor: string;
+  ticketPanelPlaceholder: string;
+  ticketPanelOptions: TicketPanelOptionDraft[];
+};
 
 function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
   return {
@@ -9445,7 +9450,7 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
     ticketPanelFooterText: settings?.ticketPanelFooterText ?? "",
     ticketPanelColor: settings?.ticketPanelColor ?? "#FFD500",
     ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione uma categoria de atendimento...",
-    ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : defaultTicketPanelOptions()).map(normalizeTicketOptionDraft)
+    ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : defaultTicketPanelOptions()).map((option, index) => normalizeTicketOptionDraft(option, index))
   };
 }
 
@@ -9462,8 +9467,9 @@ function hasTicketCategoryForEveryOption(draft: TicketPanelDraft) {
   return Boolean(draft.ticketCategoryId || draft.ticketPanelOptions.every((option) => option.categoryId));
 }
 
-function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): TicketPanelOption {
+function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): TicketPanelOptionDraft {
   const label = option.label.trim() || `Atendimento ${index + 1}`;
+  const draftId = (option as Partial<TicketPanelOptionDraft>).draftId;
   return {
     categoryId: option.categoryId?.trim() || null,
     description: option.description?.trim() || null,
@@ -9480,7 +9486,8 @@ function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): T
     priority: option.priority ?? "normal",
     supportRoleIds: [...new Set(option.supportRoleIds ?? [])],
     ticketType: option.ticketType?.trim().toLowerCase() || (option.moduleType === "police" ? "police" : slugTicketOption(label, index)),
-    value: option.value?.trim() || slugTicketOption(label, index)
+    value: option.value?.trim() || slugTicketOption(label, index),
+    draftId: typeof draftId === "string" && draftId ? draftId : crypto.randomUUID()
   };
 }
 
