@@ -1823,10 +1823,12 @@ async function getTicketOrRecover(
   const ticket = await context.api.getTicket(ticketId).catch(() => null);
   if (ticket) {
     const currentBotId = interaction.client.user?.id ?? null;
-    if (ticket.guildId !== interaction.guildId || (ticket.botId && currentBotId && ticket.botId !== currentBotId)) {
+    const currentChannelId = interaction.channelId ?? interaction.channel?.id ?? null;
+    if (!isTicketScopeCompatible(ticket, interaction.guildId ?? null, currentBotId, currentChannelId)) {
       console.warn("[ticket-panel] ticket rejeitado por escopo divergente", {
         currentBotId,
         expectedBotId: ticket.botId,
+        currentChannelId,
         expectedGuildId: ticket.guildId,
         guildId: interaction.guildId,
         ticketId
@@ -1839,6 +1841,17 @@ async function getTicketOrRecover(
   const channelTicket = await context.api.getTicketByChannel(interaction.channel.id, interaction.guildId ?? undefined).catch(() => null);
   if (channelTicket && channelTicket.id === ticketId) return channelTicket;
   return recoverTicketRecord(interaction.channel, context, ticketId);
+}
+
+export function isTicketScopeCompatible(
+  ticket: Pick<TicketRecord, "botId" | "channelId" | "guildId">,
+  currentGuildId: string | null,
+  currentBotId: string | null,
+  currentChannelId: string | null
+) {
+  if (ticket.guildId !== currentGuildId) return false;
+  if (!ticket.botId || !currentBotId || ticket.botId === currentBotId) return true;
+  return Boolean(ticket.channelId && currentChannelId && ticket.channelId === currentChannelId);
 }
 
 async function recoverTicketRecord(channel: TextChannel, context: BotContext, expectedTicketId?: string) {
