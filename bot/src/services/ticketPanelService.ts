@@ -1240,7 +1240,10 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     guildId: interaction.guildId!,
     metadata: { transcriptId: transcript.transcript.id }
   }).catch(() => null);
-  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}.`);
+  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal será removido em instantes.`);
+  if (interaction.channel?.type === ChannelType.GuildText) {
+    setTimeout(() => void (interaction.channel as TextChannel).delete(`Ticket ${ticketId} finalizado com transcript enviado ao autor.`).catch(() => null), 5_000).unref();
+  }
 }
 
 function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
