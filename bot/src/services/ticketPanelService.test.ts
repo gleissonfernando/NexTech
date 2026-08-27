@@ -35,8 +35,8 @@ test("ticket aceita botId diferente quando a interação vem do mesmo canal", ()
   );
 });
 
-test("ticket de suporte preserva o canal ao encerrar", () => {
-  assert.equal(shouldDeleteSupportTicketChannelAfterClose(), false);
+test("ticket de suporte apaga o canal ao encerrar", () => {
+  assert.equal(shouldDeleteSupportTicketChannelAfterClose(), true);
 });
 
 test("payload de ticket assumido aponta para o canal correto", () => {

@@ -1487,11 +1487,54 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
       transcriptUrl: resolveTranscriptUrl(transcript)
     })).catch(() => null);
   }
-  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal foi preservado para auditoria e histórico.`);
+  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal será apagado em instantes.`);
+  const channelIdToDelete = ticket.channelId ?? interaction.channelId;
+  if (channelIdToDelete) {
+    scheduleTicketChannelDeletion({
+      channelId: channelIdToDelete,
+      context,
+      guild: interaction.guild!,
+      ticketId
+    });
+  }
 }
 
 export function shouldDeleteSupportTicketChannelAfterClose() {
-  return false;
+  return true;
+}
+
+function scheduleTicketChannelDeletion(input: {
+  channelId: string;
+  context: BotContext;
+  guild: Guild;
+  ticketId: string;
+}) {
+  setTimeout(() => {
+    void deleteTicketChannel(input).catch((error) => {
+      console.warn("[ticket-panel] falha ao apagar canal finalizado:", error instanceof Error ? error.message : error);
+    });
+  }, 5_000).unref();
+}
+
+async function deleteTicketChannel(input: {
+  channelId: string;
+  context: BotContext;
+  guild: Guild;
+  ticketId: string;
+}) {
+  const channel = await input.guild.channels.fetch(input.channelId).catch(() => null);
+
+  if (!channel) {
+    await input.context.api.updateTicketChannel(input.ticketId, null).catch(() => null);
+    return;
+  }
+
+  if (channel.type !== ChannelType.GuildText) {
+    throw new Error(`Canal ${input.channelId} não é um canal de texto.`);
+  }
+
+  await channel.delete(`Ticket ${input.ticketId} finalizado com transcript gerado.`);
+  await input.context.api.updateTicketChannel(input.ticketId, null).catch(() => null);
 }
 
 function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
