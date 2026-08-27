@@ -93,6 +93,42 @@ test("recupera metadados de ticket antigo pelo texto do painel", () => {
   );
 });
 
+test("recupera metadados de ticket pelo novo layout visual", () => {
+  assert.deepEqual(
+    parseTicketPanelText(
+      [
+        "## 🎧 Atendimento Core Network",
+        "Olá <@142687249020158018>, seja bem-vindo ao seu ticket.",
+        "",
+        "**📁 Categoria do atendimento**",
+        "```",
+        "Compras",
+        "```",
+        "**📄 Assunto do ticket**",
+        "```",
+        "queria fazer um orçamento",
+        "```",
+        "**ID do Ticket:** #f2180fe3-84a0-4e18-a81a-9ff827ba1777"
+      ].join("\n"),
+      { guildId: "1505184193766752386", name: "compras-vilaofps7", parentId: "222222222222222222" },
+      "f2180fe3-84a0-4e18-a81a-9ff827ba1777",
+      "1492325134550302952"
+    ),
+    {
+      botId: "1492325134550302952",
+      categoryId: "222222222222222222",
+      guildId: "1505184193766752386",
+      moduleType: "default",
+      openerId: "142687249020158018",
+      panelId: "222222222222222222",
+      responsibleRoleId: null,
+      subject: "queria fazer um orçamento",
+      ticketId: "f2180fe3-84a0-4e18-a81a-9ff827ba1777",
+      ticketType: "compras"
+    }
+  );
+});
+
 test("reserva pendente recente bloqueia concorrência e expira para reconciliação", () => {
   const now = Date.parse("2026-08-01T12:00:00.000Z");
   assert.equal(isPendingTicketLeaseActive("2026-08-01T11:59:30.000Z", now), true);

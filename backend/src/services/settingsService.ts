@@ -614,79 +614,26 @@ const DEFAULT_TICKET_PANEL_INFO_TEXT = [
   "Em caso de transferência de bot é necessário comprovante"
 ].join("\n");
 const DEFAULT_TICKET_PANEL_PLACEHOLDER = "Selecione uma categoria de atendimento...";
+const DEFAULT_TICKET_PANEL_OPTION: TicketPanelOptionDto = {
+  categoryId: null,
+  description: "Atendimento geral",
+  emoji: fixedSystemEmojiText("engrenagem"),
+  enabled: true,
+  initialMessage: "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário.",
+  label: "Suporte",
+  logChannelId: null,
+  maxOpenTicketsPerUser: 1,
+  mentionRoleId: null,
+  moduleType: "default",
+  openingHours: null,
+  position: 1,
+  priority: "normal",
+  supportRoleIds: [],
+  ticketType: "support",
+  value: "suporte"
+};
 const DEFAULT_TICKET_PANEL_OPTIONS: TicketPanelOptionDto[] = [
-  {
-    categoryId: null,
-    description: "Pagamentos, cobranças e mensalidades.",
-    emoji: fixedSystemEmojiText("caixa"),
-    enabled: true,
-    initialMessage: "Este ticket foi aberto no setor Financeiro. Envie os detalhes relacionados ao pagamento, mensalidade, cobrança ou plano contratado. Não compartilhe dados bancários sensíveis ou informações confidenciais.",
-    label: "Financeiro",
-    logChannelId: null,
-    maxOpenTicketsPerUser: 1,
-    mentionRoleId: null,
-    moduleType: "default",
-    openingHours: null,
-    position: 1,
-    priority: "normal",
-    supportRoleIds: [],
-    ticketType: "financeiro",
-    value: "financeiro"
-  },
-  {
-    categoryId: null,
-    description: "Problemas técnicos, bot offline e configurações.",
-    emoji: fixedSystemEmojiText("engrenagem"),
-    enabled: true,
-    initialMessage: "Este ticket foi aberto no setor de Suporte. Explique o problema, informe quando ele começou e, se possível, envie imagens ou vídeos do erro.",
-    label: "Suporte",
-    logChannelId: null,
-    maxOpenTicketsPerUser: 1,
-    mentionRoleId: null,
-    moduleType: "default",
-    openingHours: null,
-    position: 2,
-    priority: "normal",
-    supportRoleIds: [],
-    ticketType: "suporte",
-    value: "suporte"
-  },
-  {
-    categoryId: null,
-    description: "Perguntas gerais sobre planos, módulos e dashboard.",
-    emoji: fixedSystemEmojiText("interrogacao"),
-    enabled: true,
-    initialMessage: "Este ticket foi aberto para esclarecimento de dúvidas. Envie sua pergunta com o máximo de detalhes possível para que a equipe consiga orientar corretamente.",
-    label: "Dúvidas",
-    logChannelId: null,
-    maxOpenTicketsPerUser: 1,
-    mentionRoleId: null,
-    moduleType: "default",
-    openingHours: null,
-    position: 3,
-    priority: "normal",
-    supportRoleIds: [],
-    ticketType: "duvidas",
-    value: "duvidas"
-  },
-  {
-    categoryId: null,
-    description: "Contratação, desenvolvimento personalizado e automações.",
-    emoji: fixedSystemEmojiText("prancheta"),
-    enabled: true,
-    initialMessage: "Este ticket foi aberto para solicitação de orçamento. Explique o sistema desejado, as funcionalidades necessárias e informe se já possui algum projeto em funcionamento.",
-    label: "Orçamento",
-    logChannelId: null,
-    maxOpenTicketsPerUser: 1,
-    mentionRoleId: null,
-    moduleType: "default",
-    openingHours: null,
-    position: 4,
-    priority: "normal",
-    supportRoleIds: [],
-    ticketType: "orcamento",
-    value: "orcamento"
-  }
+  DEFAULT_TICKET_PANEL_OPTION
 ];
 const REPORT_BUTTON_KEYS: ReportSystemButtonKey[] = ["claim", "reply", "status", "requestEvidence", "addMember", "removeMember", "transcript", "close", "reopen", "delete"];
 const REPORT_LOG_KEYS: ReportSystemLogKey[] = ["opened", "closed", "replies", "statusChanged", "messagesDeleted", "anonymous", "admin"];
@@ -830,6 +777,22 @@ export async function getGuildSettings(guildId: string, botId?: string | null) {
   }
 
   return withPanelImageSettings(await withResolvedMemberPanelAssets(memorySettings.get(settingsKey(guildId, normalizedBotId)) ?? defaultSettings(guildId, normalizedBotId)));
+}
+
+export async function getTicketCategories(guildId: string, botId?: string | null, onlyEnabled = true) {
+  const settings = await getGuildSettings(guildId, botId);
+  const categories = settings.ticketPanelOptions
+    .filter((option) => !onlyEnabled || option.enabled)
+    .sort((a, b) => a.position - b.position);
+
+  return categories.length ? categories : DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
+}
+
+export async function findTicketCategory(guildId: string, botId: string | null | undefined, categoryValue: string | null | undefined) {
+  const normalizedValue = categoryValue?.trim();
+  if (!normalizedValue) return null;
+  const categories = await getTicketCategories(guildId, botId, true);
+  return categories.find((category) => category.value === normalizedValue) ?? null;
 }
 
 export async function getPersistedDashboardAccess(
@@ -1940,7 +1903,7 @@ function cleanRuleText(value: string) {
     .trim();
 }
 
-function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
+export function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
   if (!Array.isArray(value)) {
     return DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
   }
@@ -1989,10 +1952,22 @@ function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDto[] {
     .slice(0, 25);
 
   if (!options.length) return DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option }));
-  for (const defaultOption of DEFAULT_TICKET_PANEL_OPTIONS) {
-    if (seen.has(defaultOption.value)) continue;
-    options.push({ ...defaultOption });
-    seen.add(defaultOption.value);
+  if (!options.some((option) => option.enabled)) {
+    const defaultIndex = options.findIndex((option) => option.value === DEFAULT_TICKET_PANEL_OPTION.value);
+    if (defaultIndex >= 0) {
+      const currentDefault = options[defaultIndex] ?? DEFAULT_TICKET_PANEL_OPTION;
+      options[defaultIndex] = {
+        ...currentDefault,
+        description: currentDefault.description || DEFAULT_TICKET_PANEL_OPTION.description,
+        enabled: true,
+        label: currentDefault.label || DEFAULT_TICKET_PANEL_OPTION.label
+      };
+    } else {
+      options.push({
+        ...DEFAULT_TICKET_PANEL_OPTION,
+        position: options.length + 1
+      });
+    }
   }
   return options.sort((a, b) => a.position - b.position).slice(0, 25);
 }

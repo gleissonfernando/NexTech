@@ -186,6 +186,7 @@ import {
     type SystemHealthResponse,
     type SystemMetricsResponse,
     type Ticket,
+    type TicketPanelOption,
     type TwitchChannelPreview,
     type TwitchClipChannelPreview,
     type UpdateKickNotificationPayload,
@@ -587,6 +588,16 @@ export async function getGuildSettings(guildId: string, botId?: string | null) {
     params: botParams(botId)
   });
   return data.settings;
+}
+
+export async function getTicketCategories(guildId: string, botId?: string | null) {
+  const { data } = await api.get<{ categories: TicketPanelOption[] }>("/tickets/categories", {
+    params: {
+      guildId,
+      ...botParams(botId)
+    }
+  });
+  return data.categories;
 }
 
 export async function getGuildLiveOptions(guildId: string, botId?: string | null, refresh = false) {

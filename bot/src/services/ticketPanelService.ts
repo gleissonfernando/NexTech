@@ -755,6 +755,14 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     subject: updatedTicket?.subject ?? ticket.subject,
     ticketId
   })).catch(() => null);
+  if (interaction.guild && interaction.channel?.type === ChannelType.GuildText) {
+    await interaction.channel.send(createTicketClaimedPayload({
+      channelId: interaction.channel.id,
+      guild: interaction.guild,
+      openerId: updatedTicket?.openerId ?? ticket.openerId,
+      staffId: interaction.user.id
+    })).catch(() => null);
+  }
 }
 
 async function handleTicketCloseRequest(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
@@ -1007,10 +1015,13 @@ async function handleTicketRenameModal(interaction: ModalSubmitInteraction, cont
 
   const oldSubject = ticket.subject;
   const updated = await context.api.updateTicketStatus(ticket.id, { subject });
-  const categorySlug = slugTicketChannelName(ticket.ticketType ?? ticket.categoryId ?? ticket.categoryName ?? "ticket");
   const opener = await interaction.guild.members.fetch(ticket.openerId).catch(() => null);
-  const userSlug = slugTicketChannelName(opener?.displayName || opener?.user.username || ticket.openerId).slice(0, 32);
-  await interaction.channel.setName(`${categorySlug}-${userSlug}-${ticket.openerId.slice(-4)}`.slice(0, 96), `Ticket ${ticket.id} renomeado por ${interaction.user.id}`).catch(() => null);
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
+  const option = settings?.ticketPanelOptions.find((item) => item.value === ticket.categoryId) ?? null;
+  await interaction.channel.setName(
+    formatTicketChannelName(option, opener?.displayName || opener?.user.username || ticket.openerId),
+    `Ticket ${ticket.id} renomeado por ${interaction.user.id}`
+  ).catch(() => null);
   await editTicketPanelMessage(interaction.channel, ticket.id, createOpenTicketPayload({
     category: updated?.categoryName ?? ticket.categoryName ?? "Atendimento",
     clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
@@ -1092,6 +1103,11 @@ async function handleTicketCategoryChange(interaction: StringSelectMenuInteracti
 
   const oldCategory = ticket.categoryName ?? ticket.categoryId ?? "Atendimento";
   await interaction.channel.setParent(prerequisites.categoryId, { lockPermissions: false, reason: `Ticket ${ticket.id} alterado para ${option.label} por ${interaction.user.id}` });
+  const opener = await interaction.guild.members.fetch(ticket.openerId).catch(() => null);
+  await interaction.channel.setName(
+    formatTicketChannelName(option, opener?.displayName || opener?.user.username || ticket.openerId),
+    `Ticket ${ticket.id} alterado para ${option.label} por ${interaction.user.id}`
+  ).catch(() => null);
   await applyTicketCategoryPermissions(interaction.channel, interaction.guild, ticket.openerId, settings, option, prerequisites.staffRoleIds);
   const updated = await context.api.updateTicketStatus(ticket.id, {
     categoryId: option.value,
@@ -1240,6 +1256,15 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     guildId: interaction.guildId!,
     metadata: { transcriptId: transcript.transcript.id }
   }).catch(() => null);
+  if (interaction.guild && interaction.channel?.type === ChannelType.GuildText) {
+    await interaction.channel.send(createTicketFinalizedPayload({
+      closedByName: interaction.user.username,
+      finalNotes: ticket.finalResult ?? ticket.closeReason ?? "Atendimento concluído. Agradecemos o seu contato e ficamos à disposição para qualquer outra necessidade.",
+      guild: interaction.guild,
+      openerId: ticket.openerId,
+      transcriptUrl: resolveTranscriptUrl(transcript)
+    })).catch(() => null);
+  }
   await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal será removido em instantes.`);
   if (interaction.channel?.type === ChannelType.GuildText) {
     setTimeout(() => void (interaction.channel as TextChannel).delete(`Ticket ${ticketId} finalizado com transcript enviado ao autor.`).catch(() => null), 5_000).unref();
@@ -1641,11 +1666,10 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
   const { categoryId, me, staffRoleIds } = await validateTicketChannelPrerequisites(guild, settings, option);
   const moduleType = resolveTicketModuleType(option);
   const ticketType = resolveTicketType(option, moduleType);
-  const categorySlug = slugTicketChannelName(option.ticketType ?? option.value ?? option.label);
-  const userSlug = slugTicketChannelName(opener.displayName || opener.user.username || opener.id).slice(0, 32);
+  const channelName = formatTicketChannelName(option, opener.displayName || opener.user.username || opener.id);
 
   return guild.channels.create({
-    name: `${categorySlug}-${userSlug}-${opener.id.slice(-4)}`.slice(0, 96),
+    name: channelName,
     parent: categoryId,
     topic: createTicketChannelTopic({
       botId: guild.client.user?.id ?? null,
@@ -1678,6 +1702,19 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
     reason: `Ticket aberto por ${opener.id}: ${option.label} - ${subject}`,
     type: ChannelType.GuildText
   }).then((channel) => channel as TextChannel);
+}
+
+function formatTicketChannelName(option: Pick<TicketPanelOption, "emoji"> | null, openerName: string) {
+  const userSlug = slugTicketChannelName(openerName).slice(0, 42) || "usuario";
+  const emoji = ticketChannelEmoji(option?.emoji);
+  return `${emoji}・${userSlug}`.slice(0, 96);
+}
+
+function ticketChannelEmoji(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return "🎫";
+  if (/^<a?:[a-zA-Z0-9_]+:\d{5,32}>$/.test(normalized)) return "🎫";
+  return [...normalized][0] ?? "🎫";
 }
 
 async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildSettings, option: TicketPanelOption) {
@@ -1968,10 +2005,20 @@ function messageSearchText(message: Message) {
 export function parseTicketPanelText(text: string, channel: Pick<TextChannel, "guildId" | "parentId" | "name">, expectedTicketId?: string, botId: string | null = null): TicketRecoveryMetadata | null {
   const ticketId = text.match(/ID do Ticket:\s*#?([0-9a-f-]{36})/i)?.[1] ?? expectedTicketId ?? null;
   if (!ticketId || !/^[0-9a-f-]{36}$/i.test(ticketId) || (expectedTicketId && ticketId !== expectedTicketId)) return null;
-  const openerId = text.match(/Autor:\s*<@!?(\d{5,32})>/i)?.[1] ?? text.match(/ID do usu[aá]rio:\s*(\d{5,32})/i)?.[1] ?? null;
+  const openerId = text.match(/Autor:\s*<@!?(\d{5,32})>/i)?.[1]
+    ?? text.match(/Ol[aá]\s*<@!?(\d{5,32})>/i)?.[1]
+    ?? text.match(/ID do usu[aá]rio:\s*(\d{5,32})/i)?.[1]
+    ?? null;
   if (!openerId) return null;
-  const categoryName = cleanRecoveredTicketText(text.match(/Categoria:\s*([^\n\r]+)/i)?.[1]) ?? "Atendimento";
-  const subject = cleanRecoveredTicketText(text.match(/Acontecido:\s*([^\n\r]+)/i)?.[1] ?? text.match(/Assunto:\s*([^\n\r]+)/i)?.[1]) ?? channel.name;
+  const categoryName = cleanRecoveredTicketText(
+    text.match(/Categoria:\s*([^\n\r]+)/i)?.[1]
+      ?? text.match(/Categoria do atendimento[*\s`]*\n+([^\n\r]+)/i)?.[1]
+  ) ?? "Atendimento";
+  const subject = cleanRecoveredTicketText(
+    text.match(/Acontecido:\s*([^\n\r]+)/i)?.[1]
+      ?? text.match(/Assunto:\s*([^\n\r]+)/i)?.[1]
+      ?? text.match(/Assunto do ticket[*\s`]*\n+([^\n\r]+)/i)?.[1]
+  ) ?? channel.name;
   const categoryId = channel.parentId ?? slugRecoveredTicketToken(categoryName) ?? "ticket";
   const responsibleRoleId = text.match(/<@&(\d{5,32})>/)?.[1] ?? null;
   return {
@@ -2212,29 +2259,29 @@ function createOpenTicketPayload(input: {
       .addOptions(STATUS_OPTIONS.map((item) => ({ label: item.label, value: item.value })))
   );
   const mentionLine = mentionRoleId ? `<@&${mentionRoleId}>` : "";
-  const createdAt = new Date();
-
+  const serverName = guild?.name ?? "servidor";
   const content = [
-      mentionLine,
-      "## TICKET ABERTO",
-      `Usuário: <@${openerId}>`,
-      `ID: ${openerId}`,
-      `Categoria: ${category}`,
-      `Acontecido: ${subject}`,
-      `Cliente: ${clientLabel ?? "Não informado"}`,
-      `Servidor: ${guild?.name ?? "Não informado"}`,
-      `Data: ${formatTicketDate(createdAt)}`,
-      `Hora: ${formatTicketTime(createdAt)}`,
-      `Responsável atual: ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum atendente assumiu este ticket."}`,
-      `Status: ${status}`,
-      `Prioridade: ${priorityLabel(priority ?? "normal")}`,
-      `ID do Ticket: #${ticketId}`,
-      "",
-      initialMessage ?? "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
-    ].filter(Boolean).join("\n");
+    mentionLine,
+    `## ${ticketHeaderEmoji()} Atendimento ${serverName}`,
+    `Olá <@${openerId}>, seja bem-vindo ao seu ticket.`,
+    `Aqui você poderá falar diretamente com a nossa equipe. A equipe já está ciente de sua abertura e irá esclarecer suas dúvidas o mais rápido possível. Basta aguardar e já será atendido.`,
+    "",
+    "**📁 Categoria do atendimento**",
+    codeBlockLine(category),
+    `**${systemEmojiText("folha", guild)} Assunto do ticket**`,
+    codeBlockLine(subject),
+    "",
+    `**Cliente:** ${clientLabel ?? "Não informado"}`,
+    `**Status:** ${status}`,
+    `**Prioridade:** ${priorityLabel(priority ?? "normal")}`,
+    `**Responsável atual:** ${responsibleUserId ? `<@${responsibleUserId}>` : "Nenhum atendente assumiu este ticket."}`,
+    `**ID do Ticket:** #${ticketId}`,
+    "",
+    initialMessage ?? "Explique seu atendimento com o máximo de detalhes possível. Envie prints, vídeos ou provas se necessário."
+  ].filter(Boolean).join("\n");
 
   return componentsV2Payload({
-    accentColor: 0xffd500,
+    accentColor: 0xff006e,
     allowedMentions: { roles: mentionRoleId ? [mentionRoleId] : [], users: [openerId, responsibleUserId].filter(Boolean) as string[] },
     components: [
       { type: 10, content },
@@ -2246,6 +2293,88 @@ function createOpenTicketPayload(input: {
     footer: null,
     guild
   }) as MessageCreateOptions & MessageEditOptions;
+}
+
+function ticketHeaderEmoji() {
+  return "🎧";
+}
+
+function codeBlockLine(value: string) {
+  return `\`\`\`\n${value.replace(/```/g, "`\u200b``").slice(0, 900)}\n\`\`\``;
+}
+
+function createTicketClaimedPayload(input: {
+  channelId: string;
+  guild: Guild;
+  openerId: string;
+  staffId: string;
+}): MessageCreateOptions {
+  const ticketUrl = ticketChannelUrl(input.guild.id, input.channelId);
+  const content = [
+    "## 🌺 Seu ticket foi assumido",
+    "",
+    `Olá <@${input.openerId}>, o atendimento no servidor **${input.guild.name}** começou.`,
+    "",
+    `**Staff:** <@${input.staffId}>`,
+    `**Canal:** ${input.guild.name} > <#${input.channelId}>`,
+    "",
+    "Clique no botão ao lado para acessar o canal."
+  ].join("\n");
+
+  return componentsV2Payload({
+    accentColor: 0xff006e,
+    allowedMentions: { users: [input.openerId, input.staffId] },
+    components: [
+      { type: 10, content },
+      { type: 14, divider: true, spacing: 1 },
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setEmoji("🔗")
+          .setLabel("Ir para o ticket")
+          .setStyle(ButtonStyle.Link)
+          .setURL(ticketUrl)
+      )
+    ],
+    footer: null,
+    guild: input.guild
+  }) as MessageCreateOptions;
+}
+
+function createTicketFinalizedPayload(input: {
+  closedByName: string;
+  finalNotes: string;
+  guild: Guild;
+  openerId: string;
+  transcriptUrl: string;
+}): MessageCreateOptions {
+  const content = [
+    "## ❌ Ticket finalizado",
+    "",
+    `Olá <@${input.openerId}>, seu ticket foi finalizado por **${input.closedByName}** no servidor **${input.guild.name}**.`,
+    "",
+    "**Considerações finais:**",
+    codeBlockLine(input.finalNotes || "Atendimento concluído. Agradecemos o seu contato e ficamos à disposição para qualquer outra necessidade."),
+    "",
+    "**📄 Histórico da conversa:**"
+  ].join("\n");
+
+  return componentsV2Payload({
+    accentColor: 0xff006e,
+    allowedMentions: { users: [input.openerId] },
+    components: [
+      { type: 10, content },
+      { type: 14, divider: true, spacing: 1 },
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setEmoji("📄")
+          .setLabel("Acessar transcript")
+          .setStyle(ButtonStyle.Link)
+          .setURL(input.transcriptUrl)
+      )
+    ],
+    footer: null,
+    guild: input.guild
+  }) as MessageCreateOptions;
 }
 
 async function collectChannelMessages(channel: TextChannel) {

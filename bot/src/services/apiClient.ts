@@ -2,7 +2,7 @@ import axios, { type AxiosInstance } from "axios";
 import http from "node:http";
 import https from "node:https";
 import { currentRuntimeBotId, env } from "../config/env";
-import type { GuildSettings } from "../types";
+import type { GuildSettings, TicketPanelOption } from "../types";
 
 export type CreateLogInput = {
   botId?: string | null;
@@ -3349,6 +3349,13 @@ export class ApiClient {
         : undefined
     });
     return data.settings;
+  }
+
+  async getTicketCategories(guildId: string) {
+    const { data } = await this.http.get<{ categories: TicketPanelOption[] }>("/tickets/categories", {
+      params: { guildId }
+    });
+    return data.categories;
   }
 
   async updateSettingsFromBot(guildId: string, input: Partial<GuildSettings>) {

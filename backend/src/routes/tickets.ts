@@ -8,6 +8,7 @@ import { canReadDevBotModule, canUseDevBotModule } from "../services/devBotServi
 import { createLog } from "../services/logService";
 import { beginTicketClosing, claimTicket, createTicket, findOpenTicket, getTicketByChannel, getTicketById, listTickets, recordTicketEvent, updateTicketChannel, updateTicketStatus } from "../services/ticketService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
+import { findTicketCategory, getTicketCategories } from "../services/settingsService";
 
 const ticketSchema = z.object({
   ticketId: z.string().uuid().optional(),
@@ -67,6 +68,37 @@ export const ticketsRouter = Router();
 
 ticketsRouter.use(requireAuthOrBot);
 
+ticketsRouter.get("/categories", async (req, res, next) => {
+  try {
+    const guildId = typeof req.query.guildId === "string" ? req.query.guildId : "";
+    const botId = await resolveRequestBotId(req);
+
+    if (!guildId) {
+      return res.status(400).json({
+        message: "guildId obrigatório."
+      });
+    }
+
+    if (!botId) {
+      return res.status(400).json({
+        message: "botId obrigatório."
+      });
+    }
+
+    if (!isBotRequest(req) && !(await canReadScopedGuild(req, guildId, botId))) {
+      return res.status(403).json({
+        message: "Servidor não encontrado ou sem o bot."
+      });
+    }
+
+    return res.json({
+      categories: await getTicketCategories(guildId, botId, true)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 ticketsRouter.get("/", async (req, res) => {
   const guildId = typeof req.query.guildId === "string" ? req.query.guildId : undefined;
   const botId = await resolveRequestBotId(req);
@@ -110,9 +142,12 @@ ticketsRouter.post("/", async (req, res, next) => {
       });
     }
 
+    const category = await resolvePanelTicketCategory(input, botId);
     const result = await createTicket({
       ...input,
-      botId
+      botId,
+      categoryName: category?.label ?? input.categoryName,
+      ticketType: category?.ticketType ?? input.ticketType
     });
     if (result.created) {
       const log = await createLog({
@@ -136,6 +171,21 @@ ticketsRouter.post("/", async (req, res, next) => {
     return next(error);
   }
 });
+
+async function resolvePanelTicketCategory(input: z.infer<typeof ticketSchema>, botId: string | null) {
+  if (input.ticketId || !input.categoryId || input.panelId !== input.categoryId || input.ticketType === "report-system") {
+    return null;
+  }
+
+  const category = await findTicketCategory(input.guildId, botId, input.categoryId);
+  if (!category) {
+    const error = new Error("Categoria inválida ou desativada.");
+    (error as Error & { statusCode?: number }).statusCode = 400;
+    throw error;
+  }
+
+  return category;
+}
 
 ticketsRouter.get("/bot/channel/:channelId", async (req, res, next) => {
   try {

@@ -8652,7 +8652,7 @@ function TicketPanelConfigurator({
       const nextOptions = current.ticketPanelOptions.filter((_, optionIndex) => optionIndex !== index);
       return {
         ...current,
-        ticketPanelOptions: nextOptions.length ? nextOptions : ticketPanelDraft(null).ticketPanelOptions
+        ticketPanelOptions: nextOptions
       };
     });
   }
@@ -8823,7 +8823,7 @@ function TicketPanelConfigurator({
                     <input checked={option.enabled} disabled={disabled} onChange={(event) => updateOption(index, { enabled: event.target.checked })} type="checkbox" />
                     Ativa
                   </label>
-                  <Button disabled={disabled || draft.ticketPanelOptions.length <= 1} onClick={() => removeOption(index)} size="icon" title="Excluir categoria" type="button" variant="outline">
+                  <Button disabled={disabled} onClick={() => removeOption(index)} size="icon" title="Excluir categoria" type="button" variant="outline">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -8919,6 +8919,11 @@ function TicketPanelConfigurator({
               </label>
             </div>
           ))}
+          {!draft.ticketPanelOptions.length ? (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              Ao salvar sem categorias, o backend recria automaticamente a categoria obrigatória de atendimento geral.
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -9450,21 +9455,12 @@ function ticketPanelDraft(settings: GuildSettings | null): TicketPanelDraft {
     ticketPanelFooterText: settings?.ticketPanelFooterText ?? "",
     ticketPanelColor: settings?.ticketPanelColor ?? "#FFD500",
     ticketPanelPlaceholder: settings?.ticketPanelPlaceholder ?? "Selecione uma categoria de atendimento...",
-    ticketPanelOptions: (settings?.ticketPanelOptions?.length ? settings.ticketPanelOptions : defaultTicketPanelOptions()).map((option, index) => normalizeTicketOptionDraft(option, index))
+    ticketPanelOptions: (settings?.ticketPanelOptions ?? []).map((option, index) => normalizeTicketOptionDraft(option, index))
   };
 }
 
-function defaultTicketPanelOptions(): TicketPanelOption[] {
-  return [
-    { categoryId: null, description: "Pagamentos, cobranças e mensalidades.", emoji: "💰", enabled: true, initialMessage: "Este ticket foi aberto no setor Financeiro. Envie os detalhes relacionados ao pagamento, mensalidade, cobrança ou plano contratado. Não compartilhe dados bancários sensíveis ou informações confidenciais.", label: "Financeiro", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 1, priority: "normal", supportRoleIds: [], ticketType: "financeiro", value: "financeiro" },
-    { categoryId: null, description: "Problemas técnicos, bot offline e configurações.", emoji: "🛠️", enabled: true, initialMessage: "Este ticket foi aberto no setor de Suporte. Explique o problema, informe quando ele começou e, se possível, envie imagens ou vídeos do erro.", label: "Suporte", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 2, priority: "normal", supportRoleIds: [], ticketType: "suporte", value: "suporte" },
-    { categoryId: null, description: "Perguntas gerais sobre planos, módulos e dashboard.", emoji: "❓", enabled: true, initialMessage: "Este ticket foi aberto para esclarecimento de dúvidas. Envie sua pergunta com o máximo de detalhes possível para que a equipe consiga orientar corretamente.", label: "Dúvidas", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 3, priority: "normal", supportRoleIds: [], ticketType: "duvidas", value: "duvidas" },
-    { categoryId: null, description: "Contratação, desenvolvimento personalizado e automações.", emoji: "📋", enabled: true, initialMessage: "Este ticket foi aberto para solicitação de orçamento. Explique o sistema desejado, as funcionalidades necessárias e informe se já possui algum projeto em funcionamento.", label: "Orçamento", logChannelId: null, maxOpenTicketsPerUser: 1, mentionRoleId: null, moduleType: "default", openingHours: null, position: 4, priority: "normal", supportRoleIds: [], ticketType: "orcamento", value: "orcamento" }
-  ];
-}
-
 function hasTicketCategoryForEveryOption(draft: TicketPanelDraft) {
-  return Boolean(draft.ticketCategoryId || draft.ticketPanelOptions.every((option) => option.categoryId));
+  return Boolean(draft.ticketPanelOptions.length && (draft.ticketCategoryId || draft.ticketPanelOptions.every((option) => option.categoryId)));
 }
 
 function normalizeTicketOptionDraft(option: TicketPanelOption, index: number): TicketPanelOptionDraft {
