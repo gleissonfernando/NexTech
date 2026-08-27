@@ -59,6 +59,7 @@ export type GuildSettingsDto = {
   ticketPanelFooterText: string | null;
   ticketPanelColor: string;
   ticketPanelPlaceholder: string | null;
+  ticketAllowedRoleIds: string[];
   ticketPanelOptions: TicketPanelOptionDto[];
   reportSystem: ReportSystemSettingsDto;
   logChannelId: string | null;
@@ -158,6 +159,54 @@ export type GlobalLogConfigDto = {
   moduleEmoji: string | null;
   moduleName: string | null;
   showAnonymousAuthorToRoleIds: string[];
+  transcriptTheme: TranscriptThemeDto;
+};
+
+export type TranscriptThemeDto = {
+  logoUrl: string | null;
+  brandName: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  secondaryBackgroundColor: string;
+  cardColor: string;
+  messageColor: string;
+  borderColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  buttonColor: string;
+  linkColor: string;
+  titleColor: string;
+  iconColor: string;
+  statusColor: string;
+  hoverColor: string;
+  searchColor: string;
+  mode: "dark" | "light" | "auto";
+  density: "compact" | "normal" | "spacious";
+  cardRadius: "square" | "rounded" | "pill";
+  style: "modern" | "minimal" | "tech";
+  showNevsecBranding: boolean;
+  labels: {
+    pageTitle: string;
+    summaryTitle: string;
+    contactTitle: string;
+    conversationTitle: string;
+    searchPlaceholder: string;
+    openedAt: string;
+    closedAt: string;
+    duration: string;
+    messages: string;
+    openedBy: string;
+    assumedBy: string;
+    category: string;
+    subject: string;
+    status: string;
+    ticketId: string;
+    transcriptId: string;
+    endOfConversation: string;
+    footerText: string;
+  };
 };
 
 export type TicketPanelOptionDto = {
@@ -460,7 +509,53 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
   panelColor: "#2563eb",
   moduleEmoji: fixedSystemEmojiText("prancheta"),
   moduleName: null,
-  showAnonymousAuthorToRoleIds: []
+  showAnonymousAuthorToRoleIds: [],
+  transcriptTheme: {
+    logoUrl: null,
+    brandName: "Nevsec",
+    primaryColor: "#f5c542",
+    secondaryColor: "#38bdf8",
+    accentColor: "#f43f5e",
+    backgroundColor: "#07080d",
+    secondaryBackgroundColor: "#10131d",
+    cardColor: "#151925",
+    messageColor: "#111522",
+    borderColor: "#2b3143",
+    textColor: "#f8fafc",
+    mutedTextColor: "#a1a8b8",
+    buttonColor: "#f5c542",
+    linkColor: "#7dd3fc",
+    titleColor: "#ffffff",
+    iconColor: "#f5c542",
+    statusColor: "#22c55e",
+    hoverColor: "#232a3c",
+    searchColor: "#0d111c",
+    mode: "dark",
+    density: "normal",
+    cardRadius: "rounded",
+    style: "tech",
+    showNevsecBranding: true,
+    labels: {
+      pageTitle: "Transcrição de atendimento",
+      summaryTitle: "Resumo da transcrição",
+      contactTitle: "Detalhes do contato",
+      conversationTitle: "Conversa",
+      searchPlaceholder: "Buscar na conversa",
+      openedAt: "Aberto em",
+      closedAt: "Fechado em",
+      duration: "Duração",
+      messages: "Mensagens",
+      openedBy: "Aberto por",
+      assumedBy: "Assumido por",
+      category: "Categoria",
+      subject: "Assunto",
+      status: "Status",
+      ticketId: "ID do ticket",
+      transcriptId: "ID do transcript",
+      endOfConversation: "Fim da conversa",
+      footerText: "Atendimento encerrado e preservado pela Nevsec."
+    }
+  }
 };
 const DEFAULT_EMOJI_CLONE_MAX_PER_RUN = 1000;
 const MAX_EMOJI_CLONE_MAX_PER_RUN = 1000;
@@ -703,6 +798,7 @@ export function defaultSettings(guildId: string, botId: string | null = null): G
     ticketPanelFooterText: "",
     ticketPanelColor: "#FFD500",
     ticketPanelPlaceholder: DEFAULT_TICKET_PANEL_PLACEHOLDER,
+    ticketAllowedRoleIds: [],
     ticketPanelOptions: DEFAULT_TICKET_PANEL_OPTIONS.map((option) => ({ ...option })),
     reportSystem: defaultReportSystemSettings(),
     logChannelId: null,
@@ -964,6 +1060,7 @@ export async function updateGuildSettings(
     termsPanelMessageId: normalizeSnowflake("termsPanelMessageId" in input ? input.termsPanelMessageId : current.termsPanelMessageId),
     ticketPanelChannelId: normalizeSnowflake("ticketPanelChannelId" in input ? input.ticketPanelChannelId : current.ticketPanelChannelId),
     ticketPanelMessageId: normalizeSnowflake("ticketPanelMessageId" in input ? input.ticketPanelMessageId : current.ticketPanelMessageId),
+    ticketAllowedRoleIds: normalizeTicketAllowedRoleIds("ticketAllowedRoleIds" in input ? input.ticketAllowedRoleIds : current.ticketAllowedRoleIds),
     autoRoleIds,
     welcomeTitle: normalizeWelcomeTitle("welcomeTitle" in input ? input.welcomeTitle : current.welcomeTitle) || DEFAULT_WELCOME_TITLE,
     welcomeSubtitle: normalizePanelText("welcomeSubtitle" in input ? input.welcomeSubtitle : current.welcomeSubtitle) || DEFAULT_WELCOME_SUBTITLE,
@@ -1044,6 +1141,7 @@ export async function updateGuildSettings(
           ticketPanelFooterText: next.ticketPanelFooterText,
           ticketPanelColor: next.ticketPanelColor,
           ticketPanelPlaceholder: next.ticketPanelPlaceholder,
+          ticketAllowedRoleIds: next.ticketAllowedRoleIds,
           ticketPanelOptions: next.ticketPanelOptions,
           reportSystem: next.reportSystem,
           logChannelId: next.logChannelId,
@@ -1248,6 +1346,7 @@ function toDto(settings: MongoGuildSettings): GuildSettingsDto {
     ticketPanelFooterText: normalizePanelText(settings.ticketPanelFooterText),
     ticketPanelColor: normalizeTicketPanelColor(settings.ticketPanelColor),
     ticketPanelPlaceholder: normalizePanelText(settings.ticketPanelPlaceholder) || defaults.ticketPanelPlaceholder,
+    ticketAllowedRoleIds: normalizeTicketAllowedRoleIds(settings.ticketAllowedRoleIds ?? settings.ticketPanelOptions ?? defaults.ticketAllowedRoleIds ?? []),
     ticketPanelOptions: normalizeTicketPanelOptions(settings.ticketPanelOptions),
     reportSystem: normalizeReportSystemSettings(settings.reportSystem, defaults.reportSystem),
     logChannelId: settings.logChannelId,
@@ -1634,8 +1733,80 @@ function normalizeGlobalLogConfig(value: unknown, fallback: GlobalLogConfigDto =
     panelColor: normalizePanelColor(String(record.panelColor ?? fallback.panelColor)),
     moduleEmoji: normalizeNullableSystemEmojiText(record.moduleEmoji) ?? fallback.moduleEmoji,
     moduleName: normalizeNullableText(record.moduleName, 80),
-    showAnonymousAuthorToRoleIds: normalizeSnowflakes(asArray(record.showAnonymousAuthorToRoleIds))
+    showAnonymousAuthorToRoleIds: normalizeSnowflakes(asArray(record.showAnonymousAuthorToRoleIds)),
+    transcriptTheme: normalizeTranscriptTheme(record.transcriptTheme, fallback.transcriptTheme, {
+      brandName: record.moduleName,
+      logoUrl: record.panelBannerUrl,
+      primaryColor: record.panelColor,
+      footerText: record.panelFooterText
+    })
   };
+}
+
+function normalizeTranscriptTheme(value: unknown, fallback: TranscriptThemeDto = DEFAULT_GLOBAL_LOG_CONFIG.transcriptTheme, legacy: Record<string, unknown> = {}): TranscriptThemeDto {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const labels = record.labels && typeof record.labels === "object" ? record.labels as Record<string, unknown> : {};
+  const fallbackLabels = fallback.labels;
+  return {
+    logoUrl: normalizeUrl(record.logoUrl) ?? normalizeUrl(legacy.logoUrl) ?? fallback.logoUrl,
+    brandName: normalizeNullableText(record.brandName, 80) ?? normalizeNullableText(legacy.brandName, 80) ?? fallback.brandName,
+    primaryColor: normalizeThemeColor(record.primaryColor ?? legacy.primaryColor, fallback.primaryColor),
+    secondaryColor: normalizeThemeColor(record.secondaryColor, fallback.secondaryColor),
+    accentColor: normalizeThemeColor(record.accentColor, fallback.accentColor),
+    backgroundColor: normalizeThemeColor(record.backgroundColor, fallback.backgroundColor),
+    secondaryBackgroundColor: normalizeThemeColor(record.secondaryBackgroundColor, fallback.secondaryBackgroundColor),
+    cardColor: normalizeThemeColor(record.cardColor, fallback.cardColor),
+    messageColor: normalizeThemeColor(record.messageColor, fallback.messageColor),
+    borderColor: normalizeThemeColor(record.borderColor, fallback.borderColor),
+    textColor: normalizeThemeColor(record.textColor, fallback.textColor),
+    mutedTextColor: normalizeThemeColor(record.mutedTextColor, fallback.mutedTextColor),
+    buttonColor: normalizeThemeColor(record.buttonColor, fallback.buttonColor),
+    linkColor: normalizeThemeColor(record.linkColor, fallback.linkColor),
+    titleColor: normalizeThemeColor(record.titleColor, fallback.titleColor),
+    iconColor: normalizeThemeColor(record.iconColor, fallback.iconColor),
+    statusColor: normalizeThemeColor(record.statusColor, fallback.statusColor),
+    hoverColor: normalizeThemeColor(record.hoverColor, fallback.hoverColor),
+    searchColor: normalizeThemeColor(record.searchColor, fallback.searchColor),
+    mode: normalizeEnum(record.mode, ["dark", "light", "auto"], fallback.mode),
+    density: normalizeEnum(record.density, ["compact", "normal", "spacious"], fallback.density),
+    cardRadius: normalizeEnum(record.cardRadius, ["square", "rounded", "pill"], fallback.cardRadius),
+    style: normalizeEnum(record.style, ["modern", "minimal", "tech"], fallback.style),
+    showNevsecBranding: record.showNevsecBranding ?? fallback.showNevsecBranding ? true : false,
+    labels: {
+      pageTitle: normalizeLabel(labels.pageTitle, fallbackLabels.pageTitle),
+      summaryTitle: normalizeLabel(labels.summaryTitle, fallbackLabels.summaryTitle),
+      contactTitle: normalizeLabel(labels.contactTitle, fallbackLabels.contactTitle),
+      conversationTitle: normalizeLabel(labels.conversationTitle, fallbackLabels.conversationTitle),
+      searchPlaceholder: normalizeLabel(labels.searchPlaceholder, fallbackLabels.searchPlaceholder),
+      openedAt: normalizeLabel(labels.openedAt, fallbackLabels.openedAt),
+      closedAt: normalizeLabel(labels.closedAt, fallbackLabels.closedAt),
+      duration: normalizeLabel(labels.duration, fallbackLabels.duration),
+      messages: normalizeLabel(labels.messages, fallbackLabels.messages),
+      openedBy: normalizeLabel(labels.openedBy, fallbackLabels.openedBy),
+      assumedBy: normalizeLabel(labels.assumedBy, fallbackLabels.assumedBy),
+      category: normalizeLabel(labels.category, fallbackLabels.category),
+      subject: normalizeLabel(labels.subject, fallbackLabels.subject),
+      status: normalizeLabel(labels.status, fallbackLabels.status),
+      ticketId: normalizeLabel(labels.ticketId, fallbackLabels.ticketId),
+      transcriptId: normalizeLabel(labels.transcriptId, fallbackLabels.transcriptId),
+      endOfConversation: normalizeLabel(labels.endOfConversation, fallbackLabels.endOfConversation),
+      footerText: normalizeLabel(labels.footerText ?? legacy.footerText, fallbackLabels.footerText, 180)
+    }
+  };
+}
+
+function normalizeThemeColor(value: unknown, fallback: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+}
+
+function normalizeLabel(value: unknown, fallback: string, max = 80) {
+  const normalized = typeof value === "string" ? value.trim().slice(0, max) : "";
+  return normalized || fallback;
+}
+
+function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T) {
+  return typeof value === "string" && allowed.includes(value as T) ? value as T : fallback;
 }
 
 function normalizeSnowflake(value: string | null | undefined) {
@@ -1970,6 +2141,27 @@ export function normalizeTicketPanelOptions(value: unknown): TicketPanelOptionDt
     }
   }
   return options.sort((a, b) => a.position - b.position).slice(0, 25);
+}
+
+export function normalizeTicketAllowedRoleIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(
+    value.flatMap((entry) => {
+      if (typeof entry === "string" || typeof entry === "number" || typeof entry === "bigint") {
+        const roleId = normalizeSnowflake(String(entry ?? ""));
+        return roleId ? [roleId] : [];
+      }
+      if (!entry || typeof entry !== "object") return [];
+      const record = entry as Record<string, unknown>;
+      const baseRoleIds = [
+        normalizeSnowflake(String(record.mentionRoleId ?? "")),
+        ...(Array.isArray(record.supportRoleIds)
+          ? record.supportRoleIds.map((roleId) => normalizeSnowflake(String(roleId ?? ""))).filter((roleId): roleId is string => Boolean(roleId))
+          : [])
+      ];
+      return baseRoleIds.filter((roleId): roleId is string => Boolean(roleId));
+    })
+  )].slice(0, 100);
 }
 
 function normalizeTicketType(value: unknown, moduleType: "default" | "police", fallback: string) {

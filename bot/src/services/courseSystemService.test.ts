@@ -10,6 +10,7 @@ import {
   isCourseExamChannelFor,
   isCourseFormInstructorOverride,
   isUnknownMessageError,
+  isUnknownScheduledEventError,
   parseCourseExamChannelTopic,
   shouldDeferExamChannelDeletion
 } from "./courseSystemService";
@@ -161,4 +162,11 @@ test("recovery reconhece mensagem apagada no Discord como publicação perdida",
   assert.equal(isUnknownMessageError({ code: "10008" }), true);
   assert.equal(isUnknownMessageError({ code: 10003 }), false);
   assert.equal(isUnknownMessageError(new Error("Unknown Message")), false);
+});
+
+test("recovery reconhece evento agendado apagado no Discord como vínculo órfão", () => {
+  assert.equal(isUnknownScheduledEventError({ code: 10070 }), true);
+  assert.equal(isUnknownScheduledEventError({ code: "10070" }), true);
+  assert.equal(isUnknownScheduledEventError({ code: 50013 }), false);
+  assert.equal(isUnknownScheduledEventError(new Error("Unknown Guild Scheduled Event")), false);
 });

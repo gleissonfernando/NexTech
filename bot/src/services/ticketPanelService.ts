@@ -46,6 +46,7 @@ const CLOSE_MODAL_PREFIX = "ticket_close:";
 const CLOSE_CONFIRM_PREFIX = "ticket_close_confirm:";
 const CLOSE_CANCEL_PREFIX = "ticket_close_cancel:";
 const OPEN_MODAL_PREFIX = "ticket_open:";
+const OPEN_QUICK_MODAL_PREFIX = "ticket_open_quick:";
 const OPEN_BUTTON_ID = "ticket_open_button";
 const OPEN_CATEGORY_PREFIX = "ticket_open_category:";
 const OPEN_CLIENT_PREFIX = "ticket_open_client:";
@@ -63,6 +64,7 @@ const PENDING_TICKET_LEASE_MS = 2 * 60 * 1000;
 const USER_CALL_COOLDOWN_MS = Number(process.env.TICKET_USER_CALL_COOLDOWN_SECONDS ?? "60") * 1000;
 const STATUS_OPTIONS = [
   { label: "Aguardando atendimento", value: "OPEN" },
+  { label: "Em atendimento", value: "ASSIGNED" },
   { label: "Em análise", value: "IN_ANALYSIS" },
   { label: "Aguardando provas", value: "WAITING_EVIDENCE" },
   { label: "Aguardando usuário", value: "WAITING_USER" },
@@ -108,7 +110,7 @@ export async function publishTicketPanel(interaction: ChatInputCommandInteractio
   const payload = createTicketPanelPayload(settings, interaction.guild);
 
   if (!payload) {
-    await interaction.reply({ content: "Configure pelo menos uma opção ativa para o painel de ticket.", ephemeral: true });
+    await interaction.reply({ content: "Configure o canal do painel e a categoria do ticket na Dashboard.", ephemeral: true });
     return;
   }
 
@@ -250,6 +252,11 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
     return true;
   }
 
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(OPEN_QUICK_MODAL_PREFIX)) {
+    await handleQuickTicketOpenModal(interaction, context);
+    return true;
+  }
+
   if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_MEMBER_MODAL_PREFIX)) {
     await handleTicketMemberModal(interaction, context);
     return true;
@@ -289,14 +296,13 @@ async function handleTicketOpenButton(interaction: ButtonInteraction, context: B
   }
 
   const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
-  const options = activeTicketOptions(settings);
-  if (!settings?.ticketEnabled || !options.length) {
-    await interaction.reply({ content: "Nenhuma categoria de ticket ativa foi configurada na Dashboard.", flags: MessageFlags.Ephemeral });
+  if (!settings?.ticketEnabled || !settings.ticketCategoryId) {
+    await interaction.reply({ content: "Configure a categoria e o painel de tickets na Dashboard.", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.showModal(createOpenTicketModal(token, settings));
+  await interaction.showModal(createQuickOpenTicketModal(token, settings));
 }
 
 async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -422,19 +428,63 @@ async function handleTicketOpenModal(interaction: ModalSubmitInteraction, contex
   return true;
 }
 
+async function handleQuickTicketOpenModal(interaction: ModalSubmitInteraction, context: BotContext) {
+  if (!interaction.guild) return;
+
+  const token = interaction.customId.slice(OPEN_QUICK_MODAL_PREFIX.length);
+  const session = consumeOpenTicketSession(token);
+  if (!session || !isOpenTicketSessionForInteraction(session, interaction)) {
+    await interaction.reply({ content: "Este formulário expirou. Clique em Abrir Ticket novamente.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const subject = normalizeTicketDescription(interaction.fields.getTextInputValue("description"));
+  if (!subject) {
+    await interaction.reply({ content: "Informe o motivo do ticket.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const settings = await getFreshGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
+    logTicketTechnical("settings_load_failed", interaction, { error });
+    return null;
+  });
+  if (!settings?.ticketEnabled || !settings.ticketCategoryId) {
+    await interaction.editReply("A categoria deste ticket não está mais disponível.");
+    return;
+  }
+
+  const categoryId = settings.ticketCategoryId;
+  const lockKey = ticketCreationLockKey(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id, categoryId, "default");
+  if (ticketCreationLocks.has(lockKey)) {
+    await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
+    return;
+  }
+
+  const creation = createQuickTicketForInteraction(interaction, context, settings, subject)
+    .finally(() => {
+      if (ticketCreationLocks.get(lockKey) === creation) {
+        ticketCreationLocks.delete(lockKey);
+      }
+    });
+  ticketCreationLocks.set(lockKey, creation);
+  await creation;
+}
+
 export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, _rawSubject = "") {
   if (!interaction.guild) return;
   const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
     logTicketTechnical("settings_load_failed", interaction, { error });
     return null;
   });
-  if (!settings?.ticketEnabled || !activeTicketOptions(settings).length) {
-    await interaction.reply({ content: "O sistema de tickets está desativado ou não possui categoria ativa.", flags: MessageFlags.Ephemeral });
+  if (!settings?.ticketEnabled || !settings.ticketCategoryId) {
+    await interaction.reply({ content: "O sistema de tickets está desativado ou não possui categoria configurada.", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.showModal(createOpenTicketModal(token, settings));
+  await interaction.showModal(createQuickOpenTicketModal(token, settings));
 }
 
 async function createTicketForInteraction(
@@ -480,7 +530,7 @@ async function createTicketForInteraction(
     }) ?? null;
     if (orphanChannel) {
       const recovered = await recoverTicketRecord(orphanChannel, context);
-      if (recovered?.channelId === orphanChannel.id && ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(recovered.status)) {
+      if (recovered?.channelId === orphanChannel.id && ["OPEN", "PENDING", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER"].includes(recovered.status)) {
         logTicketTechnical("orphan_channel_recovered", interaction, { channelId: orphanChannel.id, ticketId: recovered.id });
         await interaction.editReply(`Você já possui um ticket aberto nesta categoria: <#${orphanChannel.id}>`);
         return;
@@ -628,24 +678,173 @@ async function createTicketForInteraction(
     logTicketTechnical("opening_log_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
   });
 
-  await sendTicketOpenedDm(guild, interaction.user.id, {
-    channelId: channel.id,
-    createdAt: new Date().toISOString(),
-    guildName: guild.name,
-    status: "Aguardando atendimento",
-    ticketId: ticket.ticket.id
-  }).then((sent) => {
-    if (!sent) {
-      logTicketTechnical("opening_dm_failed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id });
+  logTicketTechnical("request_completed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id, totalMs: elapsed(startedAt) });
+  await interaction.editReply(`Ticket criado: <#${channel.id}>`);
+}
+
+async function createQuickTicketForInteraction(
+  interaction: ModalSubmitInteraction | ChatInputCommandInteraction,
+  context: BotContext,
+  settings: GuildSettings,
+  subject: string
+) {
+  const guild = interaction.guild;
+  if (!guild) return;
+  const startedAt = performance.now();
+  const categoryId = settings.ticketCategoryId;
+  const allowedRoleIds = resolveConfiguredTicketAllowedRoleIds(settings);
+  logTicketTechnical("request_started", interaction, { categoryId, allowedRoleIds });
+
+  const opener = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!opener) {
+    logTicketTechnical("opener_left_guild", interaction, { categoryId });
+    await interaction.editReply("Você não está mais neste servidor, então o ticket não pôde ser criado.");
+    return;
+  }
+
+  try {
+    await validateQuickTicketChannelPrerequisites(guild, settings, allowedRoleIds);
+  } catch (error) {
+    logTicketTechnical("prerequisite_check_failed", interaction, { error });
+    await interaction.editReply(ticketUserFacingError(error));
+    return;
+  }
+
+  const databaseStartedAt = performance.now();
+  const existing = await context.api.getOpenTicket({
+    categoryId,
+    guildId: guild.id,
+    moduleType: "default",
+    openerId: interaction.user.id
+  }).catch((error) => {
+    logTicketTechnical("duplicate_check_failed", interaction, { categoryId, error });
+    throw error;
+  });
+  logTicketTechnical("duplicate_check_completed", interaction, { databaseMs: elapsed(databaseStartedAt), existingTicketId: existing?.id ?? null });
+
+  if (existing) {
+    const existingChannel = existing.channelId
+      ? await guild.channels.fetch(existing.channelId).catch(() => null)
+      : null;
+
+    if (existingChannel) {
+      await interaction.editReply(`Você já possui um ticket aberto: <#${existing.channelId}>`);
+      return;
     }
-    return context.api.recordTicketEvent(ticket.ticket.id, {
-      authorId: interaction.client.user?.id ?? null,
-      content: sent ? "DM de abertura enviada ao usuário." : "Não foi possível enviar DM ao usuário.",
-      eventType: sent ? "TICKET_OPENING_DM_SENT" : "TICKET_OPENING_DM_FAILED",
-      guildId: guild.id,
-      metadata: { channelId: channel.id }
+
+    if (existing.status === "PENDING" && isPendingTicketLeaseActive(existing.createdAt)) {
+      await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
+      return;
+    }
+
+    const invalidated = await context.api.updateTicketStatus(existing.id, {
+      isIncomplete: true,
+      status: "INCOMPLETE"
     });
+    if (!invalidated) throw new Error(`Ticket inconsistente ${existing.id} não pôde ser invalidado.`);
+    logTicketTechnical("stale_ticket_invalidated", interaction, { staleTicketId: existing.id });
+  }
+
+  const ticket = await context.api.createTicket({
+    allowedRoleIds,
+    channelId: null,
+    categoryId,
+    categoryName: settings.ticketPanelTitle ?? "Atendimento",
+    guildId: guild.id,
+    moduleType: "default",
+    openerId: interaction.user.id,
+    panelId: categoryId,
+    responsibleRoleId: allowedRoleIds[0] ?? null,
+    status: "PENDING",
+    subject,
+    ticketType: "support"
+  });
+
+  if (ticket.created === false) {
+    if (ticket.ticket.channelId) {
+      const existingChannel = await guild.channels.fetch(ticket.ticket.channelId).catch(() => null);
+      if (existingChannel) {
+        await interaction.editReply(`Você já possui um ticket aberto: <#${ticket.ticket.channelId}>`);
+        return;
+      }
+    }
+
+    await interaction.editReply("Já existe uma solicitação de ticket em andamento. Aguarde alguns segundos.");
+    return;
+  }
+
+  let channel: TextChannel | null = null;
+  try {
+    const channelStartedAt = performance.now();
+    channel = await createQuickTicketChannel(guild, opener, settings, subject, ticket.ticket.id, allowedRoleIds);
+    logTicketTechnical("channel_created", interaction, { channelId: channel.id, channelMs: elapsed(channelStartedAt), ticketId: ticket.ticket.id });
+    const linked = await context.api.updateTicketChannel(ticket.ticket.id, channel.id);
+    if (!linked?.channelId) throw new Error("A API não confirmou o vínculo entre ticket e canal.");
+  } catch (error) {
+    logTicketTechnical("channel_create_failed", interaction, { error, ticketId: ticket.ticket.id });
+    if (channel) await channel.delete("Rollback: falha ao persistir vínculo do ticket").catch((cleanupError) => {
+      logTicketTechnical("channel_rollback_failed", interaction, { channelId: channel?.id, error: cleanupError, ticketId: ticket.ticket.id });
+    });
+    await context.api.updateTicketStatus(ticket.ticket.id, {
+      isIncomplete: true,
+      status: "INCOMPLETE"
+    }).catch(() => null);
+    await context.api.postLog({
+      guildId: guild.id,
+      message: `Falha ao criar canal de ticket para ${interaction.user.tag}: ${error instanceof Error ? error.message : String(error)}`,
+      metadata: {
+        categoryId,
+        client: "Não informado",
+        openerId: interaction.user.id,
+        subject
+      },
+      type: "ticket.channel_create_failed",
+      userId: interaction.user.id
+    }).catch(() => null);
+    await interaction.editReply(ticketUserFacingError(error));
+    return;
+  }
+
+  try {
+    await channel.send(createOpenTicketPayload({
+      category: settings.ticketPanelTitle ?? "Atendimento",
+      guild,
+      initialMessage: settings.ticketPanelInfoText ?? null,
+      mentionRoleId: allowedRoleIds[0] ?? null,
+      openerId: interaction.user.id,
+      priority: "normal",
+      responsibleUserId: null,
+      status: "Aguardando atendimento",
+      subject,
+      ticketId: ticket.ticket.id
+    }));
+    const opened = await context.api.updateTicketStatus(ticket.ticket.id, { status: "OPEN" });
+    if (!opened) throw new Error("A API não confirmou a ativação do ticket.");
+  } catch (error) {
+    logTicketTechnical("initial_panel_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
+    await channel.delete("Rollback: falha ao finalizar criação do ticket").catch(() => null);
+    await context.api.updateTicketStatus(ticket.ticket.id, { isIncomplete: true, status: "INCOMPLETE" }).catch(() => null);
+    await interaction.editReply("O ticket não pôde ser finalizado. Nenhum canal incompleto foi mantido; tente novamente.");
+    return;
+  }
+
+  await context.api.recordTicketEvent(ticket.ticket.id, {
+    authorId: interaction.user.id,
+    content: `Ticket criado no canal privado. Assunto: ${subject}.`,
+    eventType: "TICKET_CREATED",
+    guildId: guild.id,
+    metadata: {
+      allowedRoleIds,
+      categoryId,
+      channelId: channel.id,
+      moduleType: "default",
+      subject
+    }
   }).catch(() => null);
+
+  await sendQuickTicketOpeningLog(guild, settings, interaction.user.id, allowedRoleIds, channel.id, ticket.ticket.id, subject).catch((error) => {
+    logTicketTechnical("opening_log_failed", interaction, { channelId: channel.id, error, ticketId: ticket.ticket.id });
+  });
 
   logTicketTechnical("request_completed", interaction, { channelId: channel.id, ticketId: ticket.ticket.id, totalMs: elapsed(startedAt) });
   await interaction.editReply(`Ticket criado: <#${channel.id}>`);
@@ -731,17 +930,17 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     return;
   }
 
-  const claim = await context.api.claimTicket(ticketId, interaction.user.id);
+  const claim = await context.api.claimTicket(ticketId, interaction.user.id, interaction.user.displayName ?? interaction.user.username);
   if (!claim.claimed) {
-    const responsible = claim.ticket?.responsibleUserId ? `<@${claim.ticket.responsibleUserId}>` : "outro responsável";
-    await interaction.followUp({ content: `Este ticket já está sendo atendido por ${responsible}.`, flags: MessageFlags.Ephemeral }).catch(() => null);
+    const responsible = claim.ticket?.assignedStaffId ?? claim.ticket?.responsibleUserId;
+    await interaction.followUp({ content: responsible ? `Este ticket já foi assumido por <@${responsible}>.` : "Este ticket já foi assumido por outro responsável.", flags: MessageFlags.Ephemeral }).catch(() => null);
     return;
   }
   const updatedTicket = claim.ticket;
   await context.api.recordTicketEvent(ticketId, {
     authorId: interaction.user.id,
     content: `Ticket assumido por ${interaction.user.tag}.`,
-    eventType: "TICKET_CLAIMED",
+    eventType: "TICKET_ASSIGNED",
     guildId: interaction.guildId!
   }).catch(() => null);
   await interaction.message.edit(createOpenTicketPayload({
@@ -751,7 +950,7 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
     mentionRoleId: updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
     openerId: updatedTicket?.openerId ?? ticket.openerId,
     responsibleUserId: interaction.user.id,
-    status: "Em atendimento",
+    status: STATUS_OPTIONS.find((item) => item.value === (updatedTicket?.status ?? ticket.status))?.label ?? "Em atendimento",
     subject: updatedTicket?.subject ?? ticket.subject,
     ticketId
   })).catch(() => null);
@@ -763,6 +962,28 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
       staffId: interaction.user.id
     })).catch(() => null);
   }
+  const dmSent = await sendTicketClaimedDm(interaction.guild!, updatedTicket ?? ticket, interaction.user).catch((error) => {
+    console.warn("[ticket-panel] falha ao enviar DM de ticket assumido:", error instanceof Error ? error.message : error);
+    return false;
+  });
+  await context.api.recordTicketEvent(ticketId, {
+    authorId: interaction.user.id,
+    content: dmSent ? "DM de ticket assumido enviada ao usuário." : "DM de ticket assumido não pôde ser enviada.",
+    eventType: dmSent ? "TICKET_DM_SENT" : "TICKET_DM_FAILED",
+    guildId: interaction.guildId!,
+    metadata: {
+      channelId: interaction.channelId,
+      staffId: interaction.user.id,
+      ticketId,
+      userId: updatedTicket?.openerId ?? ticket.openerId
+    }
+  }).catch(() => null);
+  await interaction.followUp({
+    content: dmSent
+      ? "Ticket assumido com sucesso. Você agora é o responsável por este atendimento."
+      : "Ticket assumido com sucesso, porém não foi possível enviar uma mensagem privada ao usuário.",
+    flags: MessageFlags.Ephemeral
+  }).catch(() => null);
 }
 
 async function handleTicketCloseRequest(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
@@ -1108,12 +1329,13 @@ async function handleTicketCategoryChange(interaction: StringSelectMenuInteracti
     formatTicketChannelName(option, opener?.displayName || opener?.user.username || ticket.openerId),
     `Ticket ${ticket.id} alterado para ${option.label} por ${interaction.user.id}`
   ).catch(() => null);
-  await applyTicketCategoryPermissions(interaction.channel, interaction.guild, ticket.openerId, settings, option, prerequisites.staffRoleIds);
+  const manageRoleIds = resolveTicketManageRoleIds(ticket);
+  await applyTicketCategoryPermissions(interaction.channel, interaction.guild, ticket.openerId, settings, option, manageRoleIds.length ? manageRoleIds : prerequisites.staffRoleIds);
   const updated = await context.api.updateTicketStatus(ticket.id, {
     categoryId: option.value,
     categoryName: option.label,
     panelId: option.value,
-    responsibleRoleId: prerequisites.staffRoleIds[0] ?? null,
+    responsibleRoleId: (manageRoleIds[0] ?? prerequisites.staffRoleIds[0]) ?? null,
     ticketType: resolveTicketType(option, resolveTicketModuleType(option))
   });
   await interaction.channel.setTopic(createTicketChannelTopic({
@@ -1265,16 +1487,15 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
       transcriptUrl: resolveTranscriptUrl(transcript)
     })).catch(() => null);
   }
-  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal será removido em instantes.`);
-  if (interaction.channel?.type === ChannelType.GuildText) {
-    setTimeout(() => void (interaction.channel as TextChannel).delete(`Ticket ${ticketId} finalizado com transcript enviado ao autor.`).catch(() => null), 5_000).unref();
-  }
+  await interaction.editReply(`Ticket finalizado. Transcript gerado: ${transcript.transcript.id}. DM ${dmSent ? "enviada ao autor" : "não enviada; verifique se a DM do usuário está aberta"}. O canal foi preservado para auditoria e histórico.`);
+}
+
+export function shouldDeleteSupportTicketChannelAfterClose() {
+  return false;
 }
 
 function createTicketPanelPayload(settings: GuildSettings, guild: Guild | null = null): ReturnType<typeof renderComponentsV2Panel> | null {
-  const options = activeTicketOptions(settings);
-
-  if (!options.length) {
+  if (!settings.ticketEnabled || !settings.ticketPanelChannelId || !settings.ticketCategoryId) {
     return null;
   }
 
@@ -1336,7 +1557,7 @@ function normalizeTicketPanelTitle(value: string | null | undefined, guild: Guil
 function normalizeTicketPanelDescription(value: string | null | undefined) {
   const normalized = value?.trim();
   if (!normalized || normalized === "Precisa de ajuda? Abra um ticket e nossa equipe ira atende-lo em breve.") {
-    return "Para abrir um ticket selecione uma categoria abaixo";
+    return "Clique em Abrir Ticket para iniciar o atendimento.";
   }
   return normalized;
 }
@@ -1344,7 +1565,7 @@ function normalizeTicketPanelDescription(value: string | null | undefined) {
 function normalizeTicketPanelInfo(value: string | null | undefined) {
   const normalized = value?.trim();
   if (!normalized || normalized === "Horario de atendimento: Seg-Sex, 9h-18h\nDescreva seu problema com detalhes para um atendimento mais rapido.") {
-    return "Não flode menções à equipe\nEm caso de transferência de bot é necessário comprovante";
+    return "Descreva o problema com detalhes\nEvite menções desnecessárias à equipe";
   }
   return normalized;
 }
@@ -1352,7 +1573,7 @@ function normalizeTicketPanelInfo(value: string | null | undefined) {
 function normalizeTicketPanelPlaceholder(value: string | null | undefined) {
   const normalized = value?.trim();
   if (!normalized || normalized === "Selecione o tipo de atendimento") {
-    return "Selecione uma categoria de atendimento...";
+    return "Clique no botão para abrir o ticket...";
   }
   return normalized;
 }
@@ -1491,6 +1712,25 @@ function createOpenTicketModal(token: string, settings: GuildSettings) {
               { default: session?.clientStatus === "no", label: "Não", value: "no" }
             )
         )
+    );
+}
+
+function createQuickOpenTicketModal(token: string, settings: GuildSettings) {
+  const title = normalizeTicketPanelTitle(settings.ticketPanelTitle, null);
+  return new ModalBuilder()
+    .setCustomId(`${OPEN_QUICK_MODAL_PREFIX}${token}`)
+    .setTitle(title.length > 45 ? "Abrir Ticket" : title)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("description")
+          .setLabel("Descreva o que aconteceu")
+          .setPlaceholder("Explique seu atendimento com o máximo de detalhes possível.")
+          .setRequired(true)
+          .setStyle(TextInputStyle.Paragraph)
+          .setMinLength(1)
+          .setMaxLength(1000)
+      )
     );
 }
 
@@ -1637,7 +1877,7 @@ async function publishConfiguredTicketPanelUnlocked(client: Client, context: Bot
 
   const payload = createTicketPanelPayload(settings, guild);
   if (!payload) {
-    throw new Error("Configure pelo menos uma opção ativa para o painel de ticket.");
+    throw new Error("Configure o canal do painel e a categoria do ticket.");
   }
 
   const textChannel = channel as TextChannel;
@@ -1704,6 +1944,46 @@ async function createTicketChannel(guild: Guild, settings: GuildSettings, opener
   }).then((channel) => channel as TextChannel);
 }
 
+async function createQuickTicketChannel(guild: Guild, opener: GuildMember, settings: GuildSettings, subject: string, ticketId: string, allowedRoleIds: string[]) {
+  const { categoryId, me, staffRoleIds } = await validateQuickTicketChannelPrerequisites(guild, settings, allowedRoleIds);
+  const channelName = formatTicketChannelName(null, opener.displayName || opener.user.username || opener.id);
+
+  return guild.channels.create({
+    name: channelName,
+    parent: categoryId,
+    topic: createTicketChannelTopic({
+      botId: guild.client.user?.id ?? null,
+      categoryId,
+      guildId: guild.id,
+      moduleType: "default",
+      openerId: opener.id,
+      panelId: categoryId,
+      ticketId,
+      ticketType: "support"
+    }),
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel]
+      },
+      {
+        id: opener.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
+      },
+      {
+        id: me.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
+      },
+      ...staffRoleIds.map((roleId) => ({
+        id: roleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.UseApplicationCommands]
+      }))
+    ],
+    reason: `Ticket aberto por ${opener.id}: ${subject}`,
+    type: ChannelType.GuildText
+  }).then((channel) => channel as TextChannel);
+}
+
 function formatTicketChannelName(option: Pick<TicketPanelOption, "emoji"> | null, openerName: string) {
   const userSlug = slugTicketChannelName(openerName).slice(0, 42) || "usuario";
   const emoji = ticketChannelEmoji(option?.emoji);
@@ -1741,6 +2021,35 @@ async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildS
   const staffRoleIds = [...new Set([
     option.mentionRoleId,
     ...(option.supportRoleIds ?? []),
+    ...(settings.reportSystem?.adminRoleIds ?? [])
+  ].filter((roleId): roleId is string => Boolean(roleId && guild.roles.cache.has(roleId) && roleId !== guild.roles.everyone.id)))];
+  return { categoryId, me, staffRoleIds };
+}
+
+async function validateQuickTicketChannelPrerequisites(guild: Guild, settings: GuildSettings, allowedRoleIds: string[]) {
+  const categoryId = settings.ticketCategoryId;
+  if (!categoryId) throw new Error("Categoria de tickets não configurada.");
+  const category = await guild.channels.fetch(categoryId).catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) throw new Error("Categoria de tickets não encontrada ou inválida.");
+
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!me) throw new Error("Não foi possível localizar o membro do bot neste servidor.");
+  const requiredPermissions = [
+    [PermissionFlagsBits.ViewChannel, "Ver canais"],
+    [PermissionFlagsBits.ManageChannels, "Gerenciar canais"],
+    [PermissionFlagsBits.ManageRoles, "Gerenciar cargos"],
+    [PermissionFlagsBits.SendMessages, "Enviar mensagens"],
+    [PermissionFlagsBits.EmbedLinks, "Inserir links"],
+    [PermissionFlagsBits.AttachFiles, "Anexar arquivos"],
+    [PermissionFlagsBits.ReadMessageHistory, "Ver histórico de mensagens"]
+  ] as const;
+  const categoryPermissions = category.permissionsFor(me);
+  const missingPermissions = requiredPermissions.filter(([permission]) => !categoryPermissions?.has(permission)).map(([, label]) => label);
+  if (missingPermissions.length) throw new Error(`Permissões ausentes para o bot: ${missingPermissions.join(", ")}.`);
+
+  const staffRoleIds = [...new Set([
+    ...allowedRoleIds,
+    ...(settings.ticketPanelOptions ?? []).flatMap((option) => [option.mentionRoleId, ...(option.supportRoleIds ?? [])]),
     ...(settings.reportSystem?.adminRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId && guild.roles.cache.has(roleId) && roleId !== guild.roles.everyone.id)))];
   return { categoryId, me, staffRoleIds };
@@ -1816,6 +2125,22 @@ async function sendTicketOpeningLog(guild: Guild, settings: GuildSettings, opene
       `Cliente: ${clientLabel}.`,
       `Prioridade: ${priorityLabel(option.priority ?? "normal")}.`,
       roleIds.length ? `Cargos responsáveis: ${roleIds.map((roleId) => `<@&${roleId}>`).join(", ")}.` : "Cargos responsáveis: não configurados."
+    ].join(" ")
+  });
+}
+
+async function sendQuickTicketOpeningLog(guild: Guild, settings: GuildSettings, openerId: string, allowedRoleIds: string[], channelId: string, ticketId: string, subject: string) {
+  const logChannelId = settings.logChannelId || settings.reportSystem?.logChannelId;
+  if (!logChannelId) return;
+  const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+  if (!logChannel?.isTextBased() || !("send" in logChannel)) throw new Error("Canal de logs de tickets indisponível.");
+  await logChannel.send({
+    allowedMentions: { parse: [] },
+    content: [
+      `[SafeBot][TicketCreate][Handler:main] Ticket ${ticketId} aberto por ${openerId} em <#${channelId}>.`,
+      `Categoria: ${settings.ticketPanelTitle ?? "Atendimento"}.`,
+      `Assunto: ${subject}.`,
+      allowedRoleIds.length ? `Cargos responsáveis: ${allowedRoleIds.map((roleId) => `<@&${roleId}>`).join(", ")}.` : "Cargos responsáveis: não configurados."
     ].join(" ")
   });
 }
@@ -1898,6 +2223,7 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
   const metadata = parseTicketChannelTopic(channel.topic) ?? await recoverTicketMetadataFromPanelMessage(channel, context, expectedTicketId);
   if (!metadata || (expectedTicketId && metadata.ticketId !== expectedTicketId)) return null;
   const currentBotId = context.client.user?.id ?? null;
+  const settings = await getFreshGuildSettings(context, channel.guild.id, currentBotId).catch(() => null);
   if ((metadata.guildId && metadata.guildId !== channel.guild.id) || (metadata.botId && currentBotId && metadata.botId !== currentBotId)) {
     console.warn("[SafeBot][TicketReconcile][Handler:main] reconstrução rejeitada por escopo divergente", {
       channelId: channel.id,
@@ -1932,11 +2258,12 @@ async function recoverTicketRecord(channel: TextChannel, context: BotContext, ex
     categoryId: metadata.categoryId,
     categoryName: metadata.categoryId,
     channelId: channel.id,
+    allowedRoleIds: settings ? resolveConfiguredTicketAllowedRoleIds(settings) : [],
     guildId: channel.guild.id,
     moduleType: metadata.moduleType as TicketModuleType,
     openerId: metadata.openerId,
     panelId: metadata.panelId,
-    responsibleRoleId: metadata.responsibleRoleId ?? null,
+    responsibleRoleId: metadata.responsibleRoleId ?? (settings ? resolveConfiguredTicketAllowedRoleIds(settings)[0] ?? null : null),
     status: "OPEN",
     subject: metadata.subject ?? channel.name,
     ticketId: metadata.ticketId,
@@ -2184,6 +2511,16 @@ function priorityLabel(value: TicketPanelOption["priority"] | string | null | un
   return "Normal";
 }
 
+function resolveConfiguredTicketAllowedRoleIds(settings: GuildSettings) {
+  const current = settings.ticketAllowedRoleIds?.length ? settings.ticketAllowedRoleIds : [];
+  if (current.length) return [...new Set(current)];
+  return [...new Set(
+    (settings.ticketPanelOptions ?? [])
+      .flatMap((option) => [option.mentionRoleId, ...(option.supportRoleIds ?? [])])
+      .filter((roleId): roleId is string => Boolean(roleId))
+  )];
+}
+
 export function isPendingTicketLeaseActive(createdAt: string, now = Date.now()) {
   const createdAtMs = Date.parse(createdAt);
   return Number.isFinite(createdAtMs) && now - createdAtMs >= 0 && now - createdAtMs < PENDING_TICKET_LEASE_MS;
@@ -2195,11 +2532,12 @@ async function canManageTicketInteraction(
 ) {
   if (!interaction.guild) return false;
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  const allowedRoleIds = resolveTicketManageRoleIds(ticket);
   return Boolean(member && (
     member.id === interaction.guild.ownerId
     || member.permissions.has(PermissionFlagsBits.Administrator)
     || member.permissions.has(PermissionFlagsBits.ManageChannels)
-    || (ticket.responsibleRoleId && member.roles.cache.has(ticket.responsibleRoleId))
+    || allowedRoleIds.some((roleId) => member.roles.cache.has(roleId))
   ));
 }
 
@@ -2211,6 +2549,13 @@ async function canManageSensitiveTicketLogAction(interaction: ButtonInteraction)
     || member.permissions.has(PermissionFlagsBits.Administrator)
     || member.permissions.has(PermissionFlagsBits.ManageChannels)
   ));
+}
+
+function resolveTicketManageRoleIds(ticket: Pick<TicketRecord, "allowedRoleIds" | "responsibleRoleId">) {
+  return [...new Set(
+    (ticket.allowedRoleIds?.length ? ticket.allowedRoleIds : ticket.responsibleRoleId ? [ticket.responsibleRoleId] : [])
+      .filter((roleId): roleId is string => Boolean(roleId))
+  )];
 }
 
 function createOpenTicketPayload(input: {
@@ -2303,7 +2648,7 @@ function codeBlockLine(value: string) {
   return `\`\`\`\n${value.replace(/```/g, "`\u200b``").slice(0, 900)}\n\`\`\``;
 }
 
-function createTicketClaimedPayload(input: {
+export function createTicketClaimedPayload(input: {
   channelId: string;
   guild: Guild;
   openerId: string;
@@ -2311,14 +2656,14 @@ function createTicketClaimedPayload(input: {
 }): MessageCreateOptions {
   const ticketUrl = ticketChannelUrl(input.guild.id, input.channelId);
   const content = [
-    "## 🌺 Seu ticket foi assumido",
+    "## 🎟️ Seu ticket foi assumido",
     "",
     `Olá <@${input.openerId}>, o atendimento no servidor **${input.guild.name}** começou.`,
     "",
     `**Staff:** <@${input.staffId}>`,
-    `**Canal:** ${input.guild.name} > <#${input.channelId}>`,
+    `**Canal:** <#${input.channelId}>`,
     "",
-    "Clique no botão ao lado para acessar o canal."
+    "Clique no botão abaixo para acessar o canal."
   ].join("\n");
 
   return componentsV2Payload({
@@ -2485,6 +2830,49 @@ async function sendTicketOpenedDm(guild: Guild, userId: string, input: { channel
   } catch {
     return false;
   }
+}
+
+async function sendTicketClaimedDm(guild: Guild, ticket: TicketRecord, staff: { id: string; displayName?: string | null; username: string }, openerId?: string | null) {
+  const userId = openerId ?? ticket.openerId;
+  const user = await guild.client.users.fetch(userId).catch(() => null);
+  if (!user) return false;
+
+  const channelId = ticket.channelId;
+  if (!channelId) return false;
+
+  const ticketUrl = ticketChannelUrl(guild.id, channelId);
+  const payload = componentsV2Payload({
+    accentColor: 0xff006e,
+    allowedMentions: { parse: [], users: [userId, staff.id] },
+    components: [
+      {
+        type: 10,
+        content: [
+          "## 🎟️ Seu ticket foi assumido",
+          "",
+          `Olá <@${userId}>, seu atendimento no servidor **${guild.name}** começou.`,
+          "",
+          `**Staff:** <@${staff.id}>`,
+          `**Canal:** <#${channelId}>`,
+          "",
+          "Clique no botão abaixo para acessar o canal."
+        ].join("\n")
+      },
+      { type: 14, divider: true, spacing: 1 },
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setEmoji("🔗")
+          .setLabel("Ir para o ticket")
+          .setStyle(ButtonStyle.Link)
+          .setURL(ticketUrl)
+      )
+    ],
+    footer: null,
+    guild
+  }) as MessageCreateOptions;
+
+  await user.send(payload);
+  return true;
 }
 
 async function sendTicketCallDm(guild: Guild, userId: string, ticketUrl: string) {

@@ -96,6 +96,7 @@ export type MongoGuildSettings = {
   ticketCategoryId: string | null;
   ticketPanelChannelId?: string | null;
   ticketPanelMessageId?: string | null;
+  ticketAllowedRoleIds?: string[];
   ticketPanelTitle?: string | null;
   ticketPanelDescription?: string | null;
   ticketPanelInfoText?: string | null;
@@ -140,6 +141,33 @@ export type MongoGuildSettings = {
     moduleEmoji: string | null;
     moduleName: string | null;
     showAnonymousAuthorToRoleIds: string[];
+    transcriptTheme?: {
+      logoUrl: string | null;
+      brandName: string | null;
+      primaryColor: string;
+      secondaryColor: string;
+      accentColor: string;
+      backgroundColor: string;
+      secondaryBackgroundColor: string;
+      cardColor: string;
+      messageColor: string;
+      borderColor: string;
+      textColor: string;
+      mutedTextColor: string;
+      buttonColor: string;
+      linkColor: string;
+      titleColor: string;
+      iconColor: string;
+      statusColor: string;
+      hoverColor: string;
+      searchColor: string;
+      mode: "dark" | "light" | "auto";
+      density: "compact" | "normal" | "spacious";
+      cardRadius: "square" | "rounded" | "pill";
+      style: "modern" | "minimal" | "tech";
+      showNevsecBranding: boolean;
+      labels: Record<string, string>;
+    };
   };
   moderationEnabled: boolean;
   accountAgeSecurityEnabled?: boolean;
@@ -237,8 +265,11 @@ export type MongoTicket = {
   migrationStatus?: "ok" | "pending_review" | string;
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
+  assignedStaffId?: string | null;
+  assignedStaffName?: string | null;
+  assignedAt?: Date | null;
   allowedRoleIds?: string[];
-  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
+  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "ASSIGNED" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
   closeReason?: string | null;
   finalResult?: string | null;
   internalNotes?: string | null;
@@ -6095,6 +6126,49 @@ export type MongoCustomPanel = {
   updatedAt: Date;
 };
 
+export type MongoDisplayPanelButton = {
+  emoji: string | null;
+  label: string;
+  style: "primary" | "secondary" | "success" | "danger" | "link";
+  url: string | null;
+  customId: string | null;
+};
+
+export type MongoDisplayPanel = {
+  _id: string;
+  botId: string;
+  name: string;
+  title: string;
+  description: string;
+  content: string | null;
+  color: string;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  buttonConfig: MongoDisplayPanelButton[];
+  status: "draft" | "active" | "archived";
+  createdBy: string | null;
+  updatedBy: string | null;
+  deletedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoDisplayPanelPublication = {
+  _id: string;
+  panelId: string;
+  botId: string;
+  guildId: string;
+  channelId: string;
+  messageId: string | null;
+  status: "pending" | "active" | "failed" | "deleted";
+  lastError: string | null;
+  publishRequestedAt: Date;
+  publishedAt: Date | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+  deletedAt?: Date | null;
+};
+
 const globalForMongo = globalThis as unknown as {
   mongoClient?: MongoClient;
   mongoIndexes?: Promise<void>;
@@ -6342,6 +6416,8 @@ export async function getMongoCollections() {
     socialPanels: db.collection<MongoSocialPanel>("social_panels"),
     customPanelCategories: db.collection<MongoCustomPanelCategory>("custom_panel_categories"),
     customPanels: db.collection<MongoCustomPanel>("custom_panels"),
+    displayPanels: db.collection<MongoDisplayPanel>("display_panels"),
+    displayPanelPublications: db.collection<MongoDisplayPanelPublication>("display_panel_publications"),
     xAccounts: db.collection<MongoXAccount>("x_accounts"),
     xPostsSent: db.collection<MongoXPostSent>("x_posts_sent"),
     clipsConfig: db.collection<MongoClipsConfig>("clips_config"),
@@ -6834,6 +6910,9 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, categoryId: 1, updatedAt: -1 }),
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, published: 1, updatedAt: -1 }),
     db.collection<MongoCustomPanel>("custom_panels").createIndex({ botId: 1, guildId: 1, messageId: 1 }),
+    db.collection<MongoDisplayPanel>("display_panels").createIndex({ botId: 1, status: 1, updatedAt: -1 }),
+    db.collection<MongoDisplayPanelPublication>("display_panel_publications").createIndex({ botId: 1, guildId: 1, channelId: 1, updatedAt: -1 }),
+    db.collection<MongoDisplayPanelPublication>("display_panel_publications").createIndex({ botId: 1, panelId: 1, status: 1, updatedAt: -1 }),
     ensureSocialNotificationIndexes(db),
     ensureKickApiIndexes(db),
     ensureSocialNetworkIndexes(db),

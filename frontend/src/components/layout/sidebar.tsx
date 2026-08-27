@@ -58,6 +58,7 @@ export type ViewId =
   | "clips"
   | "kick-clips"
   | "giveaway"
+  | "updates"
   | "boosters"
   | "x-monitor"
   | "moderation"
@@ -159,6 +160,7 @@ const navItems: NavItem[] = [
   { id: "clips", label: "Clips", icon: Film, moduleId: "clips" },
   { id: "kick-clips", label: "Clipes Kick", icon: Film, moduleId: "kick-clips" },
   { id: "giveaway", label: "Sorteio", icon: Gift, moduleId: "giveaway" },
+  { id: "updates", label: "Atualizações", icon: Bell, moduleId: "updates" },
   { id: "boosters", label: "Sistema Booster", icon: Trophy, moduleId: "boosters" },
   { id: "x-monitor", label: "X Monitor", icon: AtSign, moduleId: "x-monitor" },
   { id: "moderation", label: "Moderação", icon: Shield, moduleId: "moderation" },
@@ -299,6 +301,7 @@ const streamerViewIds = new Set<ViewId>([
   "clips",
   "kick-clips",
   "giveaway",
+  "updates",
   "x-monitor"
 ]);
 
@@ -309,7 +312,8 @@ const streamerModuleIds = new Set([
   "kick-clips",
   "network",
   "x-monitor",
-  "giveaway"
+  "giveaway",
+  "updates"
 ]);
 
 const communityViewIds = new Set<ViewId>([

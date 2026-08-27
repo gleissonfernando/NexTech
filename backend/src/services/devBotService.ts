@@ -50,6 +50,7 @@ export const DEV_MODULES = [
   { id: "custom-bot-orders", label: "Pedidos de Bots Personalizados" },
   { id: "price-tables", label: "Tabela de Precos" },
   { id: "panels", label: "Sistema de Painéis" },
+  { id: "display-panel", label: "Painel de Exibição" },
   { id: "courses", label: "Sistema de Cursos" },
   { id: "network", label: "Rede Social dos Membros" },
   { id: "x-monitor", label: "X Monitor" },

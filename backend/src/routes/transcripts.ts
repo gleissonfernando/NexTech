@@ -10,7 +10,7 @@ import {
   createTranscript,
   getTranscriptForExport,
   getTranscriptPublicMeta,
-  renderTranscriptHtml,
+  renderTranscriptHtmlForPublic,
   revokeTranscriptTemporaryPasswords,
   softDeleteTranscript,
   validateTranscriptPassword
@@ -83,7 +83,8 @@ publicTranscriptsRouter.use((req, res, next) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Content-Security-Policy", [
     "default-src 'none'",
-    "img-src 'self' data: https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net",
+    "img-src 'self' data: https:",
+    "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
     "form-action 'self'",
     "base-uri 'none'",
@@ -119,7 +120,7 @@ publicTranscriptsRouter.post("/:id", async (req, res, next) => {
       return res.status(result.status).send(renderLoginPage(meta, result.message));
     }
 
-    return res.send(renderTranscriptHtml(
+    return res.send(await renderTranscriptHtmlForPublic(
       result.transcript,
       result.accessType === "master" ? "Mestre" : "Temporária",
       result.temporaryPasswordExpiresAt

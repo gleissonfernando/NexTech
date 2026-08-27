@@ -185,6 +185,7 @@ import {
     type SystemEmojiDashboard,
     type SystemHealthResponse,
     type SystemMetricsResponse,
+    type SaveSystemUpdatePayload,
     type Ticket,
     type TicketPanelOption,
     type TwitchChannelPreview,
@@ -193,6 +194,11 @@ import {
     type UpdateSocialMemberPayload,
     type UpdateTwitchNotificationPayload,
     type UpdateXAccountPayload,
+    type UpdateCategory,
+    type UpdatePreview,
+    type UpdateRule,
+    type UpdatesDashboard,
+    type UpdateSettings,
     type VoiceRecorderResponse,
     type VoiceRecording,
     type WorkspacePlanDashboard,
@@ -3422,6 +3428,92 @@ export async function restoreServerBackup(botId: string, guildId: string, backup
     { params: botParams(botId), timeout: 600000 }
   );
   return data.job;
+}
+
+export async function getUpdatesDashboard(botId: string, guildId: string) {
+  const { data } = await api.get<UpdatesDashboard>(`/system-updates/${encodeURIComponent(guildId)}`, {
+    params: botParams(botId)
+  });
+  return data;
+}
+
+export async function saveUpdateSettings(botId: string, guildId: string, payload: Partial<UpdateSettings>) {
+  const { data } = await api.put<{ settings: UpdateSettings }>(
+    `/system-updates/${encodeURIComponent(guildId)}/settings`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.settings;
+}
+
+export async function previewSystemUpdate(botId: string, guildId: string, payload: SaveSystemUpdatePayload) {
+  const { data } = await api.post<{ preview: UpdatePreview }>(
+    `/system-updates/${encodeURIComponent(guildId)}/preview`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.preview;
+}
+
+export async function createSystemUpdate(botId: string, guildId: string, payload: SaveSystemUpdatePayload) {
+  const { data } = await api.post<{ update: import("../types").SystemUpdate }>(
+    `/system-updates/${encodeURIComponent(guildId)}/updates`,
+    payload,
+    { params: botParams(botId), timeout: 20000 }
+  );
+  return data.update;
+}
+
+export async function publishSystemUpdate(botId: string, guildId: string, updateId: string) {
+  const { data } = await api.post<{ update: import("../types").SystemUpdate }>(
+    `/system-updates/${encodeURIComponent(guildId)}/updates/${encodeURIComponent(updateId)}/publish`,
+    undefined,
+    { params: botParams(botId), timeout: 20000 }
+  );
+  return data.update;
+}
+
+export async function saveUpdateCategory(botId: string, guildId: string, payload: Partial<UpdateCategory>) {
+  if (payload.id) {
+    const { data } = await api.patch<{ category: UpdateCategory }>(
+      `/system-updates/${encodeURIComponent(guildId)}/categories/${encodeURIComponent(payload.id)}`,
+      payload,
+      { params: botParams(botId) }
+    );
+    return data.category;
+  }
+
+  const { data } = await api.post<{ category: UpdateCategory }>(
+    `/system-updates/${encodeURIComponent(guildId)}/categories`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.category;
+}
+
+export async function deleteUpdateCategory(botId: string, guildId: string, categoryId: string) {
+  const { data } = await api.delete<{ category: UpdateCategory | null }>(
+    `/system-updates/${encodeURIComponent(guildId)}/categories/${encodeURIComponent(categoryId)}`,
+    { params: botParams(botId) }
+  );
+  return data.category;
+}
+
+export async function saveUpdateRule(botId: string, guildId: string, payload: Partial<UpdateRule>) {
+  const { data } = await api.post<{ rule: UpdateRule }>(
+    `/system-updates/${encodeURIComponent(guildId)}/rules`,
+    payload,
+    { params: botParams(botId) }
+  );
+  return data.rule;
+}
+
+export async function deleteUpdateRule(botId: string, guildId: string, ruleId: string) {
+  const { data } = await api.delete<{ rule: UpdateRule | null }>(
+    `/system-updates/${encodeURIComponent(guildId)}/rules/${encodeURIComponent(ruleId)}`,
+    { params: botParams(botId) }
+  );
+  return data.rule;
 }
 
 export async function getAntiBanConfig(botId: string, guildId: string) {

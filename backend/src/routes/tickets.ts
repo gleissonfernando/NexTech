@@ -23,7 +23,7 @@ const ticketSchema = z.object({
   moduleType: z.enum(["default", "police"]).optional().default("default"),
   panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
   ticketType: z.string().min(1).max(80).optional().nullable()
 });
 
@@ -40,7 +40,7 @@ const ticketStatusSchema = z.object({
   panelId: z.string().optional().nullable(),
   responsibleRoleId: z.string().optional().nullable(),
   responsibleUserId: z.string().optional().nullable(),
-  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
+  status: z.enum(["OPEN", "PENDING", "CLOSING", "CLOSED", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER", "RESOLVED", "DENIED", "ARCHIVED", "INCOMPLETE"]).optional(),
   subject: z.string().min(1).max(120).optional(),
   ticketType: z.string().min(1).max(80).optional().nullable()
 });
@@ -54,7 +54,8 @@ const ticketEventSchema = z.object({
 });
 
 const ticketClaimSchema = z.object({
-  responsibleUserId: z.string().min(1)
+  responsibleUserId: z.string().min(1),
+  responsibleUserName: z.string().min(1).optional().nullable()
 });
 
 const ticketCloseBeginSchema = z.object({
@@ -292,7 +293,7 @@ ticketsRouter.post("/bot/:ticketId/claim", async (req, res, next) => {
     }
     const input = ticketClaimSchema.parse(req.body);
     const botId = await resolveRequestBotId(req);
-    const result = await claimTicket(req.params.ticketId, botId, input.responsibleUserId);
+    const result = await claimTicket(req.params.ticketId, botId, input.responsibleUserId, input.responsibleUserName ?? null);
     return res.status(result.claimed ? 200 : 409).json(result);
   } catch (error) {
     return next(error);

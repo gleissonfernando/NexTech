@@ -182,9 +182,13 @@ export type TicketRecord = {
   migrationStatus?: string | null;
   moduleType: string;
   ticketType: string | null;
+  allowedRoleIds?: string[];
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
-  status: string;
+  assignedAt?: string | null;
+  assignedStaffId?: string | null;
+  assignedStaffName?: string | null;
+  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "ASSIGNED" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
   closeReason?: string | null;
   closedById?: string | null;
   finalResult?: string | null;
@@ -2915,9 +2919,9 @@ export class ApiClient {
     return data.ticket;
   }
 
-  async claimTicket(ticketId: string, responsibleUserId: string) {
+  async claimTicket(ticketId: string, responsibleUserId: string, responsibleUserName?: string | null) {
     try {
-      const { data } = await this.http.post<{ claimed: boolean; ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/claim`, { responsibleUserId });
+      const { data } = await this.http.post<{ claimed: boolean; ticket: TicketRecord | null }>(`/tickets/bot/${ticketId}/claim`, { responsibleUserId, responsibleUserName });
       return data;
     } catch (error) {
       if (typeof error === "object" && error && "response" in error) {

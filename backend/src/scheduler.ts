@@ -1,8 +1,15 @@
 import { startGiveawayScheduler } from "./services/giveawayService";
 import { startServerBackupScheduler } from "./services/serverBackupService";
+import { processDueSystemUpdates } from "./services/updateSystemService";
 
 startGiveawayScheduler();
 startServerBackupScheduler();
+const updatesScheduler = setInterval(() => {
+  void processDueSystemUpdates().catch((error) => {
+    console.error("[scheduler] falha ao processar atualizações agendadas:", error instanceof Error ? error.message : error);
+  });
+}, 60_000);
+updatesScheduler.unref();
 console.log(`[scheduler] iniciado pid=${process.pid}`);
 
 const keepAlive = setInterval(() => undefined, 60 * 60_000);
@@ -13,6 +20,7 @@ function shutdown(signal: string, exitCode = 0) {
   shuttingDown = true;
   console.log(`[scheduler] encerrando por ${signal}`);
   clearInterval(keepAlive);
+  clearInterval(updatesScheduler);
   process.exit(exitCode);
 }
 

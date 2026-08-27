@@ -189,6 +189,7 @@ export type GuildSettings = {
   ticketPanelFooterText: string | null;
   ticketPanelColor: string;
   ticketPanelPlaceholder: string | null;
+  ticketAllowedRoleIds: string[];
   ticketPanelOptions: TicketPanelOption[];
   reportSystem: ReportSystemSettings;
   logChannelId: string | null;
@@ -407,6 +408,54 @@ export type GlobalLogConfig = {
   moduleEmoji: string | null;
   moduleName: string | null;
   showAnonymousAuthorToRoleIds: string[];
+  transcriptTheme: TranscriptTheme;
+};
+
+export type TranscriptTheme = {
+  logoUrl: string | null;
+  brandName: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  secondaryBackgroundColor: string;
+  cardColor: string;
+  messageColor: string;
+  borderColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  buttonColor: string;
+  linkColor: string;
+  titleColor: string;
+  iconColor: string;
+  statusColor: string;
+  hoverColor: string;
+  searchColor: string;
+  mode: "dark" | "light" | "auto";
+  density: "compact" | "normal" | "spacious";
+  cardRadius: "square" | "rounded" | "pill";
+  style: "modern" | "minimal" | "tech";
+  showNevsecBranding: boolean;
+  labels: {
+    pageTitle: string;
+    summaryTitle: string;
+    contactTitle: string;
+    conversationTitle: string;
+    searchPlaceholder: string;
+    openedAt: string;
+    closedAt: string;
+    duration: string;
+    messages: string;
+    openedBy: string;
+    assumedBy: string;
+    category: string;
+    subject: string;
+    status: string;
+    ticketId: string;
+    transcriptId: string;
+    endOfConversation: string;
+    footerText: string;
+  };
 };
 
 export type TicketPanelOption = {
@@ -1122,7 +1171,8 @@ export type Ticket = {
   channelId?: string | null;
   openerId: string;
   subject: string;
-  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
+  allowedRoleIds?: string[];
+  status: "OPEN" | "PENDING" | "CLOSING" | "CLOSED" | "IN_ANALYSIS" | "ASSIGNED" | "WAITING_EVIDENCE" | "WAITING_USER" | "RESOLVED" | "DENIED" | "ARCHIVED" | "INCOMPLETE";
   closedById?: string | null;
   lastUserCallAt?: string | null;
   createdAt: string;
@@ -4630,6 +4680,121 @@ export type OpenDutySettings = { id: string; botId: string | null; guildId: stri
 export type OpenDutyNotification = { id: string; botId: string | null; guildId: string; executorId: string; targetId: string; message: string; edited: boolean; status: "sent" | "failed" | "cancelled" | "denied"; errorReason: string | null; counterTotal: number; alertTriggered: boolean; createdAt: string };
 export type OpenDutyDashboard = { counters: Array<{ lastNotifiedAt: string | null; total: number; userId: string }>; history: OpenDutyNotification[]; settings: OpenDutySettings };
 export type SaveOpenDutySettingsPayload = Partial<Omit<OpenDutySettings, "id" | "botId" | "guildId" | "updatedAt">>;
+
+export type UpdateStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CANCELLED" | "ERROR";
+export type UpdatePublishMode = "single" | "per_category";
+
+export type UpdateChange = {
+  id: string;
+  text: string;
+  type?: "added" | "fixed" | "improved" | "removed" | "security" | "performance" | "interface" | "config" | "other";
+  categoryId?: string | null;
+};
+
+export type UpdateCategory = {
+  id: string;
+  botId: string;
+  guildId: string;
+  name: string;
+  slug: string;
+  emoji: string;
+  color: string;
+  keywords: string[];
+  channelId: string | null;
+  enabled: boolean;
+  autoClassificationEnabled: boolean;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateRule = {
+  id: string;
+  botId: string;
+  guildId: string;
+  categoryId: string;
+  terms: string[];
+  priority: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateSettings = {
+  id: string;
+  botId: string;
+  guildId: string;
+  mode: UpdatePublishMode;
+  singleChannelId: string | null;
+  lowConfidenceThreshold: number;
+  requireConfirmationBelowThreshold: boolean;
+  autoPublishInternalEvents: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type SystemUpdate = {
+  id: string;
+  botId: string;
+  guildId: string;
+  title: string;
+  version: string | null;
+  date: string;
+  description: string;
+  changes: UpdateChange[];
+  bannerUrl: string | null;
+  autoClassify: boolean;
+  detectedCategories: UpdateClassificationResult[];
+  finalCategoryIds: string[];
+  confidence: number;
+  status: UpdateStatus;
+  authorId: string | null;
+  sourceModule: string | null;
+  sourceEvent: string | null;
+  scheduledFor: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  errorReason: string | null;
+};
+
+export type UpdateClassificationResult = {
+  categoryId: string;
+  categoryName: string;
+  confidence: number;
+  matchedTerms: string[];
+};
+
+export type UpdatesDashboard = {
+  categories: UpdateCategory[];
+  rules: UpdateRule[];
+  settings: UpdateSettings;
+  stats: { correcoes: number; melhorias: number; novidades: number; published: number; scheduled: number; total: number };
+  updates: SystemUpdate[];
+};
+
+export type UpdatePreview = {
+  categoryResults: UpdateClassificationResult[];
+  confidence: number;
+  lowConfidence: boolean;
+  messages: Array<{ categoryId: string | null; categoryName: string; channelId: string | null; content: string; error: string | null }>;
+};
+
+export type SaveSystemUpdatePayload = {
+  autoClassify?: boolean;
+  bannerUrl?: string | null;
+  changes?: Array<Partial<UpdateChange> | string>;
+  date?: string | null;
+  description?: string | null;
+  finalCategoryIds?: string[];
+  publishNow?: boolean;
+  scheduledFor?: string | null;
+  sourceEvent?: string | null;
+  sourceModule?: string | null;
+  status?: UpdateStatus;
+  title: string;
+  version?: string | null;
+};
 
 export type DashboardBot = {
   id: string;

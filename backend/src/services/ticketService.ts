@@ -16,8 +16,12 @@ export type TicketDto = {
   moduleType: string;
   ticketType: string | null;
   migrationStatus?: string | null;
+  allowedRoleIds?: string[];
   responsibleRoleId?: string | null;
   responsibleUserId?: string | null;
+  assignedStaffId?: string | null;
+  assignedStaffName?: string | null;
+  assignedAt?: string | null;
   status: MongoTicket["status"];
   closeReason?: string | null;
   closedById?: string | null;
@@ -72,8 +76,12 @@ export async function createTicket(input: CreateTicketInput) {
     moduleType,
     ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
     migrationStatus: "ok",
+    allowedRoleIds: input.allowedRoleIds ?? [],
     responsibleRoleId: input.responsibleRoleId ?? null,
     responsibleUserId: null,
+    assignedStaffId: null,
+    assignedStaffName: null,
+    assignedAt: null,
     status: input.status ?? "OPEN",
     closeReason: null,
     finalResult: null,
@@ -104,9 +112,12 @@ export async function createTicket(input: CreateTicketInput) {
       moduleType,
       ticketType: normalizeTicketType(input.ticketType, moduleType, input.categoryId),
       migrationStatus: "ok",
+      allowedRoleIds: input.allowedRoleIds ?? [],
       responsibleRoleId: input.responsibleRoleId ?? null,
       responsibleUserId: null,
-      allowedRoleIds: input.allowedRoleIds ?? [],
+      assignedStaffId: null,
+      assignedStaffName: null,
+      assignedAt: null,
       status: input.status ?? "OPEN",
       closeReason: null,
       finalResult: null,
@@ -147,7 +158,7 @@ export async function createTicket(input: CreateTicketInput) {
 export async function findOpenTicket(guildId: string, botId: string | null | undefined, openerId: string, categoryId?: string | null, moduleTypeInput?: string | null) {
   const normalizedBotId = normalizeBotId(botId);
   const moduleType = normalizeModuleType(moduleTypeInput);
-  const activeStatuses: MongoTicket["status"][] = ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"];
+  const activeStatuses: MongoTicket["status"][] = ["OPEN", "PENDING", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER"];
   const categoryQuery = categoryId ? { categoryId } : {};
 
   try {
@@ -200,6 +211,7 @@ export async function listTickets(guildId?: string, botId?: string | null) {
       moduleType: normalizeModuleType(ticket.moduleType),
       ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
       migrationStatus: ticket.migrationStatus ?? null,
+      allowedRoleIds: ticket.allowedRoleIds ?? [],
       responsibleRoleId: ticket.responsibleRoleId ?? null,
       responsibleUserId: ticket.responsibleUserId ?? null,
       status: ticket.status,
@@ -246,7 +258,7 @@ export async function getTicketById(ticketId: string, botId?: string | null) {
   }
 }
 
-export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "responsibleRoleId" | "categoryId" | "categoryName" | "panelId" | "subject" | "ticketType" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete" | "lastUserCallAt">>) {
+export async function updateTicketStatus(ticketId: string, botId: string | null, input: Partial<Pick<MongoTicket, "status" | "responsibleUserId" | "responsibleRoleId" | "categoryId" | "categoryName" | "panelId" | "subject" | "ticketType" | "closeReason" | "finalResult" | "internalNotes" | "closedById" | "closedAt" | "isIncomplete" | "lastUserCallAt" | "assignedStaffId" | "assignedStaffName" | "assignedAt">>) {
   const { tickets } = await getMongoCollections();
   const $set: Partial<MongoTicket> = {};
   for (const [key, value] of Object.entries(input) as Array<[keyof typeof input, unknown]>) {
@@ -273,7 +285,7 @@ export async function beginTicketClosing(ticketId: string, botId: string | null,
   const closed = await tickets.findOneAndUpdate(
     {
       _id: ticketId,
-      status: { $in: ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"] }
+      status: { $in: ["OPEN", "PENDING", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER"] }
     },
     {
       $set: {
@@ -302,7 +314,8 @@ export async function updateTicketChannel(ticketId: string, botId: string | null
   return updated ? toDto(updated) : null;
 }
 
-export async function claimTicket(ticketId: string, botId: string | null, userId: string) {
+export async function claimTicket(ticketId: string, botId: string | null, userId: string, userName: string | null = null) {
+  const now = new Date();
   try {
     const { tickets } = await getMongoCollections();
     const ticket = await getTicketById(ticketId, botId);
@@ -313,12 +326,15 @@ export async function claimTicket(ticketId: string, botId: string | null, userId
       {
         _id: ticketId,
         responsibleUserId: { $in: [null, ""] },
-        status: { $nin: ["CLOSED", "ARCHIVED", "RESOLVED", "DENIED"] }
+        status: { $in: ["OPEN", "PENDING", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER"] }
       },
       {
         $set: {
+          assignedAt: now,
+          assignedStaffId: userId,
+          assignedStaffName: userName,
           responsibleUserId: userId,
-          status: "IN_ANALYSIS"
+          status: "ASSIGNED"
         }
       },
       { returnDocument: "after" }
@@ -337,7 +353,10 @@ export async function claimTicket(ticketId: string, botId: string | null, userId
       return { claimed: false, ticket: ticket ?? null };
     }
     ticket.responsibleUserId = userId;
-    ticket.status = "IN_ANALYSIS";
+    ticket.assignedAt = now.toISOString();
+    ticket.assignedStaffId = userId;
+    ticket.assignedStaffName = userName;
+    ticket.status = "ASSIGNED";
     return { claimed: true, ticket };
   }
 }
@@ -381,8 +400,12 @@ function toDto(ticket: MongoTicket): TicketDto {
     moduleType: normalizeModuleType(ticket.moduleType),
     ticketType: normalizeTicketType(ticket.ticketType, normalizeModuleType(ticket.moduleType), ticket.categoryId),
     migrationStatus: ticket.migrationStatus ?? null,
+    allowedRoleIds: ticket.allowedRoleIds ?? [],
     responsibleRoleId: ticket.responsibleRoleId ?? null,
     responsibleUserId: ticket.responsibleUserId ?? null,
+    assignedAt: ticket.assignedAt?.toISOString() ?? null,
+    assignedStaffId: ticket.assignedStaffId ?? null,
+    assignedStaffName: ticket.assignedStaffName ?? null,
     status: ticket.status,
     closeReason: ticket.closeReason ?? null,
     finalResult: ticket.finalResult ?? null,
@@ -439,7 +462,7 @@ export function ticketRecoveryActiveKey(guildId: string, botId: string | null, o
 }
 
 export function isActiveTicketStatus(status: MongoTicket["status"]) {
-  return ["OPEN", "PENDING", "IN_ANALYSIS", "WAITING_EVIDENCE", "WAITING_USER"].includes(status);
+  return ["OPEN", "PENDING", "IN_ANALYSIS", "ASSIGNED", "WAITING_EVIDENCE", "WAITING_USER"].includes(status);
 }
 
 function isDuplicateKeyError(error: unknown) {

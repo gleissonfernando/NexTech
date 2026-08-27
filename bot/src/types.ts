@@ -73,6 +73,7 @@ export type GuildSettings = {
   ticketPanelFooterText: string | null;
   ticketPanelColor: string;
   ticketPanelPlaceholder: string | null;
+  ticketAllowedRoleIds: string[];
   ticketPanelOptions: TicketPanelOption[];
   reportSystem: ReportSystemSettings;
   logChannelId: string | null;
@@ -94,6 +95,7 @@ export type GuildSettings = {
     moduleEmoji: string | null;
     moduleName: string | null;
     showAnonymousAuthorToRoleIds: string[];
+    transcriptTheme?: Record<string, unknown>;
   };
   moderationEnabled: boolean;
   accountAgeSecurityEnabled: boolean;

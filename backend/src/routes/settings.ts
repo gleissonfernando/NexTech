@@ -64,6 +64,71 @@ const rulesPanelButtonSchema = z.object({
   url: z.string().max(2048).nullable().optional()
 });
 
+const colorSchema = z.string().regex(/^#[0-9a-f]{6}$/i);
+const transcriptThemeLabelsSchema = z.object({
+  pageTitle: z.string().min(1).max(80).optional(),
+  summaryTitle: z.string().min(1).max(80).optional(),
+  contactTitle: z.string().min(1).max(80).optional(),
+  conversationTitle: z.string().min(1).max(80).optional(),
+  searchPlaceholder: z.string().min(1).max(80).optional(),
+  openedAt: z.string().min(1).max(80).optional(),
+  closedAt: z.string().min(1).max(80).optional(),
+  duration: z.string().min(1).max(80).optional(),
+  messages: z.string().min(1).max(80).optional(),
+  openedBy: z.string().min(1).max(80).optional(),
+  assumedBy: z.string().min(1).max(80).optional(),
+  category: z.string().min(1).max(80).optional(),
+  subject: z.string().min(1).max(80).optional(),
+  status: z.string().min(1).max(80).optional(),
+  ticketId: z.string().min(1).max(80).optional(),
+  transcriptId: z.string().min(1).max(80).optional(),
+  endOfConversation: z.string().min(1).max(80).optional(),
+  footerText: z.string().min(1).max(180).optional()
+}).optional();
+const transcriptThemeSchema = z.object({
+  logoUrl: z.string().url().max(2048).nullable().optional(),
+  brandName: z.string().max(80).nullable().optional(),
+  primaryColor: colorSchema.optional(),
+  secondaryColor: colorSchema.optional(),
+  accentColor: colorSchema.optional(),
+  backgroundColor: colorSchema.optional(),
+  secondaryBackgroundColor: colorSchema.optional(),
+  cardColor: colorSchema.optional(),
+  messageColor: colorSchema.optional(),
+  borderColor: colorSchema.optional(),
+  textColor: colorSchema.optional(),
+  mutedTextColor: colorSchema.optional(),
+  buttonColor: colorSchema.optional(),
+  linkColor: colorSchema.optional(),
+  titleColor: colorSchema.optional(),
+  iconColor: colorSchema.optional(),
+  statusColor: colorSchema.optional(),
+  hoverColor: colorSchema.optional(),
+  searchColor: colorSchema.optional(),
+  mode: z.enum(["dark", "light", "auto"]).optional(),
+  density: z.enum(["compact", "normal", "spacious"]).optional(),
+  cardRadius: z.enum(["square", "rounded", "pill"]).optional(),
+  style: z.enum(["modern", "minimal", "tech"]).optional(),
+  showNevsecBranding: z.boolean().optional(),
+  labels: transcriptThemeLabelsSchema
+}).superRefine((theme, ctx) => {
+  const text = theme.textColor;
+  for (const [key, label] of [
+    ["backgroundColor", "fundo principal"],
+    ["cardColor", "cards"],
+    ["messageColor", "mensagens"]
+  ] as const) {
+    const background = theme[key];
+    if (text && background && contrastRatio(text, background) < 4.5) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `Contraste insuficiente entre texto e ${label}.`
+      });
+    }
+  }
+}).optional();
+
 const settingsSchema = z.object({
   welcomeEnabled: z.boolean().optional(),
   welcomeChannelId: z.string().nullable().optional(),
@@ -105,6 +170,7 @@ const settingsSchema = z.object({
   ticketPanelFooterText: z.string().max(180).nullable().optional(),
   ticketPanelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   ticketPanelPlaceholder: z.string().max(120).nullable().optional(),
+  ticketAllowedRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
   ticketPanelOptions: z.array(z.object({
     categoryId: z.string().nullable().optional().default(null),
     description: z.string().max(100).nullable().optional().default(null),
@@ -217,7 +283,8 @@ const settingsSchema = z.object({
     panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
     moduleEmoji: z.string().max(80).nullable().optional(),
     moduleName: z.string().max(80).nullable().optional(),
-    showAnonymousAuthorToRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional()
+    showAnonymousAuthorToRoleIds: z.array(z.string().regex(/^\d{5,32}$/)).max(100).optional(),
+    transcriptTheme: transcriptThemeSchema
   }).optional(),
   moderationEnabled: z.boolean().optional(),
   accountAgeSecurityEnabled: z.boolean().optional(),
@@ -1240,6 +1307,7 @@ async function canPatchSettings(
     ticketPanelFooterText: ["tickets"],
     ticketPanelColor: ["tickets"],
     ticketPanelPlaceholder: ["tickets"],
+    ticketAllowedRoleIds: ["tickets"],
     ticketPanelOptions: ["tickets"],
     reportSystem: ["police-iab", "police-subpoenas"],
     logChannelId: ["logs"],
@@ -1547,6 +1615,10 @@ async function validateGuildResources(
     }
   }
 
+  if (input.ticketAllowedRoleIds?.length && !(await areGuildRoles(guildId, [...new Set(input.ticketAllowedRoleIds)], botToken))) {
+    throw createSettingsError("Um dos cargos permitidos para tickets não pertence a este servidor.");
+  }
+
   const ticketPanelLogChannelIds = (input.ticketPanelOptions ?? [])
     .map((option) => option.logChannelId)
     .filter((channelId): channelId is string => Boolean(channelId));
@@ -1673,6 +1745,20 @@ function inferSettingsModuleName(input: z.infer<typeof settingsSchema>) {
   if ([...keys].some((key) => key.startsWith("twitch") || key.startsWith("booster"))) return "roles";
 
   return "settings";
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const fg = relativeLuminance(foreground);
+  const bg = relativeLuminance(background);
+  const lighter = Math.max(fg, bg);
+  const darker = Math.min(fg, bg);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function relativeLuminance(hex: string) {
+  const rgb = hex.replace("#", "").match(/.{2}/g)?.map((value) => parseInt(value, 16) / 255) ?? [0, 0, 0];
+  const [r, g, b] = rgb.map((value) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
 }
 
 function friendlySettingsMessage(input: z.infer<typeof settingsSchema>) {

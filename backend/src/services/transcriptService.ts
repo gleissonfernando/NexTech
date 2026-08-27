@@ -3,6 +3,7 @@ import { APP_BASE_URL, TRANSCRIPT_BASE_URL, buildTranscriptUrl } from "../config
 import { env } from "../config/env";
 import { getMongoCollections, type MongoTicket, type MongoTranscript, type MongoTranscriptAccessLog, type MongoTranscriptMessage } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
+import { getGuildSettings, type TranscriptThemeDto } from "./settingsService";
 
 const HASH_ITERATIONS = 120_000;
 const HASH_KEY_LENGTH = 32;
@@ -122,7 +123,7 @@ export async function createTranscript(input: TranscriptInput) {
     }))
   };
 
-  transcript.htmlContent = renderTranscriptHtml(transcript, "Protegido");
+  transcript.htmlContent = renderTranscriptHtml(transcript, "Protegido", null, await resolveTranscriptTheme(transcript));
   transcript.textContent = renderTranscriptText(transcript);
   transcriptLog("HTML e TXT gerados", {
     guildId: input.guildId,
@@ -381,32 +382,40 @@ export async function createNewTemporaryPassword(transcriptId: string, ttlHours 
   return { password, expiresAt: expiresAt.toISOString() };
 }
 
-export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: "Temporária" | "Mestre" | "Protegido", temporaryPasswordExpiresAt?: string | null) {
+export async function renderTranscriptHtmlForPublic(transcript: MongoTranscript, passwordType: "Temporária" | "Mestre" | "Protegido", temporaryPasswordExpiresAt?: string | null) {
+  return renderTranscriptHtml(transcript, passwordType, temporaryPasswordExpiresAt, await resolveTranscriptTheme(transcript));
+}
+
+export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: "Temporária" | "Mestre" | "Protegido", temporaryPasswordExpiresAt?: string | null, theme = DEFAULT_TRANSCRIPT_THEME) {
   const duration = formatDuration(transcript.createdAt, transcript.closedAt);
-  const status = statusBadge(transcript.status);
   const ticketId = transcript.ticketId ?? transcript._id;
-  const messages = transcript.messages.map((message) => {
-    const flags = [
-      message.system ? "Sistema" : null,
-      message.anonymous ? "Anonimo" : null,
-      message.botRelayed ? "Reenviado pelo bot" : null
-    ].filter(Boolean);
-    return `
-    <article class="message">
-      <div class="message-head">
-        <div>
-          <strong>${escapeHtml(message.authorName)}</strong>
-          ${flags.length ? `<span class="chips">${flags.map((flag) => `<span>${escapeHtml(String(flag))}</span>`).join("")}</span>` : ""}
-        </div>
-        <time>${formatDate(message.createdAt)}</time>
-      </div>
-      <p>${escapeHtml(message.content || "(sem texto)")}</p>
-      ${message.attachments.map((attachment) => renderAttachment(attachment)).join("")}
-    </article>`;
-  }).join("");
-  const events = transcript.events.map((event) => `<li><span>${formatDate(event.createdAt)}</span>${escapeHtml(event.content)}</li>`).join("");
-  const participants = transcript.participants.map((participant) => `<li><strong>${escapeHtml(participant.name)}</strong>${participant.role ? `<span>${escapeHtml(participant.role)}</span>` : ""}</li>`).join("");
-  const attachments = transcript.attachments.map((attachment) => `<li><a href="${escapeAttribute(attachment.url)}" target="_blank" rel="noreferrer">${escapeHtml(attachment.name)}</a><span>${formatBytes(attachment.size)}</span></li>`).join("");
+  const participantStats = buildParticipantStats(transcript);
+  const summaryItems: Array<[string, string]> = [
+    [theme.labels.openedAt, formatDate(transcript.createdAt)],
+    [theme.labels.closedAt, transcript.closedAt ? formatDate(transcript.closedAt) : "-"],
+    [theme.labels.duration, duration],
+    [theme.labels.messages, String(transcript.messages.length)],
+    [theme.labels.openedBy, formatUser(transcript.openedById)],
+    [theme.labels.assumedBy, formatUser(transcript.responsibleUserId)],
+    [theme.labels.category, transcript.categoryName ?? "-"],
+    [theme.labels.status, transcript.status],
+    [theme.labels.ticketId, ticketId],
+    [theme.labels.transcriptId, transcript._id],
+    ["Proteção", "Senha obrigatória"],
+    ["Acesso", passwordType],
+    ["Expira em", temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : transcript.expiresAt ? formatDate(transcript.expiresAt) : "-"]
+  ];
+  const messages = renderMessages(transcript, theme);
+  const attachmentCount = transcript.attachments.length;
+  const linkCount = transcript.messages.reduce((total, message) => total + countLinks(message.content), 0);
+  const closedFooter = theme.labels.footerText || "Atendimento encerrado e preservado pela Nevsec.";
+  const logo = theme.logoUrl
+    ? `<img class="brand-logo" src="${escapeAttribute(theme.logoUrl)}" alt="${escapeAttribute(theme.brandName ?? "Logo")}" />`
+    : `<div class="brand-logo brand-logo-fallback">${escapeHtml((theme.brandName ?? "N").slice(0, 1).toUpperCase())}</div>`;
+  const densityClass = `density-${theme.density}`;
+  const radiusClass = `radius-${theme.cardRadius}`;
+  const styleClass = `style-${theme.style}`;
+  const colorScheme = theme.mode === "light" ? "light" : "dark";
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -414,77 +423,204 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
   <meta charset="utf-8" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Transcript ${escapeHtml(ticketId)}</title>
+  <title>${escapeHtml(theme.labels.pageTitle)} - ${escapeHtml(ticketId)}</title>
   <style>
-    :root{color-scheme:dark;--bg:#070707;--panel:#111113;--panel2:#18181b;--line:#2f2f35;--text:#f4f4f5;--muted:#a1a1aa;--gold:#f2b84b;--gold2:#8a6424;--danger:#ef4444}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1b1b20 0,#070707 42%);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}
-    main{max-width:1120px;margin:0 auto;padding:28px 18px 44px}
-    header{border:1px solid var(--line);border-left:5px solid var(--gold);border-radius:10px;background:linear-gradient(135deg,#141416,#0b0b0c);padding:24px;margin-bottom:18px}
-    .eyebrow{color:var(--gold);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-    h1{font-size:30px;margin:6px 0 8px}h2{font-size:18px;margin:0 0 14px}.lead{color:var(--muted);margin:0;max-width:760px}
-    section{border:1px solid var(--line);border-radius:10px;background:rgba(17,17,19,.88);padding:18px;margin-top:14px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:13px}
-    .box span,.list span,time{display:block;color:var(--muted);font-size:12px}.box strong{display:block;margin-top:3px;word-break:break-word}.status{color:var(--gold)}
-    .warning{background:#251806;border-color:var(--gold2)}.warning h2{color:var(--gold)}
-    .message{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:10px}.message-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.message p{white-space:pre-wrap;margin:10px 0 0}
-    .chips{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:8px}.chips span{display:inline-block;border:1px solid var(--gold2);color:var(--gold);border-radius:999px;padding:1px 7px;font-size:11px}
-    .attachment{display:block;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0d0d0f}.attachment img{display:block;max-width:100%;height:auto}.attachment a{display:block;padding:10px}
-    .list{list-style:none;padding:0;margin:0;display:grid;gap:8px}.list li{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}
-    a{color:#f7d98a}.actions{display:flex;gap:10px;flex-wrap:wrap}.actions button,.actions a{background:var(--gold);color:#171717;border:0;border-radius:7px;padding:10px 12px;text-decoration:none;font-weight:700;cursor:pointer}
-    @media(max-width:640px){main{padding:14px 10px 30px}header,section{border-radius:8px}.message-head,.list li{display:block}h1{font-size:24px}}
+    :root{color-scheme:${colorScheme};--bg:${theme.backgroundColor};--bg2:${theme.secondaryBackgroundColor};--card:${theme.cardColor};--msg:${theme.messageColor};--line:${theme.borderColor};--text:${theme.textColor};--muted:${theme.mutedTextColor};--primary:${theme.primaryColor};--secondary:${theme.secondaryColor};--accent:${theme.accentColor};--button:${theme.buttonColor};--link:${theme.linkColor};--title:${theme.titleColor};--icon:${theme.iconColor};--status:${theme.statusColor};--hover:${theme.hoverColor};--search:${theme.searchColor};--radius:10px;--pad:16px}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}a{color:var(--link)}button,input{font:inherit}
+    main{width:min(1180px,100%);margin:0 auto;padding:24px 16px 42px}.radius-square{--radius:2px}.radius-rounded{--radius:10px}.radius-pill{--radius:18px}.density-compact{--pad:12px}.density-spacious{--pad:22px}
+    header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border:1px solid var(--line);border-left:5px solid var(--primary);border-radius:var(--radius);background:rgba(255,255,255,.03);padding:var(--pad);box-shadow:0 16px 50px rgba(0,0,0,.24)}
+    .brand{display:flex;gap:13px;align-items:center}.brand-logo{width:48px;height:48px;border-radius:12px;object-fit:cover;border:1px solid var(--line);background:var(--card)}.brand-logo-fallback{display:grid;place-items:center;color:var(--bg);font-weight:900;background:var(--primary)}
+    .eyebrow{color:var(--primary);font-size:12px;font-weight:800;text-transform:uppercase}.brand h1{color:var(--title);font-size:30px;margin:2px 0 0}.brand p{margin:2px 0 0;color:var(--muted)}.top-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .btn{border:1px solid color-mix(in srgb,var(--button) 55%,var(--line));border-radius:8px;background:var(--button);color:#08090d;padding:9px 11px;text-decoration:none;font-weight:800;cursor:pointer}.btn.secondary{background:transparent;color:var(--text)}
+    section{margin-top:16px}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}h2{color:var(--title);font-size:18px;margin:0}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}.box,.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);padding:var(--pad)}.box span{display:block;color:var(--muted);font-size:12px}.box strong{display:block;margin-top:3px;word-break:break-word}.status{color:var(--status)}
+    .contact-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px}.contact-text{white-space:pre-wrap;margin:0}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.search{min-width:min(360px,100%);flex:1;border:1px solid var(--line);border-radius:8px;background:var(--search);color:var(--text);padding:10px 12px;outline:none}.search:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 20%,transparent)}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.chip{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--text);padding:7px 10px;cursor:pointer}.chip.active,.chip:hover{border-color:var(--primary);background:var(--hover)}
+    .date-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;margin:18px 0 10px}.date-divider:before,.date-divider:after{content:"";height:1px;flex:1;background:var(--line)}
+    .message{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--msg);padding:var(--pad);margin-bottom:10px}.avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:var(--card);border:1px solid var(--line)}.avatar-fallback{display:grid;place-items:center;color:var(--primary);font-weight:900}.message-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.author{font-weight:800;color:var(--title)}time{color:var(--muted);font-size:12px}.content{white-space:pre-wrap;margin:7px 0 0}.flag{display:inline-flex;border:1px solid color-mix(in srgb,var(--primary) 55%,var(--line));color:var(--primary);border-radius:999px;padding:1px 7px;font-size:11px}
+    .attachment,.embed{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.18);overflow:hidden}.attachment img{display:block;max-width:100%;height:auto}.attachment a,.embed{display:block;padding:10px}.embed{border-left:4px solid var(--secondary)}.embed pre{white-space:pre-wrap;margin:0;color:var(--muted);font-size:12px}
+    mark{background:color-mix(in srgb,var(--primary) 32%,transparent);color:var(--text);padding:0 2px}.footer{color:var(--muted);text-align:center}.hidden{display:none!important}@media(max-width:760px){main{padding:12px 10px 28px}header,.contact-grid{display:block}.top-actions{margin-top:12px;justify-content:flex-start}.brand h1{font-size:24px}.message{grid-template-columns:34px minmax(0,1fr)}.avatar{width:34px;height:34px}}
+    @media print{body{background:#fff;color:#000}.top-actions,.toolbar,.chips{display:none}.box,.panel,.message{break-inside:avoid}}
   </style>
 </head>
 <body>
-<main>
+<main class="${densityClass} ${radiusClass} ${styleClass}">
   <header>
-    <div class="eyebrow">North Police Department - Sistema de Logs</div>
-    <h1>📁 Transcript Gerado</h1>
-    <p class="lead">O registro completo deste atendimento foi salvo com seguranca. O acesso e protegido por senha e todos os acessos são registrados para auditoria.</p>
+    <div class="brand">${logo}<div><div class="eyebrow">${escapeHtml(theme.brandName ?? transcript.guildName ?? "Nevsec")}</div><h1>${escapeHtml(theme.labels.pageTitle)}</h1><p>${escapeHtml(transcript.guildName ?? transcript.guildId)}</p></div></div>
+    <div class="top-actions"><button class="btn secondary" type="button" data-copy-link>Copiar link</button><button class="btn secondary" type="button" onclick="window.print()">Imprimir</button><a class="btn" href="#export" data-export>Exportar</a></div>
   </header>
-  ${transcript.isPartial ? `<section class="warning"><h2>Transcript Parcial</h2><p>Este transcript pode estar incompleto porque o ticket foi interrompido antes do encerramento normal.</p><p>Motivo: ${escapeHtml(transcript.partialReason ?? "indisponivel")}</p></section>` : ""}
-  <section>
-    <h2>Informações do Ticket</h2>
-    <div class="grid">
-      ${infoBox("Ticket", ticketId)}
-      ${infoBox("Canal", transcript.channelName ? `#${transcript.channelName}` : "-")}
-      ${infoBox("Tipo", transcript.type)}
-      ${infoBox("Status", status)}
-      ${infoBox("Servidor", transcript.guildName ?? transcript.guildId)}
-      ${infoBox("Categoria/Órgão", transcript.categoryName ?? "-")}
-    </div>
-  </section>
-  <section>
-    <h2>Dados do Caso</h2>
-    <div class="grid">
-      ${infoBox("Aberto por", formatUser(transcript.openedById))}
-      ${infoBox("Responsável", formatUser(transcript.responsibleUserId))}
-      ${infoBox("Criado em", formatDate(transcript.createdAt))}
-      ${infoBox("Finalizado em", transcript.closedAt ? formatDate(transcript.closedAt) : "-")}
-      ${infoBox("Tempo total", duration)}
-      ${infoBox("Motivo/resultado", transcript.closeReason ?? transcript.finalResult ?? "-")}
-    </div>
-  </section>
-  <section>
-    <h2>Seguranca</h2>
-    <div class="grid">
-      ${infoBox("Proteção", "Senha obrigatória")}
-      ${infoBox("Senha usada", passwordType)}
-      ${infoBox("Expira em", temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : transcript.expiresAt ? formatDate(transcript.expiresAt) : "-")}
-      ${infoBox("Acessos registrados", String(transcript.accessCount ?? 0))}
-    </div>
-  </section>
-  <section><h2>Participantes</h2><ul class="list">${participants || "<li>Nenhum participante registrado.</li>"}</ul></section>
-  <section><h2>Conversa Completa</h2>${messages || "<p>Nenhuma mensagem registrada.</p>"}</section>
-  <section><h2>Anexos</h2><ul class="list">${attachments || "<li>Nenhum anexo registrado.</li>"}</ul></section>
-  <section><h2>Ações Administrativas</h2><ul class="list">${events || "<li>Nenhuma ação registrada.</li>"}</ul></section>
-  <section class="actions">
-    <button onclick="navigator.clipboard.writeText('${escapeAttribute(transcript._id)}')">Copiar ID</button>
-    <button onclick="navigator.clipboard.writeText(location.href)">Copiar link</button>
-    <a href="/dashboard">Voltar para painel de logs</a>
-  </section>
+  ${transcript.isPartial ? `<section class="panel"><h2>Transcript parcial</h2><p>Motivo: ${escapeHtml(transcript.partialReason ?? "indisponível")}</p></section>` : ""}
+  <section><div class="section-head"><h2>${escapeHtml(theme.labels.summaryTitle)}</h2><strong class="status">${escapeHtml(transcript.status)}</strong></div><div class="summary">${summaryItems.map(([label, value]) => infoBox(label, value)).join("")}</div></section>
+  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.contactTitle)}</h2></div><div class="contact-grid"><p class="contact-text">${escapeHtml(transcript.openReason ?? transcript.closeReason ?? transcript.finalResult ?? "Sem assunto informado.")}</p><div>${infoBox("Canal", transcript.channelName ? `#${transcript.channelName}` : "-")}${infoBox("Anexos", String(attachmentCount))}${infoBox("Links", String(linkCount))}</div></div></section>
+  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.conversationTitle)}</h2><div class="toolbar"><input class="search" data-search placeholder="${escapeAttribute(theme.labels.searchPlaceholder)}" /><button class="btn secondary" type="button" data-filter="media">Mídia</button><button class="btn secondary" type="button" data-filter="links">Link</button><button class="btn secondary" type="button" onclick="window.print()">Imprimir</button></div></div><div class="chips"><button class="chip active" data-participant="all">Todos ${transcript.messages.length}</button>${participantStats.map((participant) => `<button class="chip" data-participant="${escapeAttribute(participant.id)}">${escapeHtml(participant.name)} ${participant.count}</button>`).join("")}</div><div data-messages>${messages || "<p>Nenhuma mensagem registrada.</p>"}</div></section>
+  <section class="footer" id="export"><p>${escapeHtml(theme.labels.endOfConversation)}</p><p>${escapeHtml(closedFooter)}${theme.showNevsecBranding ? " Tecnologia Nevsec." : ""}</p></section>
 </main>
+<script>
+(() => {
+  const messages = Array.from(document.querySelectorAll("[data-message]"));
+  const search = document.querySelector("[data-search]");
+  let participant = "all";
+  let filter = "all";
+  const apply = () => {
+    const term = (search?.value || "").toLowerCase();
+    messages.forEach((node) => {
+      const haystack = (node.getAttribute("data-search") || "").toLowerCase();
+      const byParticipant = participant === "all" || node.getAttribute("data-author") === participant;
+      const byFilter = filter === "all" || (filter === "media" && node.getAttribute("data-media") === "true") || (filter === "links" && node.getAttribute("data-links") === "true");
+      node.classList.toggle("hidden", !(byParticipant && byFilter && (!term || haystack.includes(term))));
+    });
+  };
+  search?.addEventListener("input", apply);
+  document.querySelectorAll("[data-participant]").forEach((button) => button.addEventListener("click", () => { participant = button.getAttribute("data-participant") || "all"; document.querySelectorAll("[data-participant]").forEach((item) => item.classList.toggle("active", item === button)); apply(); }));
+  document.querySelectorAll("[data-filter]").forEach((button) => button.addEventListener("click", () => { filter = filter === button.getAttribute("data-filter") ? "all" : button.getAttribute("data-filter") || "all"; document.querySelectorAll("[data-filter]").forEach((item) => item.classList.toggle("active", filter !== "all" && item === button)); apply(); }));
+  document.querySelector("[data-copy-link]")?.addEventListener("click", () => navigator.clipboard?.writeText(location.href));
+  document.querySelector("[data-export]")?.addEventListener("click", (event) => { event.preventDefault(); const blob = new Blob([document.body.innerText], { type: "text/plain;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "${escapeAttribute(transcript._id)}.txt"; a.click(); URL.revokeObjectURL(url); });
+})();
+</script>
 </body>
 </html>`;
+}
+
+function renderMessages(transcript: MongoTranscript, theme: TranscriptThemeDto) {
+  let currentDate = "";
+  return transcript.messages.map((message) => {
+    const flags = [
+      message.system ? "Sistema" : null,
+      message.anonymous ? "Anonimo" : null,
+      message.botRelayed ? "Reenviado pelo bot" : null
+    ].filter(Boolean);
+    const dateLabel = formatDateDivider(message.createdAt);
+    const divider = dateLabel !== currentDate ? `<div class="date-divider">${escapeHtml(dateLabel)}</div>` : "";
+    currentDate = dateLabel;
+    const avatar = message.authorAvatarUrl
+      ? `<img class="avatar" src="${escapeAttribute(message.authorAvatarUrl)}" alt="${escapeAttribute(message.authorName)}" loading="lazy" />`
+      : `<div class="avatar avatar-fallback">${escapeHtml((message.authorName || "?").slice(0, 1).toUpperCase())}</div>`;
+    return `
+    ${divider}
+    <article class="message" data-message data-author="${escapeAttribute(message.authorId ?? "unknown")}" data-media="${message.attachments.some(isMediaAttachment)}" data-links="${countLinks(message.content) > 0}" data-search="${escapeAttribute(`${message.authorName} ${message.content}`)}">
+      ${avatar}
+      <div><div class="message-head"><span class="author">${escapeHtml(message.authorName)}</span><time>${formatDate(message.createdAt)}</time>${flags.map((flag) => `<span class="flag">${escapeHtml(String(flag))}</span>`).join("")}</div>
+      <p class="content">${escapeHtml(message.content || "(sem texto)")}</p>
+      ${message.attachments.map((attachment) => renderAttachment(attachment)).join("")}
+      ${message.embeds.map((embed) => renderEmbed(embed, theme)).join("")}</div>
+    </article>`;
+  }).join("");
+}
+
+const DEFAULT_TRANSCRIPT_THEME: TranscriptThemeDto = {
+  logoUrl: null,
+  brandName: "Nevsec",
+  primaryColor: "#f5c542",
+  secondaryColor: "#38bdf8",
+  accentColor: "#f43f5e",
+  backgroundColor: "#07080d",
+  secondaryBackgroundColor: "#10131d",
+  cardColor: "#151925",
+  messageColor: "#111522",
+  borderColor: "#2b3143",
+  textColor: "#f8fafc",
+  mutedTextColor: "#a1a8b8",
+  buttonColor: "#f5c542",
+  linkColor: "#7dd3fc",
+  titleColor: "#ffffff",
+  iconColor: "#f5c542",
+  statusColor: "#22c55e",
+  hoverColor: "#232a3c",
+  searchColor: "#0d111c",
+  mode: "dark",
+  density: "normal",
+  cardRadius: "rounded",
+  style: "tech",
+  showNevsecBranding: true,
+  labels: {
+    pageTitle: "Transcrição de atendimento",
+    summaryTitle: "Resumo da transcrição",
+    contactTitle: "Detalhes do contato",
+    conversationTitle: "Conversa",
+    searchPlaceholder: "Buscar na conversa",
+    openedAt: "Aberto em",
+    closedAt: "Fechado em",
+    duration: "Duração",
+    messages: "Mensagens",
+    openedBy: "Aberto por",
+    assumedBy: "Assumido por",
+    category: "Categoria",
+    subject: "Assunto",
+    status: "Status",
+    ticketId: "ID do ticket",
+    transcriptId: "ID do transcript",
+    endOfConversation: "Fim da conversa",
+    footerText: "Atendimento encerrado e preservado pela Nevsec."
+  }
+};
+
+async function resolveTranscriptTheme(transcript: MongoTranscript): Promise<TranscriptThemeDto> {
+  try {
+    const settings = await getGuildSettings(transcript.guildId, transcript.botId);
+    return settings.globalLogConfig.transcriptTheme ?? DEFAULT_TRANSCRIPT_THEME;
+  } catch (error) {
+    console.warn("[TRANSCRIPT] usando tema padrão:", error instanceof Error ? error.message : error);
+    return DEFAULT_TRANSCRIPT_THEME;
+  }
+}
+
+function buildParticipantStats(transcript: MongoTranscript) {
+  const names = new Map<string, string>();
+  for (const participant of transcript.participants) {
+    names.set(participant.id ?? "unknown", participant.name);
+  }
+  const counts = new Map<string, number>();
+  for (const message of transcript.messages) {
+    const id = message.authorId ?? "unknown";
+    names.set(id, message.authorName);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([id, count]) => ({ id, count, name: names.get(id) ?? "Desconhecido" }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function countLinks(value: string) {
+  return value.match(/https?:\/\/[^\s<>"']+/gi)?.length ?? 0;
+}
+
+function isMediaAttachment(attachment: MongoTranscript["attachments"][number]) {
+  return Boolean(
+    attachment.contentType?.startsWith("image/")
+    || attachment.contentType?.startsWith("video/")
+    || /\.(png|jpe?g|gif|webp|mp4|mov|webm)$/i.test(attachment.url)
+  );
+}
+
+function renderEmbed(embed: unknown, _theme: TranscriptThemeDto) {
+  const record = embed && typeof embed === "object" ? embed as Record<string, unknown> : null;
+  if (!record) return "";
+  const title = typeof record.title === "string" ? record.title : "";
+  const description = typeof record.description === "string" ? record.description : "";
+  const url = typeof record.url === "string" ? record.url : "";
+  const image = getEmbedImageUrl(record);
+  const fields = Array.isArray(record.fields)
+    ? record.fields
+      .map((field) => field && typeof field === "object" ? field as Record<string, unknown> : null)
+      .filter(Boolean)
+      .map((field) => {
+        const name = typeof field?.name === "string" ? field.name : "";
+        const value = typeof field?.value === "string" ? field.value : "";
+        return name || value ? `<p><strong>${escapeHtml(name)}</strong><br>${escapeHtml(value)}</p>` : "";
+      }).join("")
+    : "";
+  if (!title && !description && !url && !image && !fields) return "";
+  return `<div class="embed">${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${description ? `<p>${escapeHtml(description)}</p>` : ""}${url ? `<p><a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></p>` : ""}${image ? `<img src="${escapeAttribute(image)}" alt="Embed" loading="lazy" style="max-width:100%;height:auto;border-radius:8px" />` : ""}${fields}</div>`;
+}
+
+function getEmbedImageUrl(record: Record<string, unknown>) {
+  for (const key of ["image", "thumbnail"]) {
+    const value = record[key];
+    if (value && typeof value === "object") {
+      const url = (value as Record<string, unknown>).url;
+      if (typeof url === "string") return url;
+    }
+  }
+  return null;
 }
 
 export function renderTranscriptText(transcript: MongoTranscript) {
@@ -682,6 +818,13 @@ function formatUser(userId: string | null) {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date);
+}
+
+function formatDateDivider(date: Date) {
+  const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" });
+  const today = formatter.format(new Date());
+  const value = formatter.format(date);
+  return value === today ? "Hoje" : value;
 }
 
 function escapeHtml(value: string) {

@@ -1495,8 +1495,14 @@ async function runCourseEventTransition(guild: Guild, context: BotContext, publi
   if (!publication?.discordEventId || ["cancelled", "closed", "finished"].includes(publication.status)) return;
   const course = courseHint?.id === publication.courseId ? courseHint : await context.api.getCourse(guild.id, publication.courseId).catch(() => null);
   if (!course) return;
-  let event = await guild.scheduledEvents.fetch(publication.discordEventId).catch(() => null);
-  if (!event) throw new Error("Evento agendado não encontrado no Discord.");
+  let event = await guild.scheduledEvents.fetch(publication.discordEventId).catch((error) => {
+    if (isUnknownScheduledEventError(error)) return null;
+    throw error;
+  });
+  if (!event) {
+    await detachMissingCourseScheduledEvent(guild, context, publication, transition);
+    return;
+  }
   if (transition === "start") {
     if (event.status === GuildScheduledEventStatus.Scheduled) {
       await event.edit({
@@ -1520,6 +1526,23 @@ async function runCourseEventTransition(guild: Guild, context: BotContext, publi
   });
   clearCourseEventLifecycle(publication.id);
   await context.api.updateCoursePublicationEvent(guild.id, publication.id, { discordEventId: publication.discordEventId, discordEventUrl: publication.discordEventUrl, syncError: null }).catch(() => null);
+}
+
+async function detachMissingCourseScheduledEvent(guild: Guild, context: BotContext, publication: CoursePublication, transition: "start" | "end") {
+  clearCourseEventLifecycle(publication.id);
+  const syncError = `Evento agendado ${publication.discordEventId} não encontrado no Discord durante ${transition === "start" ? "início" : "encerramento"} automático.`;
+  await context.api.updateCoursePublicationEvent(guild.id, publication.id, {
+    discordEventId: null,
+    discordEventUrl: null,
+    syncError
+  }).catch(() => null);
+  console.warn("[COURSE RECOVERY]", {
+    discordEventId: publication.discordEventId,
+    guildId: guild.id,
+    publicationId: publication.id,
+    stage: "scheduled_event_missing_detached",
+    transition
+  });
 }
 
 function clearCourseEventLifecycle(publicationId: string) {
@@ -4974,6 +4997,11 @@ function isUnknownChannelError(error: unknown) {
 export function isUnknownMessageError(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) return false;
   return Number((error as { code: number | string }).code) === 10008;
+}
+
+export function isUnknownScheduledEventError(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return Number((error as { code: number | string }).code) === 10070;
 }
 
 function examChannelName(studentName: string, courseName: string) {
