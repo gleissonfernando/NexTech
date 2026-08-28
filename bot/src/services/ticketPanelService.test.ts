@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTicketClaimedPayload, isTicketScopeCompatible, normalizeTicketDescription, normalizeTicketSubject, shouldDeleteSupportTicketChannelAfterClose } from "./ticketPanelService";
+import { createTicketClaimedPayload, isTicketScopeCompatible, normalizeTicketDescription, normalizeTicketSubject, resolveTicketCategoryId, shouldDeleteSupportTicketChannelAfterClose } from "./ticketPanelService";
 
 test("ticket aceita texto curto e rejeita vazio", () => {
   assert.equal(normalizeTicketDescription("Ajuda"), "Ajuda");
@@ -50,4 +50,20 @@ test("payload de ticket assumido aponta para o canal correto", () => {
   const serialized = JSON.stringify(payload);
   assert.ok(serialized.includes("discord.com/channels/123456789012345678/987654321098765432"));
   assert.ok(serialized.includes("Seu ticket foi assumido"));
+});
+
+test("categoria de ticket usa fallback quando a principal não existe", async () => {
+  const guild = {
+    id: "123456789012345678",
+    channels: {
+      fetch: async (channelId: string) => (channelId === "fallback-category"
+        ? { type: 4 }
+        : null)
+    }
+  } as never;
+
+  await assert.doesNotReject(async () => {
+    const resolved = await resolveTicketCategoryId(guild, "missing-category", "fallback-category");
+    assert.equal(resolved, "fallback-category");
+  });
 });

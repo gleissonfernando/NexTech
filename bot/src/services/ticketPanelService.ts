@@ -1995,7 +1995,7 @@ function ticketChannelEmoji(value: string | null | undefined) {
 }
 
 async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildSettings, option: TicketPanelOption) {
-  const categoryId = option.categoryId ?? settings.ticketCategoryId;
+  const categoryId = await resolveTicketCategoryId(guild, option.categoryId, settings.ticketCategoryId);
   if (!categoryId) throw new Error("Categoria de tickets não configurada.");
   const category = await guild.channels.fetch(categoryId).catch(() => null);
   if (!category || category.type !== ChannelType.GuildCategory) throw new Error("Categoria de tickets não encontrada ou inválida.");
@@ -2024,7 +2024,7 @@ async function validateTicketChannelPrerequisites(guild: Guild, settings: GuildS
 }
 
 async function validateQuickTicketChannelPrerequisites(guild: Guild, settings: GuildSettings, allowedRoleIds: string[]) {
-  const categoryId = settings.ticketCategoryId;
+  const categoryId = await resolveTicketCategoryId(guild, settings.ticketCategoryId, null);
   if (!categoryId) throw new Error("Categoria de tickets não configurada.");
   const category = await guild.channels.fetch(categoryId).catch(() => null);
   if (!category || category.type !== ChannelType.GuildCategory) throw new Error("Categoria de tickets não encontrada ou inválida.");
@@ -2050,6 +2050,31 @@ async function validateQuickTicketChannelPrerequisites(guild: Guild, settings: G
     ...(settings.reportSystem?.adminRoleIds ?? [])
   ].filter((roleId): roleId is string => Boolean(roleId && guild.roles.cache.has(roleId) && roleId !== guild.roles.everyone.id)))];
   return { categoryId, me, staffRoleIds };
+}
+
+export async function resolveTicketCategoryId(
+  guild: Guild,
+  preferredCategoryId: string | null | undefined,
+  fallbackCategoryId: string | null | undefined
+) {
+  const candidates = [...new Set([preferredCategoryId, fallbackCategoryId].map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+
+  for (const categoryId of candidates) {
+    const category = await guild.channels.fetch(categoryId).catch(() => null);
+    if (category && category.type === ChannelType.GuildCategory) {
+      if (preferredCategoryId?.trim() && categoryId !== preferredCategoryId.trim()) {
+        console.warn("[ticket-panel] categoria configurada indisponivel; usando categoria reserva.", {
+          preferredCategoryId: preferredCategoryId.trim(),
+          fallbackCategoryId: fallbackCategoryId?.trim() ?? null,
+          resolvedCategoryId: categoryId,
+          guildId: guild.id
+        });
+      }
+      return categoryId;
+    }
+  }
+
+  return null;
 }
 
 async function applyTicketCategoryPermissions(channel: TextChannel, guild: Guild, openerId: string, settings: GuildSettings, option: TicketPanelOption, staffRoleIds: string[]) {

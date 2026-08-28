@@ -12,6 +12,7 @@ import {
   isUnknownMessageError,
   isUnknownScheduledEventError,
   parseCourseExamChannelTopic,
+  shouldSkipCourseRecovery,
   shouldDeferExamChannelDeletion
 } from "./courseSystemService";
 
@@ -169,4 +170,10 @@ test("recovery reconhece evento agendado apagado no Discord como vínculo órfã
   assert.equal(isUnknownScheduledEventError({ code: "10070" }), true);
   assert.equal(isUnknownScheduledEventError({ code: 50013 }), false);
   assert.equal(isUnknownScheduledEventError(new Error("Unknown Guild Scheduled Event")), false);
+});
+
+test("recovery de curso pula contexto órfão sem explodir o ciclo", () => {
+  assert.equal(shouldSkipCourseRecovery(null, { id: "settings" }), true);
+  assert.equal(shouldSkipCourseRecovery({ id: "course" }, null), true);
+  assert.equal(shouldSkipCourseRecovery({ id: "course" }, { id: "settings" }), false);
 });

@@ -2527,6 +2527,10 @@ export function isRecoverableCoursePublicationStatus(status: CoursePublication["
   return status === "open" || status === "started" || status === "proof";
 }
 
+export function shouldSkipCourseRecovery(course: { id: string } | null, settings: { id: string } | null) {
+  return !course || !settings;
+}
+
 async function recoverCoursePublication(guild: Guild, context: BotContext, publication: CoursePublication) {
   console.info("[COURSE RECOVERY]", {
     channelId: publication.channelId,
@@ -2540,8 +2544,13 @@ async function recoverCoursePublication(guild: Guild, context: BotContext, publi
     context.api.getCourseSettings(guild.id).catch(() => null),
     context.api.getCoursePublicationEnrollments(guild.id, publication.id).catch(() => [])
   ]);
-  if (!course || !settings) {
-    console.error("[COURSE RECOVERY ERROR]", {
+  if (shouldSkipCourseRecovery(course, settings)) {
+    await context.api.updateCoursePublicationEvent(guild.id, publication.id, {
+      syncError: !course
+        ? `Curso ${publication.courseId} não encontrado no recovery.`
+        : `Configuração de curso ausente no recovery para a publicação ${publication.id}.`
+    }).catch(() => null);
+    console.warn("[COURSE RECOVERY]", {
       courseFound: Boolean(course),
       publicationId: publication.id,
       settingsFound: Boolean(settings),
@@ -2549,6 +2558,8 @@ async function recoverCoursePublication(guild: Guild, context: BotContext, publi
     });
     return;
   }
+  const recoveredCourse = course as NonNullable<typeof course>;
+  const recoveredSettings = settings as NonNullable<typeof settings>;
 
   const channel = await guild.channels.fetch(publication.channelId).catch(() => null);
   if (channel?.type !== ChannelType.GuildText || !("messages" in channel)) {
@@ -2571,8 +2582,8 @@ async function recoverCoursePublication(guild: Guild, context: BotContext, publi
     })
     : null;
   const nextMessage = existingMessage
-    ? await existingMessage.edit(coursePublicationPanel(course, publication, settings, guild, enrollments)).catch(() => null)
-    : await sendOrEditCoursePublicationPanel(textChannel, null, course, publication, settings, guild, false);
+    ? await existingMessage.edit(coursePublicationPanel(recoveredCourse, publication, recoveredSettings, guild, enrollments)).catch(() => null)
+    : await sendOrEditCoursePublicationPanel(textChannel, null, recoveredCourse, publication, recoveredSettings, guild, false);
   if (nextMessage?.id && nextMessage.id !== publication.messageId) {
     await context.api.updateCoursePublicationMessage(guild.id, publication.id, nextMessage.id);
     console.info("[COURSE RECOVERY]", {
@@ -2588,7 +2599,7 @@ async function recoverCoursePublication(guild: Guild, context: BotContext, publi
     });
   }
 
-  scheduleCourseEventLifecycle(guild, context, publication, course);
+  scheduleCourseEventLifecycle(guild, context, publication, recoveredCourse);
   if (publication.status === "started" || publication.status === "proof") {
     scheduleCourseForgetfulnessCheck(guild, context, publication);
   }
