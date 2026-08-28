@@ -33,9 +33,11 @@ import { expandModuleAccessKeys, mergeModuleIdsWithPlanEntitlementKeys } from ".
 import { getSelfBotProtectionSettings, saveSelfBotProtectionSettings, type SelfBotProtectionModuleId } from "./selfBotProtectionService";
 import { getGuildSettings, getPersistedDashboardAccess, saveSafeBotMessageState, updateGuildSettings } from "./settingsService";
 import { getStoredDiscordTokens, updateStoredDiscordTokens } from "./userService";
+import { createTtlCache } from "../utils/ttlCache";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SECURITY_PROTECTION_FEATURE_KEY = "security_protection" as const;
+const DEV_BOT_RUNTIME_CONFIG_CACHE_TTL_MS = env.DEV_BOT_RUNTIME_CONFIG_CACHE_TTL_MS ?? 5_000;
 
 export const DEV_MODULES = [
   { id: "live", label: "Sistema Detecta Lives" },
@@ -446,6 +448,30 @@ export type DevBotAccessDiagnostic = {
   requiredRoleIds: string[];
   requiredUserIds: string[];
 };
+
+const devBotRuntimeConfigCache = createTtlCache<DevBotRuntimeConfig[] | DevBotRuntimeConfig | null>(DEV_BOT_RUNTIME_CONFIG_CACHE_TTL_MS);
+
+function cloneDevBotRuntimeConfig(bot: DevBotRuntimeConfig): DevBotRuntimeConfig {
+  return {
+    ...bot,
+    enabledModules: [...bot.enabledModules],
+    guildIds: [...bot.guildIds]
+  };
+}
+
+function cloneDevBotRuntimeConfigs(bots: DevBotRuntimeConfig[]) {
+  return bots.map((bot) => cloneDevBotRuntimeConfig(bot));
+}
+
+function invalidateDevBotRuntimeConfigCache(botId?: string | null) {
+  devBotRuntimeConfigCache.delete("list");
+  if (botId) {
+    devBotRuntimeConfigCache.delete(`bot:${botId}`);
+    return;
+  }
+
+  devBotRuntimeConfigCache.clear();
+}
 
 type CreateDevBotInput = {
   token: string;
@@ -905,6 +931,7 @@ export async function createDevBot(input: CreateDevBotInput) {
   };
 
   await devBots.insertOne(bot);
+  invalidateDevBotRuntimeConfigCache(bot._id);
   await Promise.all([
     guilds.updateOne(
       {
@@ -1134,6 +1161,7 @@ export async function updateDevBot(botId: string, input: UpdateDevBotInput) {
   }
 
   await devBots.updateOne({ _id: botId }, { $set });
+  invalidateDevBotRuntimeConfigCache(botId);
   const updated = await devBots.findOne({ _id: botId });
 
   if (!updated) {
@@ -1157,6 +1185,7 @@ export async function deleteDevBot(botId: string) {
     devBots.deleteOne({ _id: botId }),
     botGuildConfigs.deleteMany({ botId })
   ]);
+  invalidateDevBotRuntimeConfigCache(botId);
 
   const dto = await toEffectiveDevBotDto(bot);
   emitRealtime("dev:bot_deleted", toDashboardBotDto(dto));
@@ -1411,6 +1440,11 @@ export async function detectDiscordBotGuild(token: string, guildId: string): Pro
 }
 
 export async function listDevBotRuntimeConfigs() {
+  const cached = devBotRuntimeConfigCache.getEntry("list");
+  if (cached && Array.isArray(cached.value)) {
+    return cloneDevBotRuntimeConfigs(cached.value);
+  }
+
   const { botGuildConfigs, devBots } = await getMongoCollections();
   const [bots, configs] = await Promise.all([
     devBots.find().toArray(),
@@ -1428,7 +1462,8 @@ export async function listDevBotRuntimeConfigs() {
     }
     return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
   }));
-  return runtimeConfigs;
+  devBotRuntimeConfigCache.set("list", runtimeConfigs);
+  return cloneDevBotRuntimeConfigs(runtimeConfigs);
 }
 
 export async function listGuildBotRuntimeConfigs(guildId: string) {
@@ -1462,21 +1497,37 @@ export async function listGuildBotRuntimeConfigs(guildId: string) {
 }
 
 export async function getDevBotRuntimeConfig(botId: string) {
+  const cached = devBotRuntimeConfigCache.getEntry(`bot:${botId}`);
+  if (cached) {
+    if (cached.value === null || Array.isArray(cached.value)) {
+      return null;
+    }
+
+    return cloneDevBotRuntimeConfig(cached.value);
+  }
+
   const { botGuildConfigs, devBots } = await getMongoCollections();
   const [bot, configs] = await Promise.all([
     devBots.findOne({ _id: botId }),
     botGuildConfigs.find({ botId }).toArray()
   ]);
 
-  if (!bot) return null;
+  if (!bot) {
+    devBotRuntimeConfigCache.set(`bot:${botId}`, null);
+    return null;
+  }
   const guildIds = configs.map((config) => config.guildId);
   const enabledModules = await runtimeModulesForBot(bot, guildIds);
   const access = await canStartBotByBilling(bot._id);
   if (!access.allowed) {
     await markDevBotBlockedByBilling(bot, access.reason);
-    return toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
+    const runtimeConfig = toDevBotRuntimeConfig({ ...bot, desiredOnline: false }, guildIds, enabledModules);
+    devBotRuntimeConfigCache.set(`bot:${botId}`, runtimeConfig);
+    return cloneDevBotRuntimeConfig(runtimeConfig);
   }
-  return toDevBotRuntimeConfig(bot, guildIds, enabledModules);
+  const runtimeConfig = toDevBotRuntimeConfig(bot, guildIds, enabledModules);
+  devBotRuntimeConfigCache.set(`bot:${botId}`, runtimeConfig);
+  return cloneDevBotRuntimeConfig(runtimeConfig);
 }
 
 async function markDevBotBlockedByBilling(bot: MongoDevBot, reason: string | null | undefined) {
@@ -1509,6 +1560,7 @@ export async function setDevBotDesiredOnline(botId: string, desiredOnline: boole
   );
   if (!updated) return null;
   const dto = await toEffectiveDevBotDto(updated);
+  invalidateDevBotRuntimeConfigCache(botId);
   emitRealtime("dev:bot_updated", toDashboardBotDto(dto));
   return dto;
 }
@@ -1554,6 +1606,7 @@ export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevB
   );
 
   const bot = await getDevBot(botId);
+  invalidateDevBotRuntimeConfigCache(botId);
 
   if (bot) {
     emitRealtime("dev:bot_updated", toDashboardBotDto(bot));
@@ -1913,6 +1966,7 @@ export async function updateBotGuildConfig(input: {
     guildId: input.guildId
   });
   const dto = config ? toBotGuildConfigDto(config) : defaultBotGuildConfig(input.botId, input.guildId);
+  invalidateDevBotRuntimeConfigCache(input.botId);
 
   emitRealtime("dev:config_updated", {
     type: "CONFIG_UPDATED",
@@ -3091,6 +3145,7 @@ async function upsertDetectedGuildConfig(botId: string, detectedGuild: DetectedD
       }
     )
   ]);
+  invalidateDevBotRuntimeConfigCache(botId);
 }
 
 function encryptSecret(value: string) {

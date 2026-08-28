@@ -392,6 +392,7 @@ const envSchema = z
     DEV_BOT_PROCESS_RUNNER_ENABLED: envBoolean(true),
     DEV_BOT_RUNTIME_RECONCILE_ENABLED: envBoolean(false),
     DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(15_000).max(900_000).default(60_000),
+    DEV_BOT_RUNTIME_CONFIG_CACHE_TTL_MS: z.coerce.number().int().min(1_000).max(60_000).default(5_000),
     DEV_BOT_START_CONCURRENCY: z.coerce.number().int().min(1).max(64).optional(),
     DEV_BOT_MAX_RUNNING_PROCESSES: z.coerce.number().int().min(1).max(64).optional(),
     DEV_BOT_NODE_MAX_OLD_SPACE_MB: z.coerce.number().int().min(64).max(512).optional(),

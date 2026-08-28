@@ -20,6 +20,7 @@ import {
   setSecurityProtectionAccess,
   setDevBotDesiredOnline,
   syncSecurityProtectionAccessFromModules,
+  updateDevBotRuntimeStatus,
   updateBotGuildConfig,
   updateDevBot,
   updateDevBotModules,
@@ -1168,7 +1169,10 @@ devRouter.get("/bots", async (_req, res, next) => {
     });
 
     if (primaryBot?.created) {
-      await startDevBotProcess(primaryBot.bot.id);
+      await updateDevBotRuntimeStatus(primaryBot.bot.id, "starting", "Bot principal solicitado pelo painel; iniciando em segundo plano.");
+      void startDevBotProcess(primaryBot.bot.id).catch((error) => {
+        console.warn("[dev-bot] falha ao iniciar bot principal em segundo plano:", error instanceof Error ? error.message : error);
+      });
     }
 
     const bots = await listDevBots();
@@ -1231,7 +1235,10 @@ devRouter.post("/bots/create", async (req, res, next) => {
       createdBy: auth.user.discordId,
       verifyOwnerUserId: auth.user.discordId
     });
-    await startDevBotProcess(createdBot.id);
+    await updateDevBotRuntimeStatus(createdBot.id, "starting", "Bot criado pelo painel; iniciando em segundo plano.");
+    void startDevBotProcess(createdBot.id).catch((error) => {
+      console.warn("[dev-bot] falha ao iniciar bot criado em segundo plano:", error instanceof Error ? error.message : error);
+    });
     const bot = await getDevBot(createdBot.id) ?? createdBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "create", `Bot ${bot.name} conectado ao painel.`, {
       clientId: bot.clientId,
@@ -1258,7 +1265,10 @@ devRouter.post("/bots/register-primary", async (req, res, next) => {
       createdBy: auth.user.discordId
     });
 
-    await startDevBotProcess(result.bot.id);
+    await updateDevBotRuntimeStatus(result.bot.id, "starting", "Bot principal solicitado pelo painel; iniciando em segundo plano.");
+    void startDevBotProcess(result.bot.id).catch((error) => {
+      console.warn("[dev-bot] falha ao iniciar bot principal em segundo plano:", error instanceof Error ? error.message : error);
+    });
     const bot = await getDevBot(result.bot.id) ?? result.bot;
     await writeDevBotAudit(
       auth,
@@ -1292,8 +1302,13 @@ devRouter.post("/bots/start-all", async (_req, res, next) => {
       if (billing.allowed) startable.push(bot);
     }
 
-    await Promise.all(startable.map((bot) => setDevBotDesiredOnline(bot.id, true)));
-    await startAllDevBotProcesses(startable.map((bot) => bot.id));
+    await Promise.all(startable.map(async (bot) => {
+      await setDevBotDesiredOnline(bot.id, true);
+      await updateDevBotRuntimeStatus(bot.id, "starting", "Bot solicitado pelo painel; iniciando em segundo plano.");
+    }));
+    void startAllDevBotProcesses(startable.map((bot) => bot.id)).catch((error) => {
+      console.warn("[dev-bot] falha ao iniciar bots em segundo plano:", error instanceof Error ? error.message : error);
+    });
     const updatedBots = await listAccessibleDevBots(auth.user);
 
     await writeDevBotAudit(
@@ -1622,7 +1637,12 @@ devRouter.patch("/bots/:botId", async (req, res, next) => {
       await syncSecurityProtectionAccessFromModules(updatedBot.id, updatedBot.enabledModules, auth.user.discordId);
     }
 
-    if (updatedBot.desiredOnline) await restartDevBotProcess(updatedBot.id);
+    if (updatedBot.desiredOnline) {
+      await updateDevBotRuntimeStatus(updatedBot.id, "starting", "Bot atualizado pelo painel; reiniciando em segundo plano.");
+      void restartDevBotProcess(updatedBot.id).catch((error) => {
+        console.warn("[dev-bot] falha ao reiniciar bot em segundo plano:", error instanceof Error ? error.message : error);
+      });
+    }
     const bot = await getDevBot(updatedBot.id) ?? updatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "update", `Bot ${bot.name} atualizado no painel.`, {
       clientId: bot.clientId
@@ -1740,7 +1760,10 @@ devRouter.post("/bots/:botId/restart", async (req, res, next) => {
     }
 
     await setDevBotDesiredOnline(req.params.botId, true);
-    await restartDevBotProcess(req.params.botId);
+    await updateDevBotRuntimeStatus(req.params.botId, "starting", "Bot solicitado pelo painel; iniciando em segundo plano.");
+    void restartDevBotProcess(req.params.botId).catch((error) => {
+      console.warn("[dev-bot] falha ao reiniciar bot em segundo plano:", error instanceof Error ? error.message : error);
+    });
     const bot = await getDevBot(req.params.botId) ?? validatedBot;
     await writeDevBotAudit(auth, bot.mainGuildId, bot.id, "restart", `Bot ${bot.name} reiniciado/sincronizado.`, {
       status: bot.status

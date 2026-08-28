@@ -60,6 +60,8 @@ const DEV_BOT_SUPERVISOR_INSTANCE_ID = `dev-bot-supervisor:${process.pid}:${rand
 const runningBots = new Map<string, RunningBot>();
 const restartTimers = new Map<string, NodeJS.Timeout>();
 const restartAttempts = new Map<string, { attempts: number; firstFailureAt: number }>();
+const startRetryTimers = new Map<string, NodeJS.Timeout>();
+const startRetryAttempts = new Map<string, { attempts: number; firstFailureAt: number }>();
 const moduleRestartTimers = new Map<string, NodeJS.Timeout>();
 let supervisorLeaseTimer: NodeJS.Timeout | null = null;
 let supervisorLeaseHeld = false;
@@ -163,11 +165,18 @@ export async function startAllDevBotProcesses(botIds: string[]) {
       "waiting_retry",
       "Bot solicitado; aguardando worker de bots DEV iniciar o processo."
     )));
+    botIds.forEach((botId) => scheduleDevBotStartRetry(botId, "runtime local desativado"));
     return;
   }
 
   if (!(await waitForDevBotSupervisorLease())) {
-    throw new Error("Outra instancia e responsável por executar os bots cadastrados.");
+    await Promise.all(botIds.map((botId) => updateDevBotRuntimeStatus(
+      botId,
+      "waiting_retry",
+      "Bot solicitado; aguardando a trava do supervisor de bots DEV ser liberada."
+    )));
+    botIds.forEach((botId) => scheduleDevBotStartRetry(botId, "trava do supervisor indisponivel"));
+    return;
   }
 
   const bots = (await Promise.all(botIds.map((botId) => getDevBotRuntimeConfig(botId))))
@@ -192,11 +201,18 @@ export async function startDevBotProcess(botId: string) {
       "waiting_retry",
       "Bot solicitado; aguardando worker de bots DEV iniciar o processo."
     );
+    scheduleDevBotStartRetry(botId, "runtime local desativado");
     return bot;
   }
 
-  if (!(await ensureDevBotSupervisorLease())) {
+  if (!(await waitForDevBotSupervisorLease())) {
     console.warn(`[dev-bot:${botId}] inicio ignorado porque outra instancia possui a trava de supervisor.`);
+    await updateDevBotRuntimeStatus(
+      botId,
+      "waiting_retry",
+      "Bot solicitado; aguardando a trava do supervisor de bots DEV ser liberada."
+    );
+    scheduleDevBotStartRetry(botId, "trava do supervisor indisponivel");
     return null;
   }
 
@@ -207,10 +223,12 @@ export async function startDevBotProcess(botId: string) {
   }
 
   if (!bot.desiredOnline) {
+    clearDevBotStartRetry(botId);
     await updateDevBotRuntimeStatus(botId, "offline", "Bot mantido desligado pelo controle persistente DEV.");
     return null;
   }
 
+  clearDevBotStartRetry(botId);
   await stopDevBotProcess(botId, {
     message: "Reiniciando processo do bot.",
     notifyBot: false
@@ -240,6 +258,7 @@ export function scheduleDevBotModuleRestart(botId: string, delayMs = 2_000) {
 
 export async function stopDevBotProcess(botId: string, options: StopDevBotOptions = {}) {
   const timer = restartTimers.get(botId);
+  const startRetryTimer = startRetryTimers.get(botId);
   const moduleTimer = moduleRestartTimers.get(botId);
   const statusMessage = options.message ?? "Bot desligado pelo painel DEV.";
   const notifyBot = options.notifyBot === true;
@@ -247,6 +266,10 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
   if (timer) {
     clearTimeout(timer);
     restartTimers.delete(botId);
+  }
+  if (startRetryTimer) {
+    clearTimeout(startRetryTimer);
+    startRetryTimers.delete(botId);
   }
   if (moduleTimer) {
     clearTimeout(moduleTimer);
@@ -670,6 +693,46 @@ function restartDelayMs(botId: string) {
   const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
   const backoff = Math.min(10 * 60_000, DEV_BOT_RESTART_DELAY_MS * 2 ** Math.max(0, next.attempts - 1));
   return backoff + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+}
+
+export function resolveDevBotStartRetryDelayMs(botId: string) {
+  const now = Date.now();
+  const current = startRetryAttempts.get(botId);
+  const windowMs = 30 * 60_000;
+  const next = current && now - current.firstFailureAt <= windowMs
+    ? { attempts: current.attempts + 1, firstFailureAt: current.firstFailureAt }
+    : { attempts: 1, firstFailureAt: now };
+
+  startRetryAttempts.set(botId, next);
+  const jitter = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
+  const backoff = Math.min(10 * 60_000, DEV_BOT_RESTART_DELAY_MS * 2 ** Math.max(0, next.attempts - 1));
+  return backoff + (Number.isFinite(jitter) ? jitter % 15_000 : 0);
+}
+
+function scheduleDevBotStartRetry(botId: string, reason: string) {
+  if (startRetryTimers.has(botId)) {
+    return;
+  }
+
+  const delayMs = resolveDevBotStartRetryDelayMs(botId);
+  const timer = setTimeout(() => {
+    startRetryTimers.delete(botId);
+    void startDevBotProcess(botId).catch((error) => {
+      console.warn(`[dev-bot:${botId}] falha ao retentar inicio (${reason}):`, error instanceof Error ? error.message : error);
+    });
+  }, delayMs);
+
+  timer.unref();
+  startRetryTimers.set(botId, timer);
+}
+
+function clearDevBotStartRetry(botId: string) {
+  const timer = startRetryTimers.get(botId);
+  if (timer) {
+    clearTimeout(timer);
+    startRetryTimers.delete(botId);
+  }
+  startRetryAttempts.delete(botId);
 }
 
 function nodeOptionsWithMaxOldSpace(current: string | undefined, maxOldSpaceMb: number) {
