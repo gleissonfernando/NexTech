@@ -289,12 +289,6 @@ async function handleTicketOpenButton(interaction: ButtonInteraction, context: B
     return;
   }
 
-  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch(() => null);
-  if (!settings?.ticketEnabled || !settings.ticketCategoryId) {
-    await interaction.reply({ content: "Configure a categoria e o painel de tickets na Dashboard.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
   try {
     await interaction.showModal(createQuickOpenTicketModal(token));
@@ -478,17 +472,13 @@ async function handleQuickTicketOpenModal(interaction: ModalSubmitInteraction, c
 
 export async function openTicketFromCommand(interaction: ChatInputCommandInteraction, context: BotContext, _rawSubject = "") {
   if (!interaction.guild) return;
-  const settings = await getCachedGuildSettings(context, interaction.guild.id, interaction.client.user?.id).catch((error) => {
-    logTicketTechnical("settings_load_failed", interaction, { error });
-    return null;
-  });
-  if (!settings?.ticketEnabled || !settings.ticketCategoryId) {
-    await interaction.reply({ content: "O sistema de tickets está desativado ou não possui categoria configurada.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.showModal(createQuickOpenTicketModal(token));
+  try {
+    await interaction.showModal(createQuickOpenTicketModal(token));
+  } catch (error) {
+    console.warn("[ticket-panel] falha ao abrir modal do comando de ticket:", error instanceof Error ? error.message : error);
+    await interaction.reply({ content: "Não consegui abrir o formulário do ticket. Tente novamente em instantes.", flags: MessageFlags.Ephemeral }).catch(() => null);
+  }
 }
 
 async function createTicketForInteraction(
