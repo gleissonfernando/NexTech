@@ -11,17 +11,18 @@ const childEnv = sanitizedEnvironment();
 function run(command, args, options = {}) {
   const useShell = process.platform === "win32";
   const cwd = options.cwd ?? root;
+  const env = options.env ? { ...childEnv, ...options.env } : childEnv;
   const result = useShell
     ? spawnSync([command, ...args.map(quoteShellArg)].join(" "), {
       cwd,
-      env: childEnv,
+      env,
       shell: true,
       stdio: options.capture ? "pipe" : "inherit",
       encoding: "utf8"
     })
     : spawnSync(command, args, {
     cwd,
-    env: childEnv,
+    env,
     shell: false,
     stdio: options.capture ? "pipe" : "inherit",
     encoding: "utf8"
@@ -51,6 +52,21 @@ function runDiscloud(args, options = {}) {
   return run("npx", ["--yes", "discloud-cli", ...args], options);
 }
 
+function runDiscloudWithRetry(args, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return runDiscloud(args, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) break;
+      console.warn(`[release] Discloud falhou na tentativa ${attempt}/3: ${error instanceof Error ? error.message : String(error)}`);
+      sleep(15_000);
+    }
+  }
+  throw lastError;
+}
+
 function quoteShellArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
 }
@@ -62,6 +78,10 @@ function sanitizedEnvironment() {
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   }
   return env;
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function readDiscloudAppId() {
@@ -97,7 +117,7 @@ console.log(`[release] Enviando para origin/${branch}...`);
 run("git", ["push", "origin", branch]);
 
 console.log(`[release] Atualizando Discloud app ${appId}...`);
-runDiscloud(["app", "commit", appId], { cwd: path.join(root, ".discloud-package") });
+runDiscloudWithRetry(["app", "commit", appId], { cwd: path.join(root, ".discloud-package") });
 
 console.log("[release] Status Discloud...");
 runDiscloud(["app", "status", appId]);

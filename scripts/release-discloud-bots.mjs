@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
@@ -50,6 +51,21 @@ function runDiscloud(args, options = {}) {
   return run("npx", ["--yes", "discloud-cli", ...args], options);
 }
 
+function runDiscloudWithRetry(args, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return runDiscloud(args, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) break;
+      console.warn(`[release:bots] Discloud falhou na tentativa ${attempt}/3: ${error instanceof Error ? error.message : String(error)}`);
+      sleep(15_000);
+    }
+  }
+  throw lastError;
+}
+
 function quoteShellArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
 }
@@ -61,6 +77,10 @@ function sanitizedEnvironment(extra = {}) {
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   }
   return env;
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function appExists() {
@@ -108,14 +128,77 @@ if (!existsSync(path.join(root, packageDir, "discloud.config"))) {
   throw new Error("Pacote do worker não foi gerado corretamente.");
 }
 
+verifyPackageParity();
+
 if (appExists()) {
   console.log(`[release:bots] Atualizando Discloud app ${appId}...`);
-  runDiscloud(["app", "commit", appId], { cwd: path.join(root, packageDir) });
+  runDiscloudWithRetry(["app", "commit", appId], { cwd: path.join(root, packageDir) });
 } else {
   console.log(`[release:bots] Criando Discloud app ${appId}...`);
-  runDiscloud(["app", "upload"], { cwd: path.join(root, packageDir) });
+  runDiscloudWithRetry(["app", "upload"], { cwd: path.join(root, packageDir) });
 }
 
 console.log("[release:bots] Status Discloud...");
 runDiscloud(["app", "status", appId]);
 console.log("[release:bots] Concluido.");
+
+function verifyPackageParity() {
+  const mainPackageDir = path.join(root, ".discloud-package");
+  const botsPackageDir = path.join(root, packageDir);
+  if (!existsSync(mainPackageDir)) {
+    console.log("[release:bots] Pacote principal ausente; paridade de pacote ignorada.");
+    return;
+  }
+
+  for (const relativePath of [
+    "index.js",
+    "package.json",
+    "scripts/start-production.mjs",
+    "scripts/start-dev-bot-worker.mjs",
+    "backend/dist",
+    "bot/dist",
+    "frontend/dist"
+  ]) {
+    const mainHash = hashPath(path.join(mainPackageDir, relativePath));
+    const botsHash = hashPath(path.join(botsPackageDir, relativePath));
+    if (mainHash !== botsHash) {
+      throw new Error(`Pacote dos bots fora de sincronia com o principal em ${relativePath}.`);
+    }
+  }
+
+  console.log("[release:bots] Paridade com pacote principal... ok");
+}
+
+function hashPath(targetPath) {
+  if (!existsSync(targetPath)) {
+    return "<missing>";
+  }
+
+  const stats = statSync(targetPath);
+  if (stats.isFile()) {
+    return createHash("sha256").update(readFileSync(targetPath)).digest("hex");
+  }
+
+  const hash = createHash("sha256");
+  for (const entry of listFiles(targetPath)) {
+    hash.update(path.relative(targetPath, entry).replace(/\\/g, "/"));
+    hash.update("\0");
+    hash.update(readFileSync(entry));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function listFiles(dir) {
+  const files = [];
+  for (const entry of readdirSync(dir).sort()) {
+    const fullPath = path.join(dir, entry);
+    const stats = statSync(fullPath);
+    if (stats.isDirectory()) {
+      files.push(...listFiles(fullPath));
+    } else if (stats.isFile()) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
