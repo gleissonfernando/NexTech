@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { runAutoUpdateLogger } from "./auto-update-logger.mjs";
+import { applyEnvIfConfigured, packedConfigValueFromEnv } from "./runtime-env.mjs";
 
 const children = new Set();
 enforceSecureTls();
@@ -16,7 +17,7 @@ process.env.SITE_ORIGIN ||= packedConfigValue("SITE_ORIGIN") || process.env.APP_
 process.env.FRONTEND_URL ||= packedConfigValue("FRONTEND_URL") || process.env.APP_BASE_URL;
 process.env.BACKEND_URL ||= packedConfigValue("BACKEND_URL") || process.env.APP_BASE_URL;
 process.env.BOT_API_TOKEN ||= packedConfigValue("BOT_API_TOKEN") || randomBytes(32).toString("hex");
-process.env.START_REGISTERED_DEV_BOTS = packedConfigValue("START_REGISTERED_DEV_BOTS") || process.env.START_REGISTERED_DEV_BOTS || "";
+applyEnvIfConfigured(process.env, "START_REGISTERED_DEV_BOTS", packedConfigValue("START_REGISTERED_DEV_BOTS"));
 process.env.NEX_TECH_RUNTIME_ROLE ||= packedConfigValue("NEX_TECH_RUNTIME_ROLE") || "web";
 if (process.env.NEX_TECH_RUNTIME_ROLE === "dev-bot-worker") {
   process.env.AUTO_UPDATE_ON_START = "false";
@@ -26,8 +27,8 @@ if (process.env.NEX_TECH_RUNTIME_ROLE === "dev-bot-worker") {
   process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED = "true";
   process.env.START_REGISTERED_DEV_BOTS = "false";
 } else {
-  process.env.DEV_BOT_PROCESS_RUNNER_ENABLED = packedConfigValue("DEV_BOT_PROCESS_RUNNER_ENABLED") || process.env.DEV_BOT_PROCESS_RUNNER_ENABLED || "";
-  process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED = packedConfigValue("DEV_BOT_RUNTIME_RECONCILE_ENABLED") || process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED || "";
+  applyEnvIfConfigured(process.env, "DEV_BOT_PROCESS_RUNNER_ENABLED", packedConfigValue("DEV_BOT_PROCESS_RUNNER_ENABLED"));
+  applyEnvIfConfigured(process.env, "DEV_BOT_RUNTIME_RECONCILE_ENABLED", packedConfigValue("DEV_BOT_RUNTIME_RECONCILE_ENABLED"));
 }
 process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
@@ -66,24 +67,7 @@ function loadRuntimeConfigFile() {
 }
 
 function packedConfigValue(key) {
-  const jsonConfig = process.env.APP_CONFIG_JSON?.trim();
-  const base64Config =
-    process.env.APP_CONFIG_B64?.trim()
-    || process.env.APP_CONFIG_BASE64?.trim()
-    || process.env.NEX_TECH_CONFIG_B64?.trim();
-  const rawConfig = jsonConfig || (base64Config ? Buffer.from(base64Config, "base64").toString("utf8") : "");
-
-  if (!rawConfig) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(rawConfig);
-    const value = parsed?.[key];
-    return value === null || value === undefined ? "" : String(value).trim();
-  } catch {
-    return "";
-  }
+  return packedConfigValueFromEnv(process.env, key);
 }
 
 function ensureBuild() {
