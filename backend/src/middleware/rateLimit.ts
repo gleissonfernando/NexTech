@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { env } from "../config/env";
 import { getRedisClient } from "../database/redis";
 
 type RateLimitPolicy = {
@@ -16,43 +17,43 @@ const memoryBuckets = new Map<string, MemoryBucket>();
 
 const publicPolicy: RateLimitPolicy = {
   keyPrefix: "public",
-  limit: 600,
+  limit: env.RATE_LIMIT_PUBLIC_PER_MINUTE,
   windowMs: 60_000
 };
 
 const authPolicy: RateLimitPolicy = {
   keyPrefix: "auth",
-  limit: 30,
+  limit: env.RATE_LIMIT_AUTH_PER_MINUTE,
   windowMs: 60_000
 };
 
 const mutationPolicy: RateLimitPolicy = {
   keyPrefix: "mutation",
-  limit: 120,
+  limit: env.RATE_LIMIT_MUTATION_PER_MINUTE,
   windowMs: 60_000
 };
 
 const botRuntimePolicy: RateLimitPolicy = {
   keyPrefix: "bot-runtime",
-  limit: 90,
+  limit: env.RATE_LIMIT_BOT_RUNTIME_PER_MINUTE,
   windowMs: 60_000
 };
 
 const botMutationPolicy: RateLimitPolicy = {
   keyPrefix: "bot-mutation",
-  limit: 60,
+  limit: env.RATE_LIMIT_BOT_MUTATION_PER_MINUTE,
   windowMs: 60_000
 };
 
 const logPolicy: RateLimitPolicy = {
   keyPrefix: "logs",
-  limit: 45,
+  limit: env.RATE_LIMIT_LOGS_PER_MINUTE,
   windowMs: 60_000
 };
 
 const devPolicy: RateLimitPolicy = {
   keyPrefix: "dev",
-  limit: 180,
+  limit: env.RATE_LIMIT_DEV_PER_MINUTE,
   windowMs: 60_000
 };
 
@@ -91,7 +92,7 @@ function shouldSkipRateLimit(req: Request) {
     || req.path.startsWith("/api/health");
 }
 
-function policyForRequest(req: Request): RateLimitPolicy {
+export function policyForRequest(req: Request): RateLimitPolicy {
   const path = req.path;
 
   if (path.startsWith("/auth") || path.startsWith("/api/auth")) {
