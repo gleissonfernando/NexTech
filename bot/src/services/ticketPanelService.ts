@@ -41,7 +41,6 @@ import { buildTranscriptLuaCommand, resolveTranscriptTemporaryPassword, resolveT
 
 const TICKET_PANEL_CUSTOM_ID = "ticket_panel_select";
 const TICKET_ACTION_PREFIX = "ticket_action:";
-const TICKET_STATUS_PREFIX = "ticket_status:";
 const CLOSE_MODAL_PREFIX = "ticket_close:";
 const CLOSE_CONFIRM_PREFIX = "ticket_close_confirm:";
 const CLOSE_CANCEL_PREFIX = "ticket_close_cancel:";
@@ -229,11 +228,6 @@ export async function handleTicketPanelInteraction(interaction: Interaction, con
 
   if (interaction.isStringSelectMenu() && (interaction.customId.startsWith(OPEN_CATEGORY_PREFIX) || interaction.customId.startsWith(OPEN_CLIENT_PREFIX))) {
     await handleTicketPreOpenSelect(interaction, context);
-    return true;
-  }
-
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith(TICKET_STATUS_PREFIX)) {
-    await handleTicketStatus(interaction, context);
     return true;
   }
 
@@ -1061,49 +1055,6 @@ async function handleTicketUserCall(interaction: ButtonInteraction, context: Bot
     metadata: { channelId: interaction.channel.id, dmSent, ticketUrl }
   }).catch(() => null);
   await interaction.editReply(dmSent ? "Usuário chamado no canal e por DM." : "Usuário chamado no canal. Não foi possível enviar DM ao usuário.");
-}
-
-async function handleTicketStatus(interaction: StringSelectMenuInteraction, context: BotContext) {
-  const parsed = parseScopedComponentId(interaction.customId, TICKET_STATUS_PREFIX, "status");
-  if (!parsed || !validateScopedComponentInteraction(interaction, parsed)) {
-    await interaction.reply({ content: "Ticket inválido.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  const ticketId = parsed.targetId;
-  const status = interaction.values[0];
-  const label = STATUS_OPTIONS.find((item) => item.value === status)?.label ?? status;
-  await interaction.deferUpdate();
-  const ticket = await getTicketOrRecover(interaction, context, ticketId);
-  if (!ticket) {
-    await interaction.followUp({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (isTicketOpener(ticket, interaction.user.id)) {
-    await interaction.followUp({ content: "Quem abriu este ticket não pode alterar status nem usar os botões internos do atendimento.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (!(await canManageTicketInteraction(interaction, ticket))) {
-    await interaction.followUp({ content: "Você não possui permissão da equipe para gerenciar este ticket.", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  const updatedTicket = await context.api.updateTicketStatus(ticketId, { status });
-  await context.api.recordTicketEvent(ticketId, {
-    authorId: interaction.user.id,
-    content: `Status alterado para ${label}.`,
-    eventType: "ticket.status_changed",
-    guildId: interaction.guildId!
-  }).catch(() => null);
-  await interaction.message.edit(createOpenTicketPayload({
-    category: updatedTicket?.categoryName ?? ticket.categoryName ?? updatedTicket?.subject ?? ticket.subject ?? "Atendimento",
-    clientLabel: ticket.isClient === true ? "Sim" : ticket.isClient === false ? "Não" : null,
-    guild: interaction.guild,
-    mentionRoleId: updatedTicket?.responsibleRoleId ?? ticket.responsibleRoleId ?? null,
-    openerId: updatedTicket?.openerId ?? ticket.openerId,
-    responsibleUserId: updatedTicket?.responsibleUserId ?? ticket.responsibleUserId ?? null,
-    status: label,
-    subject: updatedTicket?.subject ?? ticket.subject,
-    ticketId
-  }));
 }
 
 async function handleTicketMemberModal(interaction: ModalSubmitInteraction, context: BotContext) {
@@ -2640,12 +2591,6 @@ function createOpenTicketPayload(input: {
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "category", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("prancheta", guild)).setLabel("Alterar Categoria").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(scopedComponentId(TICKET_ACTION_PREFIX, "close", guildId, botId, ticketId)).setEmoji(systemComponentEmoji("visto", guild)).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger)
   );
-  const statusMenu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(scopedComponentId(TICKET_STATUS_PREFIX, "status", guildId, botId, ticketId))
-      .setPlaceholder("Alterar Status")
-      .addOptions(STATUS_OPTIONS.map((item) => ({ label: item.label, value: item.value })))
-  );
   const mentionLine = mentionRoleId ? `<@&${mentionRoleId}>` : "";
   const serverName = guild?.name ?? "servidor";
   const content = [
@@ -2675,8 +2620,7 @@ function createOpenTicketPayload(input: {
       { type: 10, content },
       { type: 14, divider: true, spacing: 1 },
       firstActions,
-      secondActions,
-      statusMenu
+      secondActions
     ],
     footer: null,
     guild
