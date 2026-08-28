@@ -46,6 +46,7 @@ const MODULES_REQUIRING_MEMBER_EVENTS = ["welcome", "leave", "roles", "logs", "f
 const MODULES_REQUIRING_MESSAGE_CONTENT = ["moderation", "safe-bot", "link-anti-spam", "image-anti-spam", "temporary-voice"];
 const OBSOLETE_DEV_BOT_COMMAND_NAMES = new Set(["encomendas"]);
 const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV === "production" ? 1 : 3);
+const DEV_BOT_MAX_RUNNING_PROCESSES = env.DEV_BOT_MAX_RUNNING_PROCESSES ?? 64;
 const DEV_BOT_NODE_MAX_OLD_SPACE_MB = env.DEV_BOT_NODE_MAX_OLD_SPACE_MB ?? 128;
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
@@ -510,6 +511,15 @@ function readRuntimeError(error: unknown) {
 
 async function startRuntime(bot: DevBotRuntimeConfig) {
   if (runningBots.has(bot.id)) {
+    return;
+  }
+
+  if (runningBots.size >= DEV_BOT_MAX_RUNNING_PROCESSES) {
+    await updateDevBotRuntimeStatus(
+      bot.id,
+      "waiting_retry",
+      `Aguardando capacidade do runtime local (${runningBots.size}/${DEV_BOT_MAX_RUNNING_PROCESSES} bots em execução).`
+    );
     return;
   }
 

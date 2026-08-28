@@ -7,7 +7,7 @@ const target = path.join(root, process.env.DISCLOUD_PACKAGE_DIR?.trim() || ".dis
 const packageName = process.env.DISCLOUD_PACKAGE_NAME?.trim() || "NexTech";
 const packageType = process.env.DISCLOUD_PACKAGE_TYPE?.trim() || "site";
 const packageId = process.env.DISCLOUD_PACKAGE_ID?.trim() || "nextech";
-const packageRam = process.env.DISCLOUD_PACKAGE_RAM?.trim() || "3000";
+const packageRam = process.env.DISCLOUD_PACKAGE_RAM?.trim() || "1024";
 
 const required = [
   "index.js",
@@ -125,9 +125,18 @@ for (const key of [
   "DEV_BOT_RUNTIME_RECONCILE_ENABLED",
   "DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS",
   "DEV_BOT_START_CONCURRENCY",
+  "DEV_BOT_MAX_RUNNING_PROCESSES",
   "DEV_BOT_NODE_MAX_OLD_SPACE_MB",
   "DEV_BOT_START_STAGGER_MS",
-  "DEV_BOT_COMMAND_CLEANUP_DELAY_MS"
+  "DEV_BOT_COMMAND_CLEANUP_DELAY_MS",
+  "BOT_CACHE_MEMBERS_MAX",
+  "BOT_CACHE_USERS_MAX",
+  "BOT_CACHE_MESSAGES_PER_CHANNEL",
+  "BOT_CACHE_PRESENCES_MAX",
+  "BOT_EVENT_CONCURRENCY",
+  "BOT_EVENT_QUEUE_MAX",
+  "BOT_MEMORY_RESTART_MB",
+  "NEX_TECH_NODE_MAX_OLD_SPACE_MB"
 ]) {
   const value = process.env[key]?.trim() || explicitRuntimeConfigValue(key);
   if (value) {
