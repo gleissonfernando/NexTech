@@ -15,7 +15,7 @@ process.env.SITE_ORIGIN ||= packedConfigValue("SITE_ORIGIN") || process.env.APP_
 process.env.FRONTEND_URL ||= packedConfigValue("FRONTEND_URL") || process.env.APP_BASE_URL;
 process.env.BACKEND_URL ||= packedConfigValue("BACKEND_URL") || process.env.APP_BASE_URL;
 process.env.BOT_API_TOKEN ||= packedConfigValue("BOT_API_TOKEN") || randomBytes(32).toString("hex");
-process.env.START_REGISTERED_DEV_BOTS ||= packedConfigValue("START_REGISTERED_DEV_BOTS") || "";
+process.env.START_REGISTERED_DEV_BOTS = packedConfigValue("START_REGISTERED_DEV_BOTS") || process.env.START_REGISTERED_DEV_BOTS || "";
 process.env.NEX_TECH_RUNTIME_ROLE ||= packedConfigValue("NEX_TECH_RUNTIME_ROLE") || "web";
 if (process.env.NEX_TECH_RUNTIME_ROLE === "dev-bot-worker") {
   process.env.AUTO_UPDATE_ON_START = "false";
@@ -25,8 +25,8 @@ if (process.env.NEX_TECH_RUNTIME_ROLE === "dev-bot-worker") {
   process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED = "true";
   process.env.START_REGISTERED_DEV_BOTS = "false";
 } else {
-  process.env.DEV_BOT_PROCESS_RUNNER_ENABLED ||= packedConfigValue("DEV_BOT_PROCESS_RUNNER_ENABLED") || "";
-  process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED ||= packedConfigValue("DEV_BOT_RUNTIME_RECONCILE_ENABLED") || "";
+  process.env.DEV_BOT_PROCESS_RUNNER_ENABLED = packedConfigValue("DEV_BOT_PROCESS_RUNNER_ENABLED") || process.env.DEV_BOT_PROCESS_RUNNER_ENABLED || "";
+  process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED = packedConfigValue("DEV_BOT_RUNTIME_RECONCILE_ENABLED") || process.env.DEV_BOT_RUNTIME_RECONCILE_ENABLED || "";
 }
 process.env.BACKEND_API_URL = `http://127.0.0.1:${process.env.PORT}/api`;
 process.env.BACKEND_SOCKET_URL = `http://127.0.0.1:${process.env.PORT}`;
