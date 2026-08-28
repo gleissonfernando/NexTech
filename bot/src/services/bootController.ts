@@ -55,6 +55,7 @@ const TIMEOUT_MS = 120_000;
 export class BotBootController {
   private readonly components = new Map<string, BotBootSnapshot["components"][number]>();
   private readonly startedAt = Date.now();
+  private completedAt: number | null = null;
   private state: BotBootState = "BOOTING";
   private updatedAt = new Date().toISOString();
 
@@ -100,8 +101,11 @@ export class BotBootController {
   finish() {
     const hasCriticalFailure = [...this.components.values()].some((component) => component.tier === "critical" && component.status === "FAILED");
     const hasFailure = [...this.components.values()].some((component) => component.status === "FAILED");
-    const elapsed = Date.now() - this.startedAt;
-    this.setState(hasCriticalFailure ? "FAILED" : hasFailure || elapsed > HEALTHY_MS ? "DEGRADED" : "ONLINE");
+    const wasCompleted = this.completedAt !== null;
+    const now = Date.now();
+    if (!this.completedAt) this.completedAt = now;
+    const elapsed = this.completedAt - this.startedAt;
+    this.setState(hasCriticalFailure ? "FAILED" : hasFailure || (!wasCompleted && elapsed > HEALTHY_MS) ? "DEGRADED" : "ONLINE");
     console.log(`[BOOT] Startup completed in ${elapsed}ms status=${this.state}`);
   }
 
@@ -121,7 +125,7 @@ export class BotBootController {
 
     return {
       components,
-      elapsedMs: Date.now() - this.startedAt,
+      elapsedMs: (this.completedAt ?? Date.now()) - this.startedAt,
       memory: {
         arrayBuffersMb: mb(memory.arrayBuffers),
         externalMb: mb(memory.external),

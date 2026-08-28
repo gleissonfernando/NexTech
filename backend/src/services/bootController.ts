@@ -70,6 +70,7 @@ export class BootController {
   private readonly components = new Map<string, BootComponentSnapshot>();
   private readonly events: string[] = [];
   private readonly startedAt = Date.now();
+  private completedAt: number | null = null;
   private state: BootState = "BOOTING";
   private updatedAt = new Date().toISOString();
 
@@ -155,9 +156,12 @@ export class BootController {
       component.criticality === "critical" && component.status === "FAILED"
     ));
     const hasFailure = [...this.components.values()].some((component) => component.status === "FAILED");
-    const elapsed = Date.now() - this.startedAt;
+    const wasCompleted = this.completedAt !== null;
+    const now = Date.now();
 
-    this.setState(hasCriticalFailure ? "FAILED" : hasFailure || elapsed > BOOT_HEALTHY_MS ? "DEGRADED" : "ONLINE");
+    if (!this.completedAt) this.completedAt = now;
+    const elapsed = this.completedAt - this.startedAt;
+    this.setState(hasCriticalFailure ? "FAILED" : hasFailure || (!wasCompleted && elapsed > BOOT_HEALTHY_MS) ? "DEGRADED" : "ONLINE");
     this.log(`Completed in ${elapsed}ms with ${this.state}`);
   }
 
@@ -178,7 +182,7 @@ export class BootController {
 
     return {
       components,
-      elapsedMs: Date.now() - this.startedAt,
+      elapsedMs: (this.completedAt ?? Date.now()) - this.startedAt,
       memory: {
         arrayBuffersMb: mb(memory.arrayBuffers),
         externalMb: mb(memory.external),
