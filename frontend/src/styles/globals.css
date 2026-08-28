@@ -78,6 +78,18 @@
     color: #f8fafc;
   }
 
+  .nextech-home {
+    background:
+      radial-gradient(circle at 70% 10%, rgba(255, 212, 0, 0.1), transparent 35%),
+      radial-gradient(circle at 12% 56%, rgba(255, 212, 0, 0.04), transparent 32%),
+      #050505;
+    color: #ffffff;
+  }
+
+  .nextech-home * {
+    min-width: 0;
+  }
+
   .home-section {
     padding-block: clamp(4.5rem, 8vw, 7.5rem);
   }

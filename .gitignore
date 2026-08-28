@@ -24,6 +24,8 @@ logs
 .agents/
 skills-lock.json
 .codex-screenshots/
+.tmp-home-screens/
+test-results/
 my-mercadopago-app/
 .DS_Store
 npm-debug.log*

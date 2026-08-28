@@ -151,10 +151,6 @@ export function App() {
     );
   }
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
   if (publicLandingPath) {
     return (
       <Login
@@ -165,6 +161,10 @@ export function App() {
         verifying={verifying}
       />
     );
+  }
+
+  if (loading) {
+    return <LoadingScreen />;
   }
 
   if (!auth || !auth.access.verified) {
