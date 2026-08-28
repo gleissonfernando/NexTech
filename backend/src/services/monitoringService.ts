@@ -1,4 +1,5 @@
 import os from "node:os";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 
 type RouteMetric = {
   errors: number;
@@ -9,6 +10,9 @@ type RouteMetric = {
 const startedAt = new Date();
 const routeMetrics = new Map<string, RouteMetric>();
 const MAX_ROUTE_METRICS = 500;
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+
+eventLoopDelay.enable();
 
 export function recordHttpRequest(input: {
   durationMs: number;
@@ -63,6 +67,15 @@ export function metricsSnapshot() {
       systemMilliseconds: Math.round(cpu.system / 1_000),
       userMilliseconds: Math.round(cpu.user / 1_000)
     },
+    eventLoop: {
+      maxMs: nsToMs(eventLoopDelay.max),
+      meanMs: nsToMs(eventLoopDelay.mean),
+      minMs: nsToMs(eventLoopDelay.min),
+      p50Ms: nsToMs(eventLoopDelay.percentile(50)),
+      p95Ms: nsToMs(eventLoopDelay.percentile(95)),
+      p99Ms: nsToMs(eventLoopDelay.percentile(99)),
+      stddevMs: nsToMs(eventLoopDelay.stddev)
+    },
     routes
   };
 }
@@ -84,4 +97,8 @@ function normalizePath(path: string) {
     .replace(/\?.*$/, "")
     .replace(/\/\d{5,32}(?=\/|$)/g, "/:id")
     .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,36}(?=\/|$)/gi, "/:uuid");
+}
+
+function nsToMs(value: number) {
+  return Number((value / 1_000_000).toFixed(3));
 }

@@ -1,14 +1,75 @@
 type QueuedTask = {
+  enqueuedAt: number;
   name: string;
-  priority: boolean;
+  priority: TaskPriority;
   run: () => Promise<unknown>;
 };
+
+export type TaskPriority = "high" | "normal" | "low";
+
+type PriorityBuckets = {
+  high: QueuedTask[];
+  low: QueuedTask[];
+  normal: QueuedTask[];
+};
+
+type TaskPriorityInput = boolean | TaskPriority;
+
+type QueueSnapshot = {
+  active: number;
+  concurrency: number;
+  maxPending: number;
+  oldestPendingMs: number;
+  pending: number;
+  pendingByPriority: Record<TaskPriority, number>;
+};
+
+function normalizePriority(priority: TaskPriorityInput | undefined): TaskPriority {
+  if (priority === "high" || priority === "normal" || priority === "low") {
+    return priority;
+  }
+
+  return priority ? "high" : "normal";
+}
+
+function createBuckets(): PriorityBuckets {
+  return {
+    high: [],
+    low: [],
+    normal: []
+  };
+}
+
+function pendingCount(buckets: PriorityBuckets) {
+  return buckets.high.length + buckets.normal.length + buckets.low.length;
+}
+
+function oldestPendingAt(buckets: PriorityBuckets) {
+  const candidates = [buckets.high[0], buckets.normal[0], buckets.low[0]].filter(Boolean) as QueuedTask[];
+  return candidates.reduce((oldest, task) => Math.min(oldest, task.enqueuedAt), Number.POSITIVE_INFINITY);
+}
+
+function snapshotBuckets(buckets: PriorityBuckets) {
+  return {
+    high: buckets.high.length,
+    low: buckets.low.length,
+    normal: buckets.normal.length
+  };
+}
+
+function pushTask(buckets: PriorityBuckets, task: QueuedTask) {
+  buckets[task.priority].push(task);
+}
+
+function shiftTask(buckets: PriorityBuckets) {
+  return buckets.high.shift() ?? buckets.normal.shift() ?? buckets.low.shift() ?? null;
+}
 
 export class BoundedTaskQueue {
   private active = 0;
   private accepting = true;
   private readonly idleWaiters = new Set<() => void>();
-  private readonly pending: QueuedTask[] = [];
+  private readonly pending = createBuckets();
   private lastOverloadLogAt = 0;
 
   constructor(
@@ -17,65 +78,49 @@ export class BoundedTaskQueue {
     private readonly onError: (name: string, error: unknown) => void
   ) {}
 
-  enqueue(name: string, run: () => Promise<unknown>, priority = false) {
+  enqueue(name: string, run: () => Promise<unknown>, priority: TaskPriorityInput = false) {
     if (!this.accepting) {
       return false;
     }
 
-    if (this.pending.length >= this.maxPending) {
-      if (priority) {
-        const dropIndex = this.findDropCandidateIndex();
-        if (dropIndex >= 0) {
-          this.pending.splice(dropIndex, 1);
-        } else {
-          return false;
-        }
-      } else {
-        if (Date.now() - this.lastOverloadLogAt > 10_000) {
-          this.lastOverloadLogAt = Date.now();
-          console.error(JSON.stringify({
-            active: this.active,
-            at: new Date().toISOString(),
-            level: "critical",
-            maxPending: this.maxPending,
-            module: "gateway-events",
-            pending: this.pending.length,
-            type: "queue_overload"
-          }));
-        }
+    const taskPriority = normalizePriority(priority);
+    const nextTask: QueuedTask = {
+      enqueuedAt: Date.now(),
+      name,
+      priority: taskPriority,
+      run
+    };
+
+    const currentPending = pendingCount(this.pending);
+
+    if (currentPending >= this.maxPending) {
+      if (!this.makeRoomFor(taskPriority)) {
+        this.logOverload();
         return false;
       }
     }
 
-    if (this.pending.length >= this.maxPending) {
-      if (Date.now() - this.lastOverloadLogAt > 10_000) {
-        this.lastOverloadLogAt = Date.now();
-        console.error(JSON.stringify({
-          active: this.active,
-          at: new Date().toISOString(),
-          level: "critical",
-          maxPending: this.maxPending,
-          module: "gateway-events",
-          pending: this.pending.length,
-          type: "queue_overload"
-        }));
-      }
-      return false;
-    }
-
-    if (priority) this.pending.unshift({ name, priority, run });
-    else this.pending.push({ name, priority, run });
+    pushTask(this.pending, nextTask);
     this.drain();
     return true;
   }
 
-  snapshot() {
-    return { active: this.active, concurrency: this.concurrency, maxPending: this.maxPending, pending: this.pending.length };
+  snapshot(): QueueSnapshot {
+    const totalPending = pendingCount(this.pending);
+    const oldestAt = oldestPendingAt(this.pending);
+    return {
+      active: this.active,
+      concurrency: this.concurrency,
+      maxPending: this.maxPending,
+      oldestPendingMs: Number.isFinite(oldestAt) ? Math.max(0, Date.now() - oldestAt) : 0,
+      pending: totalPending,
+      pendingByPriority: snapshotBuckets(this.pending)
+    };
   }
 
   async stopAndDrain(timeoutMs: number) {
     this.accepting = false;
-    if (this.active === 0 && this.pending.length === 0) return;
+    if (this.active === 0 && pendingCount(this.pending) === 0) return;
 
     await Promise.race([
       new Promise<void>((resolve) => this.idleWaiters.add(resolve)),
@@ -84,8 +129,8 @@ export class BoundedTaskQueue {
   }
 
   private drain() {
-    while (this.active < this.concurrency && this.pending.length) {
-      const task = this.pending.shift();
+    while (this.active < this.concurrency && pendingCount(this.pending)) {
+      const task = shiftTask(this.pending);
       if (!task) return;
       this.active += 1;
       void task.run()
@@ -93,7 +138,7 @@ export class BoundedTaskQueue {
         .finally(() => {
           this.active -= 1;
           this.drain();
-          if (this.active === 0 && this.pending.length === 0) {
+          if (this.active === 0 && pendingCount(this.pending) === 0) {
             for (const resolve of this.idleWaiters) resolve();
             this.idleWaiters.clear();
           }
@@ -101,10 +146,36 @@ export class BoundedTaskQueue {
     }
   }
 
-  private findDropCandidateIndex() {
-    for (let index = this.pending.length - 1; index >= 0; index -= 1) {
-      if (!this.pending[index]?.priority) return index;
+  private makeRoomFor(priority: TaskPriority) {
+    if (priority === "high") {
+      if (this.pending.low.shift()) return true;
+      if (this.pending.normal.shift()) return true;
+      return false;
     }
-    return -1;
+
+    if (priority === "normal") {
+      if (this.pending.low.shift()) return true;
+      return false;
+    }
+
+    return false;
+  }
+
+  private logOverload() {
+    if (Date.now() - this.lastOverloadLogAt <= 10_000) {
+      return;
+    }
+
+    this.lastOverloadLogAt = Date.now();
+    console.error(JSON.stringify({
+      active: this.active,
+      at: new Date().toISOString(),
+      level: "critical",
+      maxPending: this.maxPending,
+      module: "gateway-events",
+      pending: pendingCount(this.pending),
+      pendingByPriority: snapshotBuckets(this.pending),
+      type: "queue_overload"
+    }));
   }
 }
