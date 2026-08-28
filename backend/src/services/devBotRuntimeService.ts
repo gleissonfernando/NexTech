@@ -49,7 +49,6 @@ const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV
 const DEV_BOT_MAX_RUNNING_PROCESSES = env.DEV_BOT_MAX_RUNNING_PROCESSES ?? 64;
 const DEV_BOT_NODE_MAX_OLD_SPACE_MB = env.DEV_BOT_NODE_MAX_OLD_SPACE_MB ?? 128;
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
-const DEV_BOT_STARTUP_MAX_CONCURRENCY = 64;
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_PROCESS_RUNNER_ENABLED = env.DEV_BOT_PROCESS_RUNNER_ENABLED;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
@@ -89,7 +88,7 @@ export async function startRegisteredDevBots() {
   console.log(`[dev-bot] iniciando ${bots.length} bot(s) cadastrado(s) automaticamente.`);
   const enabledBots = bots.filter((bot) => bot.desiredOnline);
   console.log(`[dev-bot] ${bots.length - enabledBots.length} bot(s) permanecerao desligados por bloqueio persistente.`);
-  await startDevBotRuntimeBatch(enabledBots, { fastStart: true });
+  await startDevBotRuntimeBatch(enabledBots);
   return enabledBots.length;
 }
 
@@ -770,13 +769,8 @@ export function resolveDevBotStartBatchPlan(
   botCount: number,
   configuredConcurrency: number,
   configuredStaggerMs: number,
-  fastStart = false
+  _fastStart = false
 ) {
-  if (fastStart) {
-    const concurrency = Math.max(1, Math.min(DEV_BOT_STARTUP_MAX_CONCURRENCY, botCount));
-    return { concurrency, staggerMs: 0 };
-  }
-
   return { concurrency: configuredConcurrency, staggerMs: configuredStaggerMs };
 }
 
@@ -787,7 +781,7 @@ async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[], options: { f
     DEV_BOT_START_STAGGER_MS,
     options.fastStart === true
   );
-  const ignoreCapacityLimit = options.fastStart === true;
+  const ignoreCapacityLimit = false;
 
   for (let index = 0; index < bots.length; index += plan.concurrency) {
     const batch = bots.slice(index, index + plan.concurrency);

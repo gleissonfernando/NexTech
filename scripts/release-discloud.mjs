@@ -106,9 +106,9 @@ run("node", ["scripts/prepare-discloud-package.mjs"], {
   env: {
     DEV_BOT_PROCESS_RUNNER_ENABLED: "true",
     DEV_BOT_RUNTIME_RECONCILE_ENABLED: "true",
-    START_REGISTERED_DEV_BOTS: "true",
-    DEV_BOT_START_CONCURRENCY: process.env.DEV_BOT_START_CONCURRENCY?.trim() || "8",
-    DEV_BOT_START_STAGGER_MS: process.env.DEV_BOT_START_STAGGER_MS?.trim() || "1000",
+    START_REGISTERED_DEV_BOTS: process.env.START_REGISTERED_DEV_BOTS?.trim() === "true" ? "true" : "false",
+    DEV_BOT_START_CONCURRENCY: process.env.DEV_BOT_START_CONCURRENCY?.trim() || "1",
+    DEV_BOT_START_STAGGER_MS: process.env.DEV_BOT_START_STAGGER_MS?.trim() || "45000",
     DEV_BOT_MAX_RUNNING_PROCESSES: process.env.DEV_BOT_MAX_RUNNING_PROCESSES?.trim() || "64"
   }
 });

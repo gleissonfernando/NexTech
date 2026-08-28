@@ -16,7 +16,6 @@ const backendUrl = normalizeUrl(
 const botApiToken = process.env.BOT_API_TOKEN || packedConfigValue("BOT_API_TOKEN") || "";
 const concurrency = numberEnv("DEV_BOT_START_CONCURRENCY", 1, 1, 64);
 const staggerMs = numberEnv("DEV_BOT_START_STAGGER_MS", 45_000, 1_000, 600_000);
-const startupMaxConcurrency = 64;
 const reconcileMs = numberEnv("DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS", 120_000, 15_000, 900_000);
 const childHeapMb = numberEnv("DEV_BOT_NODE_MAX_OLD_SPACE_MB", 96, 64, 512);
 const runningBots = new Map();
@@ -63,7 +62,7 @@ async function reconcile(reason) {
     const pending = bots.filter((bot) => bot.desiredOnline && !runningBots.has(bot.id));
     if (pending.length > 0) {
       console.log(`[dev-bot-worker] reconciliacao ${reason}: iniciando ${pending.length} bot(s).`);
-      await startBatch(pending, { fastStart: reason === "startup" });
+      await startBatch(pending);
     }
   } catch (error) {
     console.warn("[dev-bot-worker] reconciliacao falhou:", readError(error));
@@ -88,18 +87,12 @@ async function fetchRuntimeConfigs() {
   return Array.isArray(payload?.bots) ? payload.bots : [];
 }
 
-async function startBatch(bots, options = {}) {
-  const fastStart = options.fastStart === true;
-  const effectiveConcurrency = fastStart
-    ? Math.max(concurrency, Math.min(startupMaxConcurrency, bots.length))
-    : concurrency;
-  const effectiveStaggerMs = fastStart ? 0 : staggerMs;
-
-  for (let index = 0; index < bots.length; index += effectiveConcurrency) {
-    const batch = bots.slice(index, index + effectiveConcurrency);
+async function startBatch(bots) {
+  for (let index = 0; index < bots.length; index += concurrency) {
+    const batch = bots.slice(index, index + concurrency);
     await Promise.allSettled(batch.map((bot) => startBot(bot)));
-    if (index + effectiveConcurrency < bots.length && effectiveStaggerMs > 0) {
-      await delay(effectiveStaggerMs);
+    if (index + concurrency < bots.length && staggerMs > 0) {
+      await delay(staggerMs);
     }
   }
 }

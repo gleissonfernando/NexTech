@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveDevBotStartBatchPlan, resolveDevBotStartRetryDelayMs } from "./devBotRuntimeService";
 
-test("startup batch plan ignora stagger e usa a maior concorrencia necessaria", () => {
+test("startup batch plan preserva limites configurados para evitar burst no Discord", () => {
   const plan = resolveDevBotStartBatchPlan(12, 1, 45_000, true);
 
-  assert.equal(plan.concurrency, 12);
-  assert.equal(plan.staggerMs, 0);
+  assert.equal(plan.concurrency, 1);
+  assert.equal(plan.staggerMs, 45_000);
 });
 
 test("batch plan normal preserva os valores configurados", () => {
