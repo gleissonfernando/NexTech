@@ -1,6 +1,15 @@
 import type { DashboardGuild } from "../services/guildService";
 import type { SessionAccessLevel } from "../services/dashboardPermissionService";
 
+export type RequestPerformanceTrace = {
+  addStep: (name: string, durationMs: number, metadata?: Record<string, unknown>) => void;
+  botId?: string | null;
+  id: string;
+  module?: string | null;
+  operation?: string | null;
+  startedAt: number;
+};
+
 export type AuthSessionUser = {
   id: string;
   discordId: string;
@@ -58,5 +67,13 @@ declare module "express-session" {
       kick?: string;
       twitch?: string;
     };
+  }
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      performanceTrace?: RequestPerformanceTrace;
+    }
   }
 }

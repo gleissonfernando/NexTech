@@ -79,6 +79,9 @@ const SHARD_REPORT_TTL_MS = 90_000;
 const shardReports = new Map<string, Map<string, ShardReport>>();
 const MAX_RESPONSE_TIME_SAMPLES = 120;
 const responseTimeHistory = new Map<string, BotResponseTimePoint[]>();
+let botGuildsRefreshPromise: Promise<BotGuildDto[]> | null = null;
+let botGuildsRefreshAt = 0;
+const BOT_GUILDS_REFRESH_TTL_MS = 60_000;
 
 type DiscordBotGuild = {
   id: string;
@@ -296,8 +299,17 @@ export async function refreshBotGuildsFromDiscord() {
     return botStatus.botGuilds;
   }
 
-  try {
-    const { data } = await axios.get<DiscordBotGuild[]>(`${DISCORD_API}/users/@me/guilds`, {
+  if (botGuildsRefreshPromise) {
+    return botGuildsRefreshPromise;
+  }
+
+  if (botStatus.botGuilds.length > 0 && Date.now() - botGuildsRefreshAt < BOT_GUILDS_REFRESH_TTL_MS) {
+    return botStatus.botGuilds;
+  }
+
+  botGuildsRefreshPromise = (async () => {
+    try {
+      const { data } = await axios.get<DiscordBotGuild[]>(`${DISCORD_API}/users/@me/guilds`, {
       headers: {
         Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`
       },
@@ -305,25 +317,31 @@ export async function refreshBotGuildsFromDiscord() {
         with_counts: true
       },
       timeout: 3500
-    });
-    const botGuilds = data.map((guild) => ({
-      id: guild.id,
-      name: guild.name,
-      iconUrl: discordGuildIconUrl(guild),
-      memberCount: guild.approximate_member_count
-    }));
+      });
+      const botGuilds = data.map((guild) => ({
+        id: guild.id,
+        name: guild.name,
+        iconUrl: discordGuildIconUrl(guild),
+        memberCount: guild.approximate_member_count
+      }));
 
-    updateBotStatus({
-      botGuilds,
-      guilds: botGuilds.length,
-      users: botGuilds.reduce((total, guild) => total + (guild.memberCount ?? 0), 0)
-    });
+      botGuildsRefreshAt = Date.now();
+      updateBotStatus({
+        botGuilds,
+        guilds: botGuilds.length,
+        users: botGuilds.reduce((total, guild) => total + (guild.memberCount ?? 0), 0)
+      });
 
-    return botGuilds;
-  } catch (error) {
-    console.warn("[discord] não foi possível sincronizar servidores do bot:", error instanceof Error ? error.message : error);
-    return botStatus.botGuilds;
-  }
+      return botGuilds;
+    } catch (error) {
+      console.warn("[discord] não foi possível sincronizar servidores do bot:", error instanceof Error ? error.message : error);
+      return botStatus.botGuilds;
+    } finally {
+      botGuildsRefreshPromise = null;
+    }
+  })();
+
+  return botGuildsRefreshPromise;
 }
 
 export function createDashboardStats() {

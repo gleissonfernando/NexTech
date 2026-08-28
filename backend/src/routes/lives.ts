@@ -78,7 +78,9 @@ livesRouter.get("/settings", async (req, res, next) => {
       });
     }
 
+    const startedAt = Date.now();
     const settings = await getLiveDetectionSettings(botId, guildId);
+    req.performanceTrace?.addStep("database:live-settings", Date.now() - startedAt);
     return res.json({ settings });
   } catch (error) {
     return next(error);

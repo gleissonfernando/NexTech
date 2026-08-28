@@ -225,7 +225,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     }
   });
 
-  await syncVisibleGuildCommands(client, context, "ready");
+  void syncVisibleGuildCommands(client, context, "ready").catch((error) => {
+    console.warn("[bot] falha ao sincronizar comandos visíveis no ready:", error instanceof Error ? error.message : error);
+  });
 
   context.socket.connect(client);
   context.socket.emitStatus(client, true);
@@ -234,7 +236,9 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   if (isMaintenanceModeActive()) {
     console.log("[maintenance] serviços operacionais adiados até o fim da manutenção.");
   } else {
-    await startOperationalRuntime(client, context, "ready");
+    void startOperationalRuntime(client, context, "ready").catch((error) => {
+      console.warn("[bot] falha ao iniciar runtime operacional:", error instanceof Error ? error.message : error);
+    });
   }
 
   const statusInterval = setInterval(() => {

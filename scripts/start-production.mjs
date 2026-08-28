@@ -254,7 +254,7 @@ function startBotAfterBackendReady() {
 
 async function waitForBackendReady(timeoutMs = 45_000) {
   const startedAt = Date.now();
-  const url = `http://127.0.0.1:${process.env.PORT}/health`;
+  const url = `http://127.0.0.1:${process.env.PORT}/health/live`;
   let lastError = "";
 
   while (Date.now() - startedAt < timeoutMs) {

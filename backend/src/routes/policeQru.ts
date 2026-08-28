@@ -142,7 +142,10 @@ policeQruRouter.get("/:guildId/ranking", requireAuth, async (req, res, next) => 
 policeQruRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next) => {
   try {
     const botId = await botIdFor(req);
-    res.json({ settings: await getPoliceQruSettings(botId, snowflake.parse(req.params.guildId)) });
+    const startedAt = Date.now();
+    const settings = await getPoliceQruSettings(botId, snowflake.parse(req.params.guildId));
+    req.performanceTrace?.addStep("database:police-qru-settings", Date.now() - startedAt);
+    res.json({ settings });
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { env } from "../config/env";
 import { getPaymentGatewayHealth } from "../config/payments";
 import { getMongoDb } from "../database/mongo";
@@ -11,12 +11,24 @@ import { getTranscriptHealthStatus } from "../services/transcriptService";
 
 export const healthRouter = Router();
 
-healthRouter.get("/", async (_req, res) => {
+healthRouter.get("/live", (_req, res) => {
+  return res.json({
+    status: "ok",
+    service: "nextech-api",
+    timestamp: new Date().toISOString()
+  });
+});
+
+healthRouter.get("/ready", healthSnapshotHandler);
+healthRouter.get("/", healthSnapshotHandler);
+
+async function healthSnapshotHandler(_req: Request, res: Response) {
+  const trace = _req.performanceTrace;
   const [database, redis, jobs, registeredBots] = await Promise.all([
-    databaseHealth(),
-    redisHealth(),
-    backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) })),
-    listDevBots().catch(() => [] as DevBotDto[])
+    traceAsync(trace, "database:health", databaseHealth),
+    traceAsync(trace, "redis:health", redisHealth),
+    traceAsync(trace, "queue:background-jobs", () => backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) }))),
+    traceAsync(trace, "database:list-dev-bots", () => listDevBots().catch(() => [] as DevBotDto[]))
   ]);
   const bot = getBotStatus();
   const mail = mailHealth();
@@ -37,7 +49,22 @@ healthRouter.get("/", async (_req, res) => {
     },
     timestamp: new Date().toISOString()
   });
-});
+}
+
+async function traceAsync<T>(trace: Request["performanceTrace"] | undefined, name: string, fn: () => Promise<T>) {
+  const startedAt = Date.now();
+
+  try {
+    const result = await fn();
+    trace?.addStep(name, Date.now() - startedAt);
+    return result;
+  } catch (error) {
+    trace?.addStep(name, Date.now() - startedAt, {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
 
 healthRouter.get("/transcripts", async (_req, res) => {
   const health = await getTranscriptHealthStatus();

@@ -685,7 +685,10 @@ fivemRouter.get("/bot/hierarchy/configs", requireBot, async (req, res, next) => 
   try {
     const botId = await readRequiredBotId(req);
     await assertBotFivemHierarchyLicense(botId);
-    return res.json({ panels: await listActiveFivemHierarchyPanels(botId) });
+    const startedAt = Date.now();
+    const panels = await listActiveFivemHierarchyPanels(botId);
+    req.performanceTrace?.addStep("database:fivem-hierarchy-configs", Date.now() - startedAt);
+    return res.json({ panels });
   } catch (error) {
     return next(error);
   }

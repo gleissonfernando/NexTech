@@ -161,8 +161,10 @@ botDevApiRouter.get("/maintenance", async (req, res, next) => {
 botDevApiRouter.get("/system-emojis", async (req, res, next) => {
   try {
     const botId = await resolveRequestBotId(req);
-
-    return res.json(await getSystemEmojiRuntimeConfig(botId));
+    const startedAt = Date.now();
+    const result = await getSystemEmojiRuntimeConfig(botId);
+    req.performanceTrace?.addStep("database:system-emojis.runtime", Date.now() - startedAt);
+    return res.json(result);
   } catch (error) {
     return next(error);
   }
@@ -193,13 +195,15 @@ botDevApiRouter.post("/system-emojis/validation", async (req, res, next) => {
   try {
     const botId = await resolveRequestBotId(req);
     const input = systemEmojiValidationSchema.parse(req.body ?? {});
-
-    return res.json(await recordSystemEmojiValidation({
+    const startedAt = Date.now();
+    const result = await recordSystemEmojiValidation({
       botId,
       extraEmojiNames: input.extraEmojiNames ?? [],
       guildId: input.guildId ?? null,
       emojis: input.emojis
-    }));
+    });
+    req.performanceTrace?.addStep("database:system-emojis.validation", Date.now() - startedAt);
+    return res.json(result);
   } catch (error) {
     return next(error);
   }

@@ -2,14 +2,40 @@ import os from "node:os";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
 type RouteMetric = {
+  durationsMs: number[];
   errors: number;
+  maxDurationMs: number;
+  minDurationMs: number;
+  requests: number;
+  totalDurationMs: number;
+};
+
+export type OperationMetricInput = {
+  botId?: string | null;
+  durationMs: number;
+  metadata?: Record<string, unknown>;
+  module?: string | null;
+  operation: string;
+  requestId?: string;
+  status?: "ok" | "error";
+  type: "cache" | "database" | "externalApi" | "processing" | "queue" | "redis";
+};
+
+type OperationMetric = {
+  durationsMs: number[];
+  errors: number;
+  maxDurationMs: number;
+  minDurationMs: number;
   requests: number;
   totalDurationMs: number;
 };
 
 const startedAt = new Date();
 const routeMetrics = new Map<string, RouteMetric>();
+const operationMetrics = new Map<string, OperationMetric>();
 const MAX_ROUTE_METRICS = 500;
+const MAX_OPERATION_METRICS = 500;
+const MAX_SAMPLES_PER_METRIC = 200;
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 
 eventLoopDelay.enable();
@@ -22,13 +48,20 @@ export function recordHttpRequest(input: {
 }) {
   const key = `${input.method.toUpperCase()} ${normalizePath(input.path)}`;
   const metric = routeMetrics.get(key) ?? {
+    durationsMs: [],
     errors: 0,
+    maxDurationMs: 0,
+    minDurationMs: Number.POSITIVE_INFINITY,
     requests: 0,
     totalDurationMs: 0
   };
+  const durationMs = Math.max(0, Math.round(input.durationMs));
 
   metric.requests += 1;
-  metric.totalDurationMs += input.durationMs;
+  metric.totalDurationMs += durationMs;
+  metric.minDurationMs = Math.min(metric.minDurationMs, durationMs);
+  metric.maxDurationMs = Math.max(metric.maxDurationMs, durationMs);
+  pushSample(metric.durationsMs, durationMs);
 
   if (input.statusCode >= 500) {
     metric.errors += 1;
@@ -38,6 +71,39 @@ export function recordHttpRequest(input: {
 
   if (routeMetrics.size > MAX_ROUTE_METRICS) {
     pruneRouteMetrics();
+  }
+}
+
+export function recordOperationMetric(input: OperationMetricInput) {
+  const key = [
+    input.type,
+    input.module?.trim() || "unknown",
+    input.operation.trim() || "unknown"
+  ].join(" ");
+  const metric = operationMetrics.get(key) ?? {
+    durationsMs: [],
+    errors: 0,
+    maxDurationMs: 0,
+    minDurationMs: Number.POSITIVE_INFINITY,
+    requests: 0,
+    totalDurationMs: 0
+  };
+  const durationMs = Math.max(0, Math.round(input.durationMs));
+
+  metric.requests += 1;
+  metric.totalDurationMs += durationMs;
+  metric.minDurationMs = Math.min(metric.minDurationMs, durationMs);
+  metric.maxDurationMs = Math.max(metric.maxDurationMs, durationMs);
+  pushSample(metric.durationsMs, durationMs);
+
+  if (input.status === "error") {
+    metric.errors += 1;
+  }
+
+  operationMetrics.set(key, metric);
+
+  if (operationMetrics.size > MAX_OPERATION_METRICS) {
+    pruneOperationMetrics();
   }
 }
 
@@ -51,7 +117,26 @@ export function metricsSnapshot() {
       route,
       requests: metric.requests,
       errors: metric.errors,
-      avgDurationMs: metric.requests ? Math.round(metric.totalDurationMs / metric.requests) : 0
+      avgDurationMs: average(metric),
+      maxDurationMs: metric.maxDurationMs,
+      minDurationMs: Number.isFinite(metric.minDurationMs) ? metric.minDurationMs : 0,
+      p50Ms: percentile(metric.durationsMs, 50),
+      p95Ms: percentile(metric.durationsMs, 95),
+      p99Ms: percentile(metric.durationsMs, 99)
+    }));
+  const operations = [...operationMetrics.entries()]
+    .sort((left, right) => right[1].requests - left[1].requests)
+    .slice(0, 50)
+    .map(([operation, metric]) => ({
+      operation,
+      requests: metric.requests,
+      errors: metric.errors,
+      avgDurationMs: average(metric),
+      maxDurationMs: metric.maxDurationMs,
+      minDurationMs: Number.isFinite(metric.minDurationMs) ? metric.minDurationMs : 0,
+      p50Ms: percentile(metric.durationsMs, 50),
+      p95Ms: percentile(metric.durationsMs, 95),
+      p99Ms: percentile(metric.durationsMs, 99)
     }));
 
   return {
@@ -76,7 +161,23 @@ export function metricsSnapshot() {
       p99Ms: nsToMs(eventLoopDelay.percentile(99)),
       stddevMs: nsToMs(eventLoopDelay.stddev)
     },
-    routes
+    routes,
+    operations,
+    latency: {
+      backendProcessing: routes.length ? {
+        averageMs: Math.round(routes.reduce((total, route) => total + route.avgDurationMs, 0) / routes.length),
+        p50Ms: percentile(routes.map((route) => route.p50Ms), 50),
+        p95Ms: percentile(routes.map((route) => route.p95Ms), 95),
+        p99Ms: percentile(routes.map((route) => route.p99Ms), 99)
+      } : null,
+      eventLoop: {
+        maxMs: nsToMs(eventLoopDelay.max),
+        meanMs: nsToMs(eventLoopDelay.mean),
+        p50Ms: nsToMs(eventLoopDelay.percentile(50)),
+        p95Ms: nsToMs(eventLoopDelay.percentile(95)),
+        p99Ms: nsToMs(eventLoopDelay.percentile(99))
+      }
+    }
   };
 }
 
@@ -90,6 +191,36 @@ function pruneRouteMetrics() {
   for (const [route, metric] of retained) {
     routeMetrics.set(route, metric);
   }
+}
+
+function pruneOperationMetrics() {
+  const retained = [...operationMetrics.entries()]
+    .sort((left, right) => right[1].requests - left[1].requests)
+    .slice(0, MAX_OPERATION_METRICS);
+
+  operationMetrics.clear();
+
+  for (const [route, metric] of retained) {
+    operationMetrics.set(route, metric);
+  }
+}
+
+function pushSample(samples: number[], value: number) {
+  samples.push(value);
+  if (samples.length > MAX_SAMPLES_PER_METRIC) {
+    samples.splice(0, samples.length - MAX_SAMPLES_PER_METRIC);
+  }
+}
+
+function average(metric: Pick<RouteMetric, "requests" | "totalDurationMs">) {
+  return metric.requests ? Math.round(metric.totalDurationMs / metric.requests) : 0;
+}
+
+function percentile(values: number[], percentileRank: number) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.ceil((percentileRank / 100) * sorted.length) - 1);
+  return sorted[Math.max(0, index)] ?? 0;
 }
 
 function normalizePath(path: string) {

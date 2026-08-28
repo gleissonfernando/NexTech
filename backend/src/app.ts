@@ -11,6 +11,7 @@ import morgan from "morgan";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { maintenanceMiddleware } from "./middleware/maintenance";
+import { performanceTraceMiddleware } from "./middleware/performanceTrace";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { requestMetricsMiddleware } from "./middleware/requestMetrics";
 import { sessionMiddleware } from "./middleware/session";
@@ -83,6 +84,7 @@ app.use(sessionAwareMiddleware);
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev", {
   skip: (req) => req.path.startsWith("/health")
 }));
+app.use(performanceTraceMiddleware);
 app.use(requestMetricsMiddleware);
 app.use(rateLimitMiddleware);
 app.use("/uploads", express.static(uploadsPath));
