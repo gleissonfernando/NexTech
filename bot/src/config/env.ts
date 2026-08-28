@@ -10,6 +10,11 @@ const productionPublicUrl = "https://nextech.discloud.app";
 const defaultCacheSize = isProduction ? 50 : 200;
 const defaultMessageCacheSize = isProduction ? 5 : 10;
 
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn("[bot env] NODE_TLS_REJECT_UNAUTHORIZED=0 ignorado para manter TLS seguro.");
+}
+
 function cleanEnvValue(value: unknown) {
   if (typeof value !== "string") {
     return undefined;

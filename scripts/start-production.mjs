@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { runAutoUpdateLogger } from "./auto-update-logger.mjs";
 
 const children = new Set();
+enforceSecureTls();
 loadRuntimeConfigFile();
 process.env.NODE_ENV = "production";
 process.env.HOST ||= "0.0.0.0";
@@ -215,6 +216,15 @@ function startProcess(name, command, args, options = {}) {
 
 let shuttingDown = false;
 let autoUpdateLoggerStarted = false;
+
+function enforceSecureTls() {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0") {
+    return;
+  }
+
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn("[start] NODE_TLS_REJECT_UNAUTHORIZED=0 ignorado para manter TLS seguro.");
+}
 
 function shutdown(code = 0) {
   shuttingDown = true;

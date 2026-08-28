@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+enforceSecureTls();
 loadRuntimeConfigFile();
 process.env.NODE_ENV = "production";
 
@@ -21,6 +22,15 @@ const runningBots = new Map();
 const restartTimers = new Map();
 let reconcileRunning = false;
 let shuttingDown = false;
+
+function enforceSecureTls() {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0") {
+    return;
+  }
+
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn("[dev-bot-worker] NODE_TLS_REJECT_UNAUTHORIZED=0 ignorado para manter TLS seguro.");
+}
 
 if (!botApiToken) {
   console.error("[dev-bot-worker] BOT_API_TOKEN ausente.");

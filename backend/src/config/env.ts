@@ -13,6 +13,11 @@ const requiredDiscordScopes = "identify guilds";
 const allowedDiscordOAuthScopes = new Set(requiredDiscordScopes.split(" "));
 const isProduction = process.env.NODE_ENV === "production";
 
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn("[env] NODE_TLS_REJECT_UNAUTHORIZED=0 ignorado para manter TLS seguro.");
+}
+
 function cleanEnvValue(value: unknown) {
   if (typeof value !== "string") {
     return undefined;

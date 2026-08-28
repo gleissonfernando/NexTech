@@ -16,6 +16,7 @@ build
 *-runtime-env.json
 .discloud-package/
 .discloud-bots-package/
+.discloud-logs/
 coverage
 dev-logs
 logs

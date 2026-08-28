@@ -1,5 +1,10 @@
 const { spawn } = require("node:child_process");
 
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn("[start] NODE_TLS_REJECT_UNAUTHORIZED=0 ignorado para manter TLS seguro.");
+}
+
 const child = spawn(process.execPath, ["scripts/start-production.mjs"], {
   env: process.env,
   stdio: "inherit"
