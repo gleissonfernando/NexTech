@@ -981,34 +981,25 @@ async function handleTicketAction(interaction: ButtonInteraction, context: BotCo
 }
 
 async function handleTicketCloseRequest(interaction: ButtonInteraction, context: BotContext, ticketId: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const ticket = await getTicketOrRecover(interaction, context, ticketId);
   if (!ticket) {
-    await interaction.reply({ content: "Ticket não encontrado.", flags: MessageFlags.Ephemeral });
+    await interaction.editReply("Ticket não encontrado.");
     return;
   }
   if (isTicketClosedLike(ticket.status)) {
-    await interaction.reply({ content: "Este ticket já foi encerrado.", flags: MessageFlags.Ephemeral });
+    await interaction.editReply("Este ticket já foi encerrado.");
     return;
   }
   if (isTicketOpener(ticket, interaction.user.id) || !(await canManageTicketInteraction(interaction, ticket))) {
-    await interaction.reply({ content: "Você não possui permissão da equipe para finalizar este ticket.", flags: MessageFlags.Ephemeral });
+    await interaction.editReply("Você não possui permissão da equipe para finalizar este ticket.");
     return;
   }
-  await interaction.reply({
-    components: [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(scopedComponentId(CLOSE_CONFIRM_PREFIX, "confirm", interaction.guildId, interaction.client.user?.id ?? null, ticketId))
-          .setLabel("Confirmar fechamento")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(scopedComponentId(CLOSE_CANCEL_PREFIX, "cancel", interaction.guildId, interaction.client.user?.id ?? null, ticketId))
-          .setLabel("Cancelar")
-          .setStyle(ButtonStyle.Secondary)
-      )
-    ],
-    content: "Deseja realmente fechar este ticket?",
-    flags: MessageFlags.Ephemeral
+
+  await finishTicketClose(interaction, context, ticketId, {
+    closeReason: "Ticket fechado pelo botão de fechamento.",
+    finalResult: "Atendimento finalizado pela equipe.",
+    internalNotes: null
   });
 }
 
@@ -1361,11 +1352,24 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     return;
   }
 
-  const closing = await context.api.beginTicketClose(ticketId, {
-    closedById: interaction.user.id,
+  await finishTicketClose(interaction, context, ticketId, {
     closeReason: interaction.fields.getTextInputValue("reason"),
     finalResult: interaction.fields.getTextInputValue("result"),
     internalNotes: interaction.fields.getTextInputValue("notes") || null
+  });
+}
+
+async function finishTicketClose(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  context: BotContext,
+  ticketId: string,
+  input: { closeReason: string; finalResult: string; internalNotes?: string | null }
+) {
+  const closing = await context.api.beginTicketClose(ticketId, {
+    closedById: interaction.user.id,
+    closeReason: input.closeReason,
+    finalResult: input.finalResult,
+    internalNotes: input.internalNotes ?? null
   });
 
   if (!closing.closing) {
@@ -1392,7 +1396,7 @@ async function handleTicketCloseModal(interaction: ModalSubmitInteraction, conte
     generateTemporaryPassword: true,
     guildId: interaction.guildId!,
     guildName: interaction.guild?.name ?? null,
-    internalNotes: interaction.fields.getTextInputValue("notes") || null,
+    internalNotes: input.internalNotes ?? null,
     isPartial: false,
     messages,
     openedById: ticket.openerId,
