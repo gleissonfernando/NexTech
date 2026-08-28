@@ -11,7 +11,7 @@ const requiredDiscloud = {
   TYPE: "site",
   ID: "nextech",
   MAIN: "index.js",
-  RAM: "1024",
+  RAM: "3000",
   VERSION: "latest",
   BUILD: "npm install && npm run build",
   START: "npm start"
