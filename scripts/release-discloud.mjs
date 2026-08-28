@@ -102,7 +102,13 @@ function hasChanges() {
 console.log("[release] Validando build e deploy-check...");
 run("npm", ["run", "deploy:check"]);
 console.log("[release] Preparando pacote runtime para Discloud...");
-run("node", ["scripts/prepare-discloud-package.mjs"]);
+run("node", ["scripts/prepare-discloud-package.mjs"], {
+  env: {
+    DEV_BOT_PROCESS_RUNNER_ENABLED: "true",
+    DEV_BOT_RUNTIME_RECONCILE_ENABLED: "true",
+    START_REGISTERED_DEV_BOTS: "false"
+  }
+});
 
 if (hasChanges()) {
   console.log("[release] Criando commit...");
@@ -126,12 +132,16 @@ console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
-console.log("[release] Sincronizando app NexTech Bots...");
-run("node", ["scripts/release-discloud-bots.mjs"], {
-  env: {
-    SKIP_DEPLOY_CHECK: "true"
-  }
-});
+if (process.env.SYNC_SEPARATE_BOTS_APP === "true") {
+  console.log("[release] Sincronizando app NexTech Bots...");
+  run("node", ["scripts/release-discloud-bots.mjs"], {
+    env: {
+      SKIP_DEPLOY_CHECK: "true"
+    }
+  });
+} else {
+  console.log("[release] Runtime dos bots consolidado na app principal; app secundária ignorada.");
+}
 
 console.log("[release] Publicando painel de atualizações no Discord...");
 await runAutoUpdateLogger({ mode: process.env.UPDATE_PANEL_MODE || "realtime-summary", send: true }).catch((error) => {
