@@ -173,16 +173,25 @@ ticketsRouter.post("/", async (req, res, next) => {
   }
 });
 
-async function resolvePanelTicketCategory(input: z.infer<typeof ticketSchema>, botId: string | null) {
+export async function resolvePanelTicketCategory(
+  input: z.infer<typeof ticketSchema>,
+  botId: string | null,
+  findCategoryFn: typeof findTicketCategory = findTicketCategory
+) {
   if (input.ticketId || !input.categoryId || input.panelId !== input.categoryId || input.ticketType === "report-system") {
     return null;
   }
 
-  const category = await findTicketCategory(input.guildId, botId, input.categoryId);
+  const category = await findCategoryFn(input.guildId, botId, input.categoryId);
   if (!category) {
-    const error = new Error("Categoria inválida ou desativada.");
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    console.warn("[tickets] categoria informada não encontrada ou desativada; seguindo sem vínculo:", {
+      botId,
+      categoryId: input.categoryId,
+      guildId: input.guildId,
+      panelId: input.panelId ?? null,
+      ticketType: input.ticketType ?? null
+    });
+    return null;
   }
 
   return category;
