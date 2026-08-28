@@ -29,10 +29,28 @@ test("rate limit policy classifies bot runtime reads separately", () => {
   assert.equal(policy.keyPrefix, "bot-runtime");
 });
 
+test("rate limit policy classifies module bot runtime reads separately", () => {
+  const policy = policyForRequest({
+    method: "GET",
+    path: "/api/courses/bot/123/settings"
+  } as never);
+
+  assert.equal(policy.keyPrefix, "bot-runtime");
+});
+
 test("rate limit policy classifies bot runtime mutations separately", () => {
   const policy = policyForRequest({
     method: "POST",
     path: "/api/bot/runtime/status"
+  } as never);
+
+  assert.equal(policy.keyPrefix, "bot-mutation");
+});
+
+test("rate limit policy classifies module bot runtime mutations separately", () => {
+  const policy = policyForRequest({
+    method: "POST",
+    path: "/api/police-qru/bot/logs"
   } as never);
 
   assert.equal(policy.keyPrefix, "bot-mutation");

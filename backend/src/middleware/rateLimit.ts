@@ -125,6 +125,7 @@ export function policyForRequest(req: Request): RateLimitPolicy {
 function isBotRuntimePath(path: string) {
   return path.startsWith("/api/bot/")
     || path.startsWith("/bot/")
+    || isModuleBotRuntimePath(path)
     || path.startsWith("/api/settings/bot/")
     || path.startsWith("/settings/bot/")
     || path.startsWith("/api/self-bot-protection/bot/")
@@ -149,6 +150,11 @@ function isBotRuntimePath(path: string) {
     || path.startsWith("/fivem/bot/")
     || path.startsWith("/api/voice-recorder/bot/")
     || path.startsWith("/voice-recorder/bot/");
+}
+
+function isModuleBotRuntimePath(path: string) {
+  return /^\/api\/[a-z0-9-]+\/bot(?:\/|$)/i.test(path)
+    || /^\/[a-z0-9-]+\/bot(?:\/|$)/i.test(path);
 }
 
 function rateLimitIdentity(req: Request) {
