@@ -296,7 +296,12 @@ async function handleTicketOpenButton(interaction: ButtonInteraction, context: B
   }
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.showModal(createQuickOpenTicketModal(token, settings));
+  try {
+    await interaction.showModal(createQuickOpenTicketModal(token));
+  } catch (error) {
+    console.warn("[ticket-panel] falha ao abrir modal rapido de ticket:", error instanceof Error ? error.message : error);
+    await interaction.reply({ content: "Não consegui abrir o formulário do ticket. Tente novamente em instantes.", flags: MessageFlags.Ephemeral }).catch(() => null);
+  }
 }
 
 async function handleTicketPreOpenSelect(interaction: StringSelectMenuInteraction, context: BotContext) {
@@ -355,7 +360,12 @@ async function handleTicketOpenContinue(interaction: ButtonInteraction, context:
     return;
   }
 
+  try {
   await interaction.showModal(createOpenTicketModal(token, settings));
+  } catch (error) {
+    console.warn("[ticket-panel] falha ao abrir modal completo de ticket:", error instanceof Error ? error.message : error);
+    await interaction.followUp({ content: "Não consegui abrir o formulário do ticket. Tente novamente em instantes.", flags: MessageFlags.Ephemeral }).catch(() => null);
+  }
 }
 
 async function handleTicketOpenCancel(interaction: ButtonInteraction) {
@@ -478,7 +488,7 @@ export async function openTicketFromCommand(interaction: ChatInputCommandInterac
   }
 
   const token = createOpenTicketSession(interaction.guild.id, interaction.client.user?.id ?? null, interaction.user.id);
-  await interaction.showModal(createQuickOpenTicketModal(token, settings));
+  await interaction.showModal(createQuickOpenTicketModal(token));
 }
 
 async function createTicketForInteraction(
@@ -1713,11 +1723,10 @@ function createOpenTicketModal(token: string, settings: GuildSettings) {
     );
 }
 
-function createQuickOpenTicketModal(token: string, settings: GuildSettings) {
-  const title = normalizeTicketPanelTitle(settings.ticketPanelTitle, null);
+function createQuickOpenTicketModal(token: string) {
   return new ModalBuilder()
     .setCustomId(`${OPEN_QUICK_MODAL_PREFIX}${token}`)
-    .setTitle(title.length > 45 ? "Abrir Ticket" : title)
+    .setTitle("Abrir Ticket")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
