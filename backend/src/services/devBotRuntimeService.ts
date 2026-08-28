@@ -49,6 +49,7 @@ const DEV_BOT_START_CONCURRENCY = env.DEV_BOT_START_CONCURRENCY ?? (env.NODE_ENV
 const DEV_BOT_MAX_RUNNING_PROCESSES = env.DEV_BOT_MAX_RUNNING_PROCESSES ?? 64;
 const DEV_BOT_NODE_MAX_OLD_SPACE_MB = env.DEV_BOT_NODE_MAX_OLD_SPACE_MB ?? 128;
 const DEV_BOT_START_STAGGER_MS = env.DEV_BOT_START_STAGGER_MS ?? (env.NODE_ENV === "production" ? 10_000 : 2_000);
+const DEV_BOT_STARTUP_MAX_CONCURRENCY = 64;
 const DEV_BOT_RESTART_DELAY_MS = 30_000;
 const DEV_BOT_PROCESS_RUNNER_ENABLED = env.DEV_BOT_PROCESS_RUNNER_ENABLED;
 const DEV_BOT_SUPERVISOR_LEASE_ID = "dev-bot-runtime-supervisor";
@@ -86,7 +87,7 @@ export async function startRegisteredDevBots() {
   console.log(`[dev-bot] iniciando ${bots.length} bot(s) cadastrado(s) automaticamente.`);
   const enabledBots = bots.filter((bot) => bot.desiredOnline);
   console.log(`[dev-bot] ${bots.length - enabledBots.length} bot(s) permanecerao desligados por bloqueio persistente.`);
-  await startDevBotRuntimeBatch(enabledBots);
+  await startDevBotRuntimeBatch(enabledBots, { fastStart: true });
   return enabledBots.length;
 }
 
@@ -172,7 +173,7 @@ export async function startAllDevBotProcesses(botIds: string[]) {
   const bots = (await Promise.all(botIds.map((botId) => getDevBotRuntimeConfig(botId))))
     .filter((bot): bot is DevBotRuntimeConfig => Boolean(bot?.desiredOnline));
 
-  await startDevBotRuntimeBatch(bots);
+  await startDevBotRuntimeBatch(bots, { fastStart: false });
 }
 
 export async function stopSelectedDevBotProcesses(botIds: string[], options: StopDevBotOptions = {}) {
@@ -336,7 +337,7 @@ async function reconcileDevBotRuntimeProcesses(reason: string) {
 
     if (toStart.length > 0) {
       console.log(`[dev-bot] reconciliacao ${reason}: iniciando ${toStart.length} bot(s) pendente(s).`);
-      await startDevBotRuntimeBatch(toStart);
+      await startDevBotRuntimeBatch(toStart, { fastStart: false });
     }
   } catch (error) {
     console.warn("[dev-bot] reconciliacao falhou:", readRuntimeError(error));
@@ -509,12 +510,12 @@ function readRuntimeError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function startRuntime(bot: DevBotRuntimeConfig) {
+async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityLimit?: boolean } = {}) {
   if (runningBots.has(bot.id)) {
     return;
   }
 
-  if (runningBots.size >= DEV_BOT_MAX_RUNNING_PROCESSES) {
+  if (!options.ignoreCapacityLimit && runningBots.size >= DEV_BOT_MAX_RUNNING_PROCESSES) {
     await updateDevBotRuntimeStatus(
       bot.id,
       "waiting_retry",
@@ -682,13 +683,35 @@ function nodeOptionsWithMaxOldSpace(current: string | undefined, maxOldSpaceMb: 
   return options.join(" ");
 }
 
-async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[]) {
-  for (let index = 0; index < bots.length; index += DEV_BOT_START_CONCURRENCY) {
-    const batch = bots.slice(index, index + DEV_BOT_START_CONCURRENCY);
-    await Promise.allSettled(batch.map((bot) => startRuntime(bot)));
+export function resolveDevBotStartBatchPlan(
+  botCount: number,
+  configuredConcurrency: number,
+  configuredStaggerMs: number,
+  fastStart = false
+) {
+  if (fastStart) {
+    const concurrency = Math.max(1, Math.min(DEV_BOT_STARTUP_MAX_CONCURRENCY, botCount));
+    return { concurrency, staggerMs: 0 };
+  }
 
-    if (index + DEV_BOT_START_CONCURRENCY < bots.length) {
-      await delay(DEV_BOT_START_STAGGER_MS);
+  return { concurrency: configuredConcurrency, staggerMs: configuredStaggerMs };
+}
+
+async function startDevBotRuntimeBatch(bots: DevBotRuntimeConfig[], options: { fastStart?: boolean } = {}) {
+  const plan = resolveDevBotStartBatchPlan(
+    bots.length,
+    DEV_BOT_START_CONCURRENCY,
+    DEV_BOT_START_STAGGER_MS,
+    options.fastStart === true
+  );
+  const ignoreCapacityLimit = options.fastStart === true;
+
+  for (let index = 0; index < bots.length; index += plan.concurrency) {
+    const batch = bots.slice(index, index + plan.concurrency);
+    await Promise.allSettled(batch.map((bot) => startRuntime(bot, { ignoreCapacityLimit })));
+
+    if (index + plan.concurrency < bots.length && plan.staggerMs > 0) {
+      await delay(plan.staggerMs);
     }
   }
 }

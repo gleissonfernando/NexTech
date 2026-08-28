@@ -109,7 +109,7 @@ discloud up
 discloud status
 ```
 
-Em producao, o bot principal roda em modo leve quando `BOT_ENABLED_MODULES` nao estiver definido. Para habilitar modulos especificos, configure uma lista como `BOT_ENABLED_MODULES=giveaway,logs,welcome,leave`. Para voltar ao comportamento antigo de ligar todos os modulos, use `BOT_DEFAULT_ALL_MODULES=true`. Bots cadastrados no painel DEV nao iniciam automaticamente apos deploy/restart por padrao em producao, para evitar rajadas de requisicoes na hospedagem; use `START_REGISTERED_DEV_BOTS=true` apenas quando quiser religar todos automaticamente. A retomada pos-restart usa lotes controlados; ajuste `DEV_BOT_START_CONCURRENCY` e `DEV_BOT_START_STAGGER_MS` somente se precisar acelerar ou desacelerar esse processo.
+Em producao, o bot principal roda em modo leve quando `BOT_ENABLED_MODULES` nao estiver definido. Para habilitar modulos especificos, configure uma lista como `BOT_ENABLED_MODULES=giveaway,logs,welcome,leave`. Para voltar ao comportamento antigo de ligar todos os modulos, use `BOT_DEFAULT_ALL_MODULES=true`. Bots cadastrados no painel DEV nao iniciam automaticamente apos deploy/restart por padrao em producao, para evitar rajadas de requisicoes na hospedagem; use `START_REGISTERED_DEV_BOTS=true` apenas quando quiser religar todos automaticamente. O boot inicial agora usa arranque acelerado para colocar todos os bots online dentro de 1 minuto; `DEV_BOT_START_CONCURRENCY` e `DEV_BOT_START_STAGGER_MS` continuam valendo para reconciliações e recuperações posteriores.
 
 ## Fluxo Seguro De Deploy
 
