@@ -1,5 +1,6 @@
 import os from "node:os";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { memoryMonitorSnapshot } from "./memoryMonitor";
 
 type RouteMetric = {
   durationsMs: number[];
@@ -110,6 +111,7 @@ export function recordOperationMetric(input: OperationMetricInput) {
 export function metricsSnapshot() {
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
+  const memoryMonitor = memoryMonitorSnapshot();
   const routes = [...routeMetrics.entries()]
     .sort((left, right) => right[1].requests - left[1].requests)
     .slice(0, 50)
@@ -145,7 +147,15 @@ export function metricsSnapshot() {
     memory: {
       rss: memory.rss,
       heapUsed: memory.heapUsed,
-      heapTotal: memory.heapTotal
+      heapTotal: memory.heapTotal,
+      external: memory.external,
+      arrayBuffers: memory.arrayBuffers,
+      status: memoryMonitor.pressure,
+      possibleLeak: memoryMonitor.possibleLeak,
+      targetMb: memoryMonitor.targetMb,
+      limitMb: memoryMonitor.limitMb,
+      averageRssMb: memoryMonitor.averageRssMb,
+      history: memoryMonitor.history
     },
     cpu: {
       loadAverage: os.loadavg(),
@@ -181,6 +191,16 @@ export function metricsSnapshot() {
   };
 }
 
+export function trimMonitoringSamples(maxSamples = 50) {
+  for (const metric of routeMetrics.values()) {
+    trimArray(metric.durationsMs, maxSamples);
+  }
+
+  for (const metric of operationMetrics.values()) {
+    trimArray(metric.durationsMs, maxSamples);
+  }
+}
+
 function pruneRouteMetrics() {
   const retained = [...routeMetrics.entries()]
     .sort((left, right) => right[1].requests - left[1].requests)
@@ -209,6 +229,12 @@ function pushSample(samples: number[], value: number) {
   samples.push(value);
   if (samples.length > MAX_SAMPLES_PER_METRIC) {
     samples.splice(0, samples.length - MAX_SAMPLES_PER_METRIC);
+  }
+}
+
+function trimArray<T>(items: T[], maxItems: number) {
+  if (items.length > maxItems) {
+    items.splice(0, items.length - maxItems);
   }
 }
 

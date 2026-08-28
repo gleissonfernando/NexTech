@@ -112,6 +112,7 @@ export type BotStatus = {
     heapUsedMb: number;
     rssMb: number;
   };
+  memoryStatus?: SystemMemoryMonitorSnapshot;
   responseTime?: BotResponseTimeStats;
   boot?: SystemBootSnapshot;
   botGuilds: Array<{
@@ -5017,6 +5018,45 @@ export type SystemBootSnapshot = {
   updatedAt: string;
 };
 
+export type SystemMemoryPressureStatus = "healthy" | "monitor" | "pressure" | "critical" | "emergency";
+
+export type SystemMemorySample = {
+  arrayBuffersMb: number;
+  externalMb: number;
+  heapTotalMb: number;
+  heapUsedMb: number;
+  resource: {
+    fsRead: number;
+    fsWrite: number;
+    involuntaryContextSwitches: number;
+    maxRssMb: number;
+    systemCpuMs: number;
+    userCpuMs: number;
+    voluntaryContextSwitches: number;
+  };
+  rssMb: number;
+  status: SystemMemoryPressureStatus;
+  timestamp: string;
+  v8: {
+    heapSizeLimitMb: number;
+    mallocedMemoryMb: number;
+    totalAvailableSizeMb: number;
+    usedHeapSizeMb: number;
+  };
+};
+
+export type SystemMemoryMonitorSnapshot = {
+  averageRssMb: number;
+  checkpoints: SystemMemorySample[];
+  history: SystemMemorySample[];
+  latest: SystemMemorySample;
+  limitMb: number;
+  possibleLeak: boolean;
+  pressure: SystemMemoryPressureStatus;
+  sampleCount: number;
+  targetMb: number;
+};
+
 export type SystemBotGuildHealth = {
   id: string;
   name: string;
@@ -5064,6 +5104,7 @@ export type SystemBotHealth = {
     heapUsedMb: number;
     rssMb: number;
   };
+  memoryStatus?: SystemMemoryMonitorSnapshot;
   responseTime?: BotResponseTimeStats;
   boot?: SystemBootSnapshot;
   serverIssues?: SystemServerIssue[];
@@ -5096,6 +5137,7 @@ export type SystemHealthResponse = {
   payments: SystemServiceHealth;
   bot: SystemBotHealth;
   boot?: SystemBootSnapshot;
+  memory?: SystemMemoryMonitorSnapshot;
   timestamp: string;
 };
 
@@ -5115,6 +5157,14 @@ export type SystemMetricsResponse = {
       rss: number;
       heapUsed: number;
       heapTotal: number;
+      external?: number;
+      arrayBuffers?: number;
+      status?: SystemMemoryPressureStatus;
+      possibleLeak?: boolean;
+      targetMb?: number;
+      limitMb?: number;
+      averageRssMb?: number;
+      history?: SystemMemorySample[];
     };
     cpu: {
       loadAverage: number[];
@@ -5123,6 +5173,7 @@ export type SystemMetricsResponse = {
     };
     routes: SystemRouteMetric[];
   };
+  memory?: SystemMemoryMonitorSnapshot;
   jobs: SystemJobsHealth;
   timestamp: string;
 };

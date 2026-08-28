@@ -9,6 +9,7 @@ import { env, isBotModuleEnabled } from "./config/env";
 import { registerEvents, stopEventProcessing } from "./handlers/eventHandler";
 import { ApiClient } from "./services/apiClient";
 import { isLinkAntiSpamEnabled } from "./services/linkAntiSpamService";
+import { registerMemoryPressureCleanup, startMemoryMonitor, stopMemoryMonitor } from "./services/memoryMonitor";
 import { isSelfBotModuleEnabled } from "./services/safeBotService";
 import type { BotContext } from "./types";
 import { BotSocketClient } from "./websocket/socketClient";
@@ -154,7 +155,6 @@ let loginStarted = false;
 let shuttingDown = false;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let reconnectAttempts = 0;
-let highMemorySamples = 0;
 
 function scheduleReconnect(reason: string) {
   if (shuttingDown || reconnectTimer) {
@@ -200,6 +200,7 @@ function shutdown(signal: string, exitCode = 0) {
   forceExit.unref();
   void stopEventProcessing().finally(() => {
     try {
+      stopMemoryMonitor();
       context.socket.disconnect(client);
       destroyLavalinkIfLoaded?.();
       client.destroy();
@@ -272,16 +273,22 @@ process.on("warning", (warning) => {
   console.warn(JSON.stringify({ at: new Date().toISOString(), error: warning.stack ?? warning.message, level: "warning", service: "bot", type: warning.name }));
 });
 
-const memoryMonitor = setInterval(() => {
-  const memory = process.memoryUsage();
-  const rssMb = memory.rss / 1024 / 1024;
-  highMemorySamples = rssMb >= env.BOT_MEMORY_RESTART_MB ? highMemorySamples + 1 : 0;
-  if (highMemorySamples >= 3) {
-    console.error(JSON.stringify({ at: new Date().toISOString(), level: "critical", rssMb: Math.round(rssMb), service: "bot", thresholdMb: env.BOT_MEMORY_RESTART_MB, type: "memory_limit" }));
+registerMemoryPressureCleanup((sample) => {
+  if (sample.status !== "critical" && sample.status !== "emergency") return;
+  const before = context.liveCache.size;
+  context.liveCache.clear();
+  if (before > 0) {
+    console.warn(JSON.stringify({ at: new Date().toISOString(), before, level: "warning", service: "bot", type: "memory_cleanup", target: "liveCache" }));
+  }
+});
+
+startMemoryMonitor({
+  criticalRssMb: env.BOT_MEMORY_RESTART_MB,
+  onCritical: (sample) => {
+    console.error(JSON.stringify({ at: sample.timestamp, level: "critical", rssMb: sample.rssMb, service: "bot", thresholdMb: env.BOT_MEMORY_RESTART_MB, type: "memory_limit" }));
     shutdown("memory limit", 1);
   }
-}, 30_000);
-memoryMonitor.unref();
+});
 
 startBot().catch((error) => {
   console.error("[bot] falha ao conectar:", error);

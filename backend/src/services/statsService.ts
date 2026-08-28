@@ -52,6 +52,7 @@ export type BotStatusDto = {
     heapUsedMb: number;
     rssMb: number;
   };
+  memoryStatus?: unknown;
   boot?: unknown;
   responseTime: BotResponseTimeStats;
   updatedAt: string;

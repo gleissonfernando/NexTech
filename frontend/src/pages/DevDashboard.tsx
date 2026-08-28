@@ -93,7 +93,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemBootComponentStatus, SystemBootSnapshot, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemBootComponentStatus, SystemBootSnapshot, SystemHealthResponse, SystemMemoryMonitorSnapshot, SystemMemoryPressureStatus, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -2254,6 +2254,11 @@ function RealtimeSystemMonitoringPanel() {
         <BootStatusPanel boot={bot?.boot ?? null} title="Boot Bot Discord" />
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-2">
+        <MemoryStatusPanel memory={health?.memory ?? metrics?.memory ?? null} title="Memória Backend" />
+        <MemoryStatusPanel memory={bot?.memoryStatus ?? null} title="Memória Bot Discord" />
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <Card className="border-zinc-800/80 bg-zinc-950/80">
           <CardHeader>
@@ -2534,6 +2539,61 @@ function BootStatusPanel({ boot, title }: { boot: SystemBootSnapshot | null; tit
               Nenhum componente reportado ainda.
             </div>
           ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MemoryStatusPanel({ memory, title }: { memory: SystemMemoryMonitorSnapshot | null; title: string }) {
+  const latest = memory?.latest ?? null;
+  const tone = memoryPressureTone(memory?.pressure ?? "healthy");
+  const percent = latest && memory ? Math.max(0, Math.min(100, Math.round((latest.rssMb / memory.limitMb) * 100))) : 0;
+  const peak = memory?.history.reduce((max, sample) => Math.max(max, sample.rssMb), latest?.rssMb ?? 0) ?? 0;
+  const lastSamples = memory?.history.slice(-12) ?? [];
+
+  return (
+    <Card className={`border-zinc-800/80 bg-zinc-950/80 ${tone === "danger" ? "ring-1 ring-red-500/25" : tone === "warn" ? "ring-1 ring-amber-400/20" : ""}`}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5" />{title}</CardTitle>
+        <CardDescription>
+          {latest ? `Última amostra ${secondsSince(latest.timestamp, Date.now())}s atrás` : "Aguardando amostras de memória"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className={`text-lg font-black ${toneTextClass(tone)}`}>{memoryPressureLabel(memory?.pressure ?? "healthy")}</p>
+            <p className="truncate text-xs font-medium text-zinc-500">
+              {latest && memory ? `${latest.rssMb} MB / limite ${memory.limitMb} MB / alvo ${memory.targetMb} MB` : "Sem leitura disponível"}
+            </p>
+          </div>
+          <RealtimeStatusPill tone={memory?.possibleLeak ? "warn" : tone}>{memory?.possibleLeak ? "Possível leak" : `${percent}%`}</RealtimeStatusPill>
+        </div>
+
+        <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
+          <div className={`h-full rounded-full ${bootProgressClass(memory?.possibleLeak ? "warn" : tone)}`} style={{ width: `${percent}%` }} />
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-4">
+          <RealtimeMiniMetric label="RSS" value={latest ? `${latest.rssMb} MB` : "-"} tone={tone} />
+          <RealtimeMiniMetric label="Heap" value={latest ? `${latest.heapUsedMb}/${latest.heapTotalMb} MB` : "-"} />
+          <RealtimeMiniMetric label="External" value={latest ? `${latest.externalMb} MB` : "-"} />
+          <RealtimeMiniMetric label="ArrayBuffers" value={latest ? `${latest.arrayBuffersMb} MB` : "-"} />
+          <RealtimeMiniMetric label="Média RSS" value={memory ? `${memory.averageRssMb} MB` : "-"} />
+          <RealtimeMiniMetric label="Pico local" value={peak ? `${peak} MB` : "-"} tone={peak >= 1_300 ? "warn" : "good"} />
+          <RealtimeMiniMetric label="V8 usado" value={latest ? `${latest.v8.usedHeapSizeMb} MB` : "-"} />
+          <RealtimeMiniMetric label="Amostras" value={String(memory?.sampleCount ?? 0)} />
+        </div>
+
+        <div className="grid grid-cols-12 gap-1">
+          {lastSamples.length ? lastSamples.map((sample) => (
+            <span
+              className={`h-7 rounded-sm ${memoryBarClass(sample.status)}`}
+              key={sample.timestamp}
+              title={`${formatDate(sample.timestamp)} - RSS ${sample.rssMb} MB - ${memoryPressureLabel(sample.status)}`}
+            />
+          )) : Array.from({ length: 12 }, (_, index) => <span className="h-7 rounded-sm bg-zinc-800" key={index} />)}
         </div>
       </CardContent>
     </Card>
@@ -4375,6 +4435,26 @@ function bootComponentLabel(status: SystemBootComponentStatus) {
 function bootProgressClass(tone: "good" | "warn" | "danger") {
   if (tone === "danger") return "bg-red-400";
   if (tone === "warn") return "bg-amber-300";
+  return "bg-emerald-400";
+}
+
+function memoryPressureTone(status: SystemMemoryPressureStatus): "good" | "warn" | "danger" {
+  if (status === "emergency" || status === "critical") return "danger";
+  if (status === "pressure" || status === "monitor") return "warn";
+  return "good";
+}
+
+function memoryPressureLabel(status: SystemMemoryPressureStatus) {
+  if (status === "emergency") return "Emergency";
+  if (status === "critical") return "Critical memory";
+  if (status === "pressure") return "Memory pressure";
+  if (status === "monitor") return "Monitor";
+  return "Healthy";
+}
+
+function memoryBarClass(status: SystemMemoryPressureStatus) {
+  if (status === "emergency" || status === "critical") return "bg-red-400";
+  if (status === "pressure" || status === "monitor") return "bg-amber-300";
   return "bg-emerald-400";
 }
 

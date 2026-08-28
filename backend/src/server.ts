@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import { env } from "./config/env";
 import { bootController } from "./services/bootController";
+import { registerMemoryPressureCleanup, startMemoryMonitor, stopMemoryMonitor } from "./services/memoryMonitor";
+import { trimMonitoringSamples } from "./services/monitoringService";
 
 let httpServer: ReturnType<typeof createServer> | null = null;
 let shuttingDown = false;
@@ -13,6 +15,10 @@ void main().catch((error) => {
 });
 
 async function main() {
+  startMemoryMonitor();
+  registerMemoryPressureCleanup(() => {
+    trimMonitoringSamples();
+  });
   bootController.setState("BOOTING");
   await bootController.startDatabase();
   await bootController.startRedis();
@@ -201,6 +207,7 @@ function shutdown(signal: string, exitCode = 0) {
     : Promise.resolve();
   void Promise.allSettled([
     closeHttp,
+    Promise.resolve().then(() => stopMemoryMonitor()),
     import("./services/backgroundJobService.js").then(({ stopBackgroundJobWorker }) => stopBackgroundJobWorker()),
     import("./services/devBotRuntimeService.js").then(({ stopDevBotRuntimeReconciler }) => stopDevBotRuntimeReconciler()),
     import("./services/devBotRuntimeService.js").then(({ stopAllDevBotProcesses }) => stopAllDevBotProcesses())

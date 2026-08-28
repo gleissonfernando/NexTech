@@ -8,6 +8,7 @@ import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
 import { bootController } from "../services/bootController";
 import { listDevBots, type DevBotDto } from "../services/devBotService";
+import { memoryMonitorSnapshot } from "../services/memoryMonitor";
 import { getTranscriptHealthStatus } from "../services/transcriptService";
 
 export const healthRouter = Router();
@@ -33,14 +34,16 @@ async function healthSnapshotHandler(_req: Request, res: Response) {
   ]);
   const bot = getBotStatus();
   const boot = bootController.snapshot();
+  const memory = memoryMonitorSnapshot();
   const mail = mailHealth();
   const payments = paymentsHealth();
-  const healthy = database.ok && (!redis.configured || redis.ok) && boot.status !== "failed";
+  const healthy = database.ok && (!redis.configured || redis.ok) && boot.status !== "failed" && memory.pressure !== "emergency";
   const serverIssues = buildServerHealth(registeredBots, bot);
 
   return res.json({
     status: healthy ? (boot.status === "degraded" ? "degraded" : "ok") : "degraded",
     boot,
+    memory,
     database,
     redis,
     jobs,
@@ -155,7 +158,17 @@ healthRouter.get("/metrics", async (_req, res) => {
   return res.json({
     status: "ok",
     metrics: metricsSnapshot(),
+    memory: memoryMonitorSnapshot(),
     jobs: await backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) })),
+    timestamp: new Date().toISOString()
+  });
+});
+
+healthRouter.get("/memory", (_req, res) => {
+  const memory = memoryMonitorSnapshot();
+  return res.status(memory.pressure === "emergency" ? 503 : 200).json({
+    status: memory.pressure,
+    memory,
     timestamp: new Date().toISOString()
   });
 });

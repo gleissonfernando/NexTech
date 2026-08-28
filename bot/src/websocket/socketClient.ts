@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { io, type Socket } from "socket.io-client";
 import { currentRuntimeBotId, env } from "../config/env";
 import { botBootController } from "../services/bootController";
+import { memoryMonitorSnapshot } from "../services/memoryMonitor";
 import type { FivemOrder } from "../services/apiClient";
 import type { GuildSettings } from "../types";
 
@@ -817,6 +818,7 @@ export class BotSocketClient {
 
   emitStatus(client: Client, online = true) {
     const memory = process.memoryUsage();
+    const memoryStatus = memoryMonitorSnapshot();
     const shardIds = client.shard?.ids ?? [0];
     const users = client.guilds.cache.reduce((total, guild) => total + (guild.memberCount ?? 0), 0);
     const botGuilds = client.guilds.cache.map((guild) => ({
@@ -849,6 +851,7 @@ export class BotSocketClient {
         rssMb: Math.round(memory.rss / 1024 / 1024),
         heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024)
       },
+      memoryStatus,
       boot: botBootController.snapshot()
     });
   }
