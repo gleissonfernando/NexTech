@@ -78,7 +78,7 @@ export async function startRegisteredDevBots() {
 
   if (!(await waitForDevBotSupervisorLease())) {
     console.warn("[dev-bot] outro supervisor manteve a trava distribuida; bots cadastrados não serão iniciados nesta instância.");
-    return 0;
+    throw new Error("Outra instancia e responsável por executar os bots cadastrados.");
   }
 
   const bots = await listDevBotRuntimeConfigs().catch((error) => {
@@ -294,11 +294,28 @@ export async function stopDevBotProcess(botId: string, options: StopDevBotOption
   runningBots.delete(botId);
 
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, 3_000);
+    let settled = false;
     const finish = () => {
-      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      clearTimeout(forceKillTimer);
+      clearTimeout(finalTimeout);
+      runtime.child.off("exit", finish);
       resolve();
     };
+
+    const forceKillTimer = setTimeout(() => {
+      if (settled) return;
+      try {
+        runtime.child.kill("SIGKILL");
+      } catch (error) {
+        console.warn(`[dev-bot:${botId}] falha ao forcar encerramento do processo:`, error instanceof Error ? error.message : error);
+      }
+    }, 3_000);
+    forceKillTimer.unref();
+
+    const finalTimeout = setTimeout(finish, 15_000);
+    finalTimeout.unref();
 
     runtime.child.once("exit", finish);
 
@@ -544,6 +561,7 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
       "waiting_retry",
       `Aguardando capacidade do runtime local (${runningBots.size}/${DEV_BOT_MAX_RUNNING_PROCESSES} bots em execução).`
     );
+    scheduleDevBotStartRetry(bot.id, "capacidade local esgotada");
     return;
   }
 
@@ -559,7 +577,8 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
   const entry = path.resolve(__dirname, "../../../bot/dist/index.js");
 
   if (!existsSync(entry)) {
-    await updateDevBotRuntimeStatus(bot.id, "error", "Build do bot não encontrado. Execute o build da aplicacao.");
+    await updateDevBotRuntimeStatus(bot.id, "waiting_retry", "Build do bot não encontrado. Aguardando próxima tentativa automática.");
+    scheduleDevBotStartRetry(bot.id, "build do bot ausente");
     return;
   }
 
@@ -569,9 +588,10 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
   if (!messageContentEnabled) {
     await updateDevBotRuntimeStatus(
       bot.id,
-      "error",
-      "Ative o Message Content Intent no Discord Developer Portal para usar os modulos que leem mensagens."
+      "waiting_retry",
+      "Message Content Intent indisponível; aguardando próxima tentativa automática."
     );
+    scheduleDevBotStartRetry(bot.id, "message content intent indisponivel");
     return;
   }
 
