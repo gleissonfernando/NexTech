@@ -158,6 +158,7 @@ function verifyPackageParity() {
     "index.js",
     "package.json",
     "scripts/start-production.mjs",
+    "scripts/runtime-env.mjs",
     "scripts/start-dev-bot-worker.mjs",
     "backend/dist",
     "bot/dist",
