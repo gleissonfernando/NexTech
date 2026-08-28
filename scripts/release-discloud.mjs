@@ -106,7 +106,7 @@ run("node", ["scripts/prepare-discloud-package.mjs"], {
   env: {
     DEV_BOT_PROCESS_RUNNER_ENABLED: "true",
     DEV_BOT_RUNTIME_RECONCILE_ENABLED: "true",
-    START_REGISTERED_DEV_BOTS: "false"
+    START_REGISTERED_DEV_BOTS: "true"
   }
 });
 
