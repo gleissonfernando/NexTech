@@ -132,16 +132,7 @@ console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
-if (process.env.SYNC_SEPARATE_BOTS_APP === "true") {
-  console.log("[release] Sincronizando app NexTech Bots...");
-  run("node", ["scripts/release-discloud-bots.mjs"], {
-    env: {
-      SKIP_DEPLOY_CHECK: "true"
-    }
-  });
-} else {
-  console.log("[release] Runtime dos bots consolidado na app principal; app secundária ignorada.");
-}
+console.log("[release] Runtime dos bots consolidado na app principal; app NexTech Bots separada desativada.");
 
 console.log("[release] Publicando painel de atualizações no Discord...");
 await runAutoUpdateLogger({ mode: process.env.UPDATE_PANEL_MODE || "realtime-summary", send: true }).catch((error) => {

@@ -7,10 +7,8 @@ const root = process.cwd();
 const appId = process.env.DISCLOUD_BOTS_APP_ID?.trim() || "1787018855642";
 const packageDir = ".discloud-bots-package";
 
-if (process.env.ALLOW_SEPARATE_BOTS_APP !== "true") {
-  console.log("[release:bots] app separada desativada por padrão. Use ALLOW_SEPARATE_BOTS_APP=true para publicar o worker legado.");
-  process.exit(0);
-}
+console.log(`[release:bots] app separada NexTech Bots (${appId}) desativada. Use a app principal NexTech.`);
+process.exit(0);
 
 function run(command, args, options = {}) {
   const useShell = process.platform === "win32";
