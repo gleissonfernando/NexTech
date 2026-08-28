@@ -93,7 +93,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemBootComponentStatus, SystemBootSnapshot, SystemHealthResponse, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -2249,6 +2249,11 @@ function RealtimeSystemMonitoringPanel() {
 
       <ServerIssuesPanel issues={serverIssues} />
 
+      <section className="grid gap-4 xl:grid-cols-2">
+        <BootStatusPanel boot={health?.boot ?? null} title="Boot Backend" />
+        <BootStatusPanel boot={bot?.boot ?? null} title="Boot Bot Discord" />
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <Card className="border-zinc-800/80 bg-zinc-950/80">
           <CardHeader>
@@ -2465,6 +2470,73 @@ function BotResponseTimePanel({ responseTime }: { responseTime: BotResponseTimeS
         Atualização a cada 5 segundos. Última leitura: {responseTime?.updatedAt ? `${secondsSince(responseTime.updatedAt, Date.now())}s atrás` : "-"}.
       </p>
     </div>
+  );
+}
+
+function BootStatusPanel({ boot, title }: { boot: SystemBootSnapshot | null; title: string }) {
+  const tone = bootStatusTone(boot?.status ?? "booting");
+  const progress = Math.max(0, Math.min(100, Math.round(boot?.progress ?? 0)));
+  const components = boot?.components ?? [];
+  const failed = components.filter((component) => component.status === "FAILED").length;
+  const recovering = components.filter((component) => component.status === "RECOVERING").length;
+  const ready = components.filter((component) => component.status === "READY").length;
+
+  return (
+    <Card className={`border-zinc-800/80 bg-zinc-950/80 ${tone === "danger" ? "ring-1 ring-red-500/25" : tone === "warn" ? "ring-1 ring-amber-400/20" : ""}`}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" />{title}</CardTitle>
+        <CardDescription>
+          {boot ? `Estado ${boot.state} atualizado ${secondsSince(boot.updatedAt, Date.now())}s atrás` : "Aguardando snapshot de inicialização"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className={`text-lg font-black ${toneTextClass(tone)}`}>{bootStatusLabel(boot?.status ?? "booting")}</p>
+            <p className="truncate text-xs font-medium text-zinc-500">
+              {boot ? `${formatElapsedMs(boot.elapsedMs)} / alvo ${formatElapsedMs(boot.targetMs)} / timeout ${formatElapsedMs(boot.timeoutMs)}` : "Sem leitura disponível"}
+            </p>
+          </div>
+          <RealtimeStatusPill tone={tone}>{`${progress}%`}</RealtimeStatusPill>
+        </div>
+
+        <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
+          <div className={`h-full rounded-full ${bootProgressClass(tone)}`} style={{ width: `${progress}%` }} />
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-4">
+          <RealtimeMiniMetric label="Prontos" value={String(ready)} />
+          <RealtimeMiniMetric label="Falhas" value={String(failed)} tone={failed ? "danger" : "good"} />
+          <RealtimeMiniMetric label="Recovery" value={String(recovering)} tone={recovering ? "warn" : "good"} />
+          <RealtimeMiniMetric label="RSS" value={mbLabel(boot?.memory.rssMb ?? null)} tone={(boot?.memory.rssMb ?? 0) >= 512 ? "warn" : "good"} />
+        </div>
+
+        <div className="space-y-2">
+          {components.slice(0, 10).map((component) => (
+            <div className="grid gap-2 rounded-lg border border-zinc-900 bg-black/35 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto]" key={component.name}>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-zinc-100">{component.name}</p>
+                <p className="truncate text-[11px] font-medium text-zinc-500">
+                  {component.dependencies.length ? `depende de ${component.dependencies.join(", ")}` : component.criticality ?? component.tier ?? "módulo"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 sm:justify-end">
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${toneClass(bootComponentTone(component.status))}`}>
+                  {bootComponentLabel(component.status)}
+                </span>
+                <span className="font-mono text-[11px] text-zinc-500">{component.durationMs != null ? formatElapsedMs(component.durationMs) : `${component.attempts}x`}</span>
+              </div>
+              {component.error ? <p className="min-w-0 truncate text-xs font-semibold text-red-200 sm:col-span-2">{component.error}</p> : null}
+            </div>
+          ))}
+          {components.length === 0 ? (
+            <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
+              Nenhum componente reportado ainda.
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -4231,6 +4303,11 @@ function msLabel(value: number | null) {
   return value === null ? "-" : `${Math.round(value)}ms`;
 }
 
+function formatElapsedMs(value: number) {
+  if (value >= 1000) return formatUptime(value / 1000);
+  return `${Math.max(0, Math.round(value))}ms`;
+}
+
 function bytesToMb(value: number | null) {
   return value === null ? null : value / 1024 / 1024;
 }
@@ -4264,6 +4341,41 @@ function toneTextClass(tone: "good" | "warn" | "danger") {
   if (tone === "danger") return "text-red-200";
   if (tone === "warn") return "text-amber-100";
   return "text-zinc-100";
+}
+
+function bootStatusTone(status: SystemBootSnapshot["status"]): "good" | "warn" | "danger" {
+  if (status === "failed") return "danger";
+  if (status === "degraded" || status === "booting") return "warn";
+  return "good";
+}
+
+function bootStatusLabel(status: SystemBootSnapshot["status"]) {
+  if (status === "failed") return "Falhou";
+  if (status === "degraded") return "Online degradado";
+  if (status === "online") return "Online";
+  return "Inicializando";
+}
+
+function bootComponentTone(status: SystemBootComponentStatus): "good" | "warn" | "danger" {
+  if (status === "FAILED") return "danger";
+  if (status === "RECOVERING" || status === "STARTING" || status === "CONNECTING") return "warn";
+  return "good";
+}
+
+function bootComponentLabel(status: SystemBootComponentStatus) {
+  if (status === "PENDING") return "Pendente";
+  if (status === "STARTING") return "Iniciando";
+  if (status === "CONNECTING") return "Conectando";
+  if (status === "READY") return "Pronto";
+  if (status === "FAILED") return "Falhou";
+  if (status === "RECOVERING") return "Recovery";
+  return "Ignorado";
+}
+
+function bootProgressClass(tone: "good" | "warn" | "danger") {
+  if (tone === "danger") return "bg-red-400";
+  if (tone === "warn") return "bg-amber-300";
+  return "bg-emerald-400";
 }
 
 function responseTimeTone(status: BotResponseTimeStats["status"]): "good" | "warn" | "danger" {

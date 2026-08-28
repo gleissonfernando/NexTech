@@ -6,6 +6,7 @@ import { getRedisClient } from "../database/redis";
 import { metricsSnapshot } from "../services/monitoringService";
 import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
+import { bootController } from "../services/bootController";
 import { listDevBots, type DevBotDto } from "../services/devBotService";
 import { getTranscriptHealthStatus } from "../services/transcriptService";
 
@@ -31,13 +32,15 @@ async function healthSnapshotHandler(_req: Request, res: Response) {
     traceAsync(trace, "database:list-dev-bots", () => listDevBots().catch(() => [] as DevBotDto[]))
   ]);
   const bot = getBotStatus();
+  const boot = bootController.snapshot();
   const mail = mailHealth();
   const payments = paymentsHealth();
-  const healthy = database.ok && (!redis.configured || redis.ok);
+  const healthy = database.ok && (!redis.configured || redis.ok) && boot.status !== "failed";
   const serverIssues = buildServerHealth(registeredBots, bot);
 
   return res.json({
-    status: healthy ? "ok" : "degraded",
+    status: healthy ? (boot.status === "degraded" ? "degraded" : "ok") : "degraded",
+    boot,
     database,
     redis,
     jobs,

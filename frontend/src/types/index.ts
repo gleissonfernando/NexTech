@@ -113,6 +113,7 @@ export type BotStatus = {
     rssMb: number;
   };
   responseTime?: BotResponseTimeStats;
+  boot?: SystemBootSnapshot;
   botGuilds: Array<{
     id: string;
     name: string;
@@ -4983,6 +4984,39 @@ export type SystemServiceHealth = {
   mercadoPago?: unknown;
 };
 
+export type SystemBootComponentStatus = "PENDING" | "STARTING" | "CONNECTING" | "READY" | "FAILED" | "RECOVERING" | "SKIPPED";
+
+export type SystemBootComponent = {
+  attempts: number;
+  criticality?: "critical" | "important" | "optional";
+  dependencies: string[];
+  durationMs?: number | null;
+  error?: string | null;
+  name: string;
+  startedAt?: string;
+  status: SystemBootComponentStatus;
+  tier?: "critical" | "normal" | "background";
+  updatedAt: string;
+};
+
+export type SystemBootSnapshot = {
+  components: SystemBootComponent[];
+  elapsedMs: number;
+  memory: {
+    arrayBuffersMb: number;
+    externalMb: number;
+    heapTotalMb: number;
+    heapUsedMb: number;
+    rssMb: number;
+  };
+  progress: number;
+  state: string;
+  status: "booting" | "online" | "degraded" | "failed";
+  targetMs: number;
+  timeoutMs: number;
+  updatedAt: string;
+};
+
 export type SystemBotGuildHealth = {
   id: string;
   name: string;
@@ -5031,6 +5065,7 @@ export type SystemBotHealth = {
     rssMb: number;
   };
   responseTime?: BotResponseTimeStats;
+  boot?: SystemBootSnapshot;
   serverIssues?: SystemServerIssue[];
   updatedAt: string;
 };
@@ -5060,6 +5095,7 @@ export type SystemHealthResponse = {
   mail: SystemServiceHealth;
   payments: SystemServiceHealth;
   bot: SystemBotHealth;
+  boot?: SystemBootSnapshot;
   timestamp: string;
 };
 

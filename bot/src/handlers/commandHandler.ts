@@ -42,7 +42,7 @@ async function deleteStaleCommands(rest: REST, route: `/${string}`, desiredNames
   const current = await rest.get(route).catch(() => []) as RegisteredDiscordCommand[];
   const stale = current.filter((command) => !desiredNames.has(command.name));
 
-  await Promise.all(stale.map((command) => (
-    rest.delete(`${route}/${command.id}` as `/${string}`).catch(() => null)
-  )));
+  for (const command of stale) {
+    await rest.delete(`${route}/${command.id}` as `/${string}`).catch(() => null);
+  }
 }

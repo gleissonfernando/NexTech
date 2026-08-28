@@ -1,125 +1,194 @@
 import { createServer } from "node:http";
-import { app } from "./app";
 import { env } from "./config/env";
-import { createSocketServer } from "./realtime/socket";
-import { runAccessControlStartupAudit } from "./services/accessStartupAuditService";
-import { seedDefaultPanelEmojisForAllBots } from "./services/defaultPanelEmojiService";
-import { markDevBotsOfflineAfterBackendRestart } from "./services/devBotService";
-import {
-  cleanupObsoleteDevBotCommands,
-  startDevBotRuntimeReconciler,
-  startRegisteredDevBots,
-  stopAllDevBotProcesses,
-  stopDevBotRuntimeReconciler
-} from "./services/devBotRuntimeService";
-import { processQueuedGiveawayEnd, processQueuedGiveawayStart, startGiveawayScheduler } from "./services/giveawayService";
-import { processQueuedServerBackupCapture, processQueuedServerBackupRestore, startServerBackupScheduler } from "./services/serverBackupService";
-import { startVoiceRecorderRetentionScheduler } from "./services/voiceRecorderService";
-import { registerBackgroundJobHandler, startBackgroundJobWorker, stopBackgroundJobWorker } from "./services/backgroundJobService";
-import { startDiscloudAutoRecoveryService } from "./services/discloudMonitoringService";
-import { getTranscriptStartupStatus } from "./services/transcriptService";
-import { runTranscriptUrlStartupMigration } from "./services/transcriptUrlMigrationService";
-import { processBotBillingCycle, startBotBillingScheduler } from "./services/botBillingService";
+import { bootController } from "./services/bootController";
 
-const httpServer = createServer(app);
+let httpServer: ReturnType<typeof createServer> | null = null;
 let shuttingDown = false;
 const DEV_BOT_START_RETRY_DELAYS_MS = [15_000, 45_000, 120_000, 300_000];
 
-httpServer.keepAliveTimeout = 65_000;
-httpServer.headersTimeout = 70_000;
-httpServer.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS ?? 0);
-httpServer.maxHeadersCount = 100;
+void main().catch((error) => {
+  console.error("[BOOT] backend startup failed:", error instanceof Error ? error.stack ?? error.message : error);
+  bootController.finish();
+  shutdown("boot failure", 1);
+});
 
-createSocketServer(httpServer);
-registerBackgroundJobHandler("server-backup.restore", processQueuedServerBackupRestore);
-registerBackgroundJobHandler("server-backup.capture", processQueuedServerBackupCapture);
-registerBackgroundJobHandler("giveaway.start", processQueuedGiveawayStart);
-registerBackgroundJobHandler("giveaway.end", processQueuedGiveawayEnd);
+async function main() {
+  bootController.setState("BOOTING");
+  await bootController.startDatabase();
+  await bootController.startRedis();
 
-httpServer.listen(env.PORT, env.HOST, () => {
-  console.log(`[api] rodando em ${env.FRONTEND_URL} (${env.HOST}:${env.PORT})`);
-  const transcriptStatus = getTranscriptStartupStatus();
-  if (transcriptStatus.ok) {
-    console.log(`[transcripts] rota publica pronta em ${transcriptStatus.route} (porta ${transcriptStatus.port})`);
-    void runTranscriptUrlStartupMigration();
-  } else {
-    console.error(`[transcripts] configuração inválida: ${transcriptStatus.error}`);
-  }
-  if (env.BACKGROUND_WORKER_ENABLED) startBackgroundJobWorker();
-  if (env.SCHEDULER_ENABLED) {
-    startGiveawayScheduler();
-    startServerBackupScheduler();
-    startVoiceRecorderRetentionScheduler();
-    startDiscloudAutoRecoveryService();
-    startBotBillingScheduler();
-  }
-  void processBotBillingCycle("startup")
-    .then((result) => {
-      console.log(`[bot-billing] rotina inicial concluída: geradas=${result.generated.created} vencidas=${result.overdue.updated} migradas=${result.migration.lifetime + result.migration.monthly}.`);
-    })
-    .catch((error) => {
-      console.warn("[bot-billing] rotina inicial falhou:", error instanceof Error ? error.message : error);
+  const [
+    { app },
+    { createSocketServer },
+    { runAccessControlStartupAudit },
+    { seedDefaultPanelEmojisForAllBots },
+    { markDevBotsOfflineAfterBackendRestart },
+    devBotRuntime,
+    giveaway,
+    serverBackup,
+    voiceRecorder,
+    backgroundJobs,
+    { startDiscloudAutoRecoveryService },
+    transcripts,
+    transcriptMigration,
+    botBilling
+  ] = await Promise.all([
+    import("./app.js"),
+    import("./realtime/socket.js"),
+    import("./services/accessStartupAuditService.js"),
+    import("./services/defaultPanelEmojiService.js"),
+    import("./services/devBotService.js"),
+    import("./services/devBotRuntimeService.js"),
+    import("./services/giveawayService.js"),
+    import("./services/serverBackupService.js"),
+    import("./services/voiceRecorderService.js"),
+    import("./services/backgroundJobService.js"),
+    import("./services/discloudMonitoringService.js"),
+    import("./services/transcriptService.js"),
+    import("./services/transcriptUrlMigrationService.js"),
+    import("./services/botBillingService.js")
+  ]);
+
+  await bootController.startCore(async () => {
+    httpServer = createServer(app);
+    httpServer.keepAliveTimeout = 65_000;
+    httpServer.headersTimeout = 70_000;
+    httpServer.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS ?? 0);
+    httpServer.maxHeadersCount = 100;
+
+    createSocketServer(httpServer);
+    backgroundJobs.registerBackgroundJobHandler("server-backup.restore", serverBackup.processQueuedServerBackupRestore);
+    backgroundJobs.registerBackgroundJobHandler("server-backup.capture", serverBackup.processQueuedServerBackupCapture);
+    backgroundJobs.registerBackgroundJobHandler("giveaway.start", giveaway.processQueuedGiveawayStart);
+    backgroundJobs.registerBackgroundJobHandler("giveaway.end", giveaway.processQueuedGiveawayEnd);
+
+    await new Promise<void>((resolve) => {
+      httpServer!.listen(env.PORT, env.HOST, () => {
+        console.log(`[api] rodando em ${env.FRONTEND_URL} (${env.HOST}:${env.PORT})`);
+        resolve();
+      });
     });
+  });
+
+  await bootController.startCriticalModules([
+    {
+      name: "Transcripts",
+      criticality: "critical",
+      dependencies: ["MongoDB", "Core"],
+      run: async () => {
+        const transcriptStatus = transcripts.getTranscriptStartupStatus();
+        if (!transcriptStatus.ok) {
+          throw new Error(transcriptStatus.error);
+        }
+        console.log(`[transcripts] rota publica pronta em ${transcriptStatus.route} (porta ${transcriptStatus.port})`);
+      }
+    },
+    {
+      name: "BackgroundJobs",
+      criticality: "important",
+      dependencies: ["MongoDB", "Core"],
+      run: () => {
+        if (env.BACKGROUND_WORKER_ENABLED) backgroundJobs.startBackgroundJobWorker();
+      }
+    }
+  ]);
+
+  await bootController.healthCheck(async () => {
+    const response = await fetch(`http://127.0.0.1:${env.PORT}/health/live`);
+    if (response.status >= 500) {
+      throw new Error(`health live HTTP ${response.status}`);
+    }
+  });
+
   const shouldRunDevBotRuntime = env.START_REGISTERED_DEV_BOTS || env.DEV_BOT_RUNTIME_RECONCILE_ENABLED;
-  const devBotRestartRecovery = shouldRunDevBotRuntime
-    ? markDevBotsOfflineAfterBackendRestart()
-      .then((restartRecovery) => {
+  bootController.startBackgroundModules([
+    {
+      name: "TranscriptMigration",
+      criticality: "optional",
+      dependencies: ["MongoDB", "Core"],
+      run: () => transcriptMigration.runTranscriptUrlStartupMigration()
+    },
+    {
+      name: "Schedulers",
+      criticality: "important",
+      dependencies: ["MongoDB", "Core"],
+      run: () => {
+        if (!env.SCHEDULER_ENABLED) return;
+        giveaway.startGiveawayScheduler();
+        serverBackup.startServerBackupScheduler();
+        voiceRecorder.startVoiceRecorderRetentionScheduler();
+        startDiscloudAutoRecoveryService();
+        botBilling.startBotBillingScheduler();
+      }
+    },
+    {
+      name: "BotBillingStartup",
+      criticality: "important",
+      dependencies: ["MongoDB", "Core"],
+      run: async () => {
+        const result = await botBilling.processBotBillingCycle("startup");
+        console.log(`[bot-billing] rotina inicial concluída: geradas=${result.generated.created} vencidas=${result.overdue.updated} migradas=${result.migration.lifetime + result.migration.monthly}.`);
+      }
+    },
+    {
+      name: "DevBotRestartRecovery",
+      criticality: "important",
+      dependencies: ["MongoDB", "Core"],
+      run: async () => {
+        if (!shouldRunDevBotRuntime) {
+          console.log("[dev-bot] runtime de processos DEV desativado neste app.");
+          return;
+        }
+
+        const restartRecovery = await markDevBotsOfflineAfterBackendRestart();
         if (restartRecovery.count > 0) {
           console.log(`[dev-bot] ${restartRecovery.count} bot(s) marcado(s) como offline após restart do runtime de bots.`);
         }
-        return restartRecovery;
-      })
-      .catch((error) => {
-        console.warn("[dev-bot] não foi possível reconciliar status no boot:", error instanceof Error ? error.message : error);
-        return { count: 0, botIds: [] };
-      })
-    : Promise.resolve({ count: 0, botIds: [] });
 
-  void devBotRestartRecovery
-    .then((restartRecovery) => {
-      if (env.START_REGISTERED_DEV_BOTS) {
-        scheduleRegisteredDevBotStartup(0);
-      }
+        if (env.START_REGISTERED_DEV_BOTS) {
+          scheduleRegisteredDevBotStartup(0, devBotRuntime.startRegisteredDevBots);
+        }
 
-      if (env.DEV_BOT_RUNTIME_RECONCILE_ENABLED) {
-        startDevBotRuntimeReconciler();
+        if (env.DEV_BOT_RUNTIME_RECONCILE_ENABLED) {
+          devBotRuntime.startDevBotRuntimeReconciler();
+        }
       }
-
-      if (!shouldRunDevBotRuntime) {
-        console.log("[dev-bot] runtime de processos DEV desativado neste app.");
-      }
-    })
-    .catch((error) => {
-      console.warn("[dev-bot] retomada pós-restart não pôde ser agendada:", error instanceof Error ? error.message : error);
-    });
-  void devBotRestartRecovery
-    .then(async () => {
-      await runAccessControlStartupAudit();
-    })
-    .catch((error) => {
-      console.warn("[startup] varredura inicial falhou:", error instanceof Error ? error.message : error);
-    });
-  setTimeout(() => {
-    void seedDefaultPanelEmojisForAllBots()
-      .then((results) => {
+    },
+    {
+      name: "AccessStartupAudit",
+      criticality: "optional",
+      dependencies: ["MongoDB", "Core"],
+      run: runAccessControlStartupAudit
+    },
+    {
+      name: "DefaultPanelEmojis",
+      criticality: "optional",
+      dependencies: ["MongoDB", "Core"],
+      run: async () => {
+        const results = await seedDefaultPanelEmojisForAllBots();
         const ok = results.filter((result) => result.ok).length;
         if (ok > 0) console.log(`[default-panel-emojis] pacote padrão processado para ${ok} bot(s).`);
-      })
-      .catch((error) => {
-        console.warn("[default-panel-emojis] falha ao processar pacote padrão:", error instanceof Error ? error.message : error);
-      });
-  }, 20_000).unref();
-  if (env.DEV_BOT_PROCESS_RUNNER_ENABLED) {
-    setTimeout(() => {
-      void cleanupObsoleteDevBotCommands()
-        .catch((error) => {
-          console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
-        });
-    }, env.DEV_BOT_COMMAND_CLEANUP_DELAY_MS ?? (shouldRunDevBotRuntime ? 15 * 60_000 : 60_000)).unref();
-  } else {
-    console.log("[dev-bot] limpeza de comandos ignorada neste app; runtime de processos DEV desativado.");
-  }
-});
+      }
+    },
+    {
+      name: "DevBotCommandCleanup",
+      criticality: "optional",
+      dependencies: ["MongoDB", "Core"],
+      run: () => {
+        if (!env.DEV_BOT_PROCESS_RUNNER_ENABLED) {
+          console.log("[dev-bot] limpeza de comandos ignorada neste app; runtime de processos DEV desativado.");
+          return;
+        }
+        setTimeout(() => {
+          void devBotRuntime.cleanupObsoleteDevBotCommands()
+            .catch((error: unknown) => {
+              console.warn("[dev-bot] limpeza tardia de comandos obsoletos falhou:", error instanceof Error ? error.message : error);
+            });
+        }, env.DEV_BOT_COMMAND_CLEANUP_DELAY_MS ?? (shouldRunDevBotRuntime ? 15 * 60_000 : 60_000)).unref();
+      }
+    }
+  ]);
+}
 
 function shutdown(signal: string, exitCode = 0) {
   if (shuttingDown) return;
@@ -127,12 +196,14 @@ function shutdown(signal: string, exitCode = 0) {
   console.log(`[api] encerrando por ${signal}`);
   const forceExit = setTimeout(() => process.exit(exitCode || 1), 25_000);
   forceExit.unref();
-  const closeHttp = new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  const closeHttp = httpServer
+    ? new Promise<void>((resolve) => httpServer!.close(() => resolve()))
+    : Promise.resolve();
   void Promise.allSettled([
     closeHttp,
-    stopBackgroundJobWorker(),
-    stopDevBotRuntimeReconciler(),
-    stopAllDevBotProcesses()
+    import("./services/backgroundJobService.js").then(({ stopBackgroundJobWorker }) => stopBackgroundJobWorker()),
+    import("./services/devBotRuntimeService.js").then(({ stopDevBotRuntimeReconciler }) => stopDevBotRuntimeReconciler()),
+    import("./services/devBotRuntimeService.js").then(({ stopAllDevBotProcesses }) => stopAllDevBotProcesses())
   ]).finally(() => process.exit(exitCode));
 }
 
@@ -154,7 +225,7 @@ process.on("warning", (warning) => {
   console.warn(JSON.stringify({ level: "warning", service: "backend", type: warning.name, error: warning.stack ?? warning.message, at: new Date().toISOString() }));
 });
 
-function scheduleRegisteredDevBotStartup(attempt: number) {
+function scheduleRegisteredDevBotStartup(attempt: number, startRegisteredDevBots: () => Promise<number>) {
   void startRegisteredDevBots()
     .then((count) => {
       console.log(`[dev-bot] start automático concluído para ${count} bot(s) cadastrado(s).`);
@@ -163,11 +234,12 @@ function scheduleRegisteredDevBotStartup(attempt: number) {
       scheduleDevBotStartupRetry({
         attempt,
         label: "start automático",
-        retry: () => scheduleRegisteredDevBotStartup(attempt + 1),
+        retry: () => scheduleRegisteredDevBotStartup(attempt + 1, startRegisteredDevBots),
         error
       });
     });
 }
+
 
 function scheduleDevBotStartupRetry(input: {
   attempt: number;

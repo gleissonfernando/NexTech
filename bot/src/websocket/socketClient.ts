@@ -1,6 +1,7 @@
 import type { Client } from "discord.js";
 import { io, type Socket } from "socket.io-client";
 import { currentRuntimeBotId, env } from "../config/env";
+import { botBootController } from "../services/bootController";
 import type { FivemOrder } from "../services/apiClient";
 import type { GuildSettings } from "../types";
 
@@ -847,7 +848,8 @@ export class BotSocketClient {
       memory: {
         rssMb: Math.round(memory.rss / 1024 / 1024),
         heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024)
-      }
+      },
+      boot: botBootController.snapshot()
     });
   }
 
