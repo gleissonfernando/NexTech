@@ -7,7 +7,7 @@ const target = path.join(root, process.env.DISCLOUD_PACKAGE_DIR?.trim() || ".dis
 const packageName = process.env.DISCLOUD_PACKAGE_NAME?.trim() || "NexTech";
 const packageType = process.env.DISCLOUD_PACKAGE_TYPE?.trim() || "site";
 const packageId = process.env.DISCLOUD_PACKAGE_ID?.trim() || "nextech";
-const packageRam = process.env.DISCLOUD_PACKAGE_RAM?.trim() || "1024";
+const packageRam = process.env.DISCLOUD_PACKAGE_RAM?.trim() || "3072";
 
 const required = [
   "index.js",
