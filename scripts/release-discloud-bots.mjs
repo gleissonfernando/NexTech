@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const appId = process.env.DISCLOUD_BOTS_APP_ID?.trim() || "nextech-bots";
+const appId = process.env.DISCLOUD_BOTS_APP_ID?.trim() || "1787018855642";
 const packageDir = ".discloud-bots-package";
 
 function run(command, args, options = {}) {
@@ -72,8 +72,12 @@ function appExists() {
   }
 }
 
-console.log("[release:bots] Validando build e deploy-check...");
-run("npm", ["run", "deploy:check"]);
+if (process.env.SKIP_DEPLOY_CHECK !== "true") {
+  console.log("[release:bots] Validando build e deploy-check...");
+  run("npm", ["run", "deploy:check"]);
+} else {
+  console.log("[release:bots] deploy-check ignorado; usando build ja validado pelo release principal.");
+}
 
 console.log(`[release:bots] Preparando pacote ${appId}...`);
 run("node", ["scripts/prepare-discloud-package.mjs"], {

@@ -106,6 +106,13 @@ console.log("[release] Health check...");
 const healthUrl = `https://${appId}.discloud.app/health`;
 await waitForHealthyApp(healthUrl);
 
+console.log("[release] Sincronizando app NexTech Bots...");
+run("node", ["scripts/release-discloud-bots.mjs"], {
+  env: {
+    SKIP_DEPLOY_CHECK: "true"
+  }
+});
+
 console.log("[release] Publicando painel de atualizações no Discord...");
 await runAutoUpdateLogger({ mode: process.env.UPDATE_PANEL_MODE || "realtime-summary", send: true }).catch((error) => {
   console.warn(`[release] Auto Update Logger ignorado: ${error instanceof Error ? error.message : String(error)}`);
