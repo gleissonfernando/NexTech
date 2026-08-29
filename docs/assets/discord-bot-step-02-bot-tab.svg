@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Adicionar usuario bot</title>
+  <desc id="desc">Ilustracao da aba Bot e do botao Add Bot.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="56" y="48" width="1088" height="624" rx="18" fill="#121827" stroke="#2d3854" stroke-width="2"/>
+  <rect x="90" y="92" width="270" height="536" rx="12" fill="#0f172a" stroke="#253047"/>
+  <text x="122" y="142" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="17">General Information</text>
+  <rect x="110" y="170" width="218" height="46" rx="8" fill="#5865f2"/>
+  <text x="122" y="200" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Bot</text>
+  <text x="122" y="254" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="17">Installation</text>
+  <text x="122" y="300" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="17">OAuth2</text>
+  <rect x="410" y="92" width="690" height="536" rx="12" fill="#0f172a" stroke="#253047"/>
+  <text x="454" y="156" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Bot</text>
+  <text x="454" y="200" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="20">Crie o usuario bot que vai entrar no servidor.</text>
+  <rect x="454" y="258" width="210" height="58" rx="10" fill="#22c55e"/>
+  <text x="510" y="294" fill="#052e16" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="800">Add Bot</text>
+  <path d="M682 288h192" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+  <path d="m864 270 32 18-32 18" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="790" y="346" width="262" height="108" rx="12" fill="#1f2937" stroke="#facc15" stroke-width="2"/>
+  <text x="820" y="382" fill="#fde68a" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Passo 2</text>
+  <text x="820" y="412" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18">Aba Bot</text>
+  <text x="820" y="438" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18">Adicionar usuario bot</text>
+</svg>

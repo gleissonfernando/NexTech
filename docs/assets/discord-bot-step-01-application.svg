@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Criar uma aplicacao no Discord Developer Portal</title>
+  <desc id="desc">Ilustracao do botao New Application no portal de desenvolvedores do Discord.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="56" y="48" width="1088" height="624" rx="18" fill="#121827" stroke="#2d3854" stroke-width="2"/>
+  <rect x="56" y="48" width="1088" height="76" rx="18" fill="#171f33"/>
+  <text x="96" y="95" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Discord Developer Portal</text>
+  <rect x="90" y="156" width="250" height="468" rx="12" fill="#0f172a" stroke="#253047"/>
+  <text x="122" y="206" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Applications</text>
+  <text x="122" y="252" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Documentation</text>
+  <text x="122" y="298" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Teams</text>
+  <rect x="390" y="156" width="704" height="468" rx="12" fill="#0f172a" stroke="#253047"/>
+  <text x="432" y="214" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="36" font-weight="700">Suas aplicacoes</text>
+  <text x="432" y="258" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="20">Crie uma aplicacao para gerar o bot da NexTech.</text>
+  <rect x="432" y="314" width="260" height="60" rx="10" fill="#5865f2"/>
+  <text x="476" y="352" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">New Application</text>
+  <path d="M704 344h184" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+  <path d="m878 326 32 18-32 18" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="780" y="400" width="260" height="92" rx="12" fill="#1f2937" stroke="#facc15" stroke-width="2"/>
+  <text x="810" y="436" fill="#fde68a" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Passo 1</text>
+  <text x="810" y="466" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18">Clique para criar a app</text>
+</svg>

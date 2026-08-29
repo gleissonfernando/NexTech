@@ -226,6 +226,10 @@ O painel suporta modulos por bot e servidor:
 
 Cada bot cadastrado pode ter modulos liberados separadamente na aba de administracao.
 
+## Documentacao operacional
+
+- [Como criar um bot do Discord para a NexTech](docs/criar-bot-discord.md)
+
 ## X Monitor
 
 O X Monitor usa a API v2 do X via `X_BEARER_TOKEN` configurado na hospedagem. A dashboard valida o perfil, salva a conta no banco e o bot monitora novas publicacoes para enviar no canal configurado.

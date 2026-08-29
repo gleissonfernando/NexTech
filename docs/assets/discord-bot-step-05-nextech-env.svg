@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Configurar variaveis na NexTech</title>
+  <desc id="desc">Ilustracao de variaveis de ambiente para conectar o bot Discord na NexTech.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="56" y="48" width="1088" height="624" rx="18" fill="#121827" stroke="#2d3854" stroke-width="2"/>
+  <text x="96" y="116" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">NexTech / Variaveis do bot</text>
+  <rect x="96" y="160" width="1008" height="416" rx="14" fill="#0f172a" stroke="#253047"/>
+  <text x="136" y="218" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">DISCORD_BOT_TOKEN=token-do-bot-discord</text>
+  <text x="136" y="270" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">DISCORD_CLIENT_ID=client-id-da-aplicacao</text>
+  <text x="136" y="322" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">DISCORD_CLIENT_SECRET=client-secret-oauth</text>
+  <text x="136" y="374" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">DISCORD_OAUTH_REDIRECT_URI=https://dominio/auth/discord/callback</text>
+  <text x="136" y="426" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">DISCORD_CALLBACK_URL=https://dominio/auth/discord/callback</text>
+  <text x="136" y="478" fill="#94a3b8" font-family="Consolas, monospace" font-size="23">BOT_API_TOKEN=segredo-interno-backend-bot</text>
+  <rect x="136" y="612" width="928" height="2" fill="#334155"/>
+  <text x="136" y="642" fill="#facc15" font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="700">Nunca salve token real no README, em print publico ou em commit.</text>
+</svg>

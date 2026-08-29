@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Configurar instalacao OAuth2</title>
+  <desc id="desc">Ilustracao dos scopes bot e applications.commands com permissoes.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="56" y="48" width="1088" height="624" rx="18" fill="#121827" stroke="#2d3854" stroke-width="2"/>
+  <text x="96" y="116" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">Installation / OAuth2</text>
+  <rect x="96" y="158" width="480" height="430" rx="14" fill="#0f172a" stroke="#253047"/>
+  <text x="132" y="212" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Scopes</text>
+  <rect x="132" y="252" width="360" height="52" rx="10" fill="#111827" stroke="#334155"/>
+  <rect x="152" y="268" width="20" height="20" rx="4" fill="#22c55e"/>
+  <text x="190" y="285" fill="#e5e7eb" font-family="Segoe UI, Arial, sans-serif" font-size="18">bot</text>
+  <rect x="132" y="322" width="360" height="52" rx="10" fill="#111827" stroke="#334155"/>
+  <rect x="152" y="338" width="20" height="20" rx="4" fill="#22c55e"/>
+  <text x="190" y="355" fill="#e5e7eb" font-family="Segoe UI, Arial, sans-serif" font-size="18">applications.commands</text>
+  <rect x="624" y="158" width="480" height="430" rx="14" fill="#0f172a" stroke="#253047"/>
+  <text x="660" y="212" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">Bot Permissions</text>
+  <text x="660" y="260" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Send Messages</text>
+  <text x="660" y="304" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Manage Channels</text>
+  <text x="660" y="348" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Manage Roles</text>
+  <text x="660" y="392" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Read Message History</text>
+  <text x="660" y="436" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Use Slash Commands</text>
+  <rect x="214" y="512" width="680" height="54" rx="10" fill="#5865f2"/>
+  <text x="426" y="546" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="800">Copiar link de instalacao</text>
+</svg>

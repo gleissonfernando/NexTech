@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Copiar token e ativar intents</title>
+  <desc id="desc">Ilustracao da area de token e privileged gateway intents.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="56" y="48" width="1088" height="624" rx="18" fill="#121827" stroke="#2d3854" stroke-width="2"/>
+  <rect x="96" y="92" width="1008" height="166" rx="14" fill="#0f172a" stroke="#253047"/>
+  <text x="132" y="146" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">Token do bot</text>
+  <rect x="132" y="176" width="610" height="42" rx="8" fill="#020617" stroke="#334155"/>
+  <text x="158" y="203" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="17">••••••••••••••••••••••••••••••••</text>
+  <rect x="768" y="172" width="150" height="50" rx="9" fill="#5865f2"/>
+  <text x="818" y="204" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Copy</text>
+  <rect x="96" y="298" width="1008" height="282" rx="14" fill="#0f172a" stroke="#253047"/>
+  <text x="132" y="352" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">Privileged Gateway Intents</text>
+  <text x="132" y="394" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="19">Ative somente o que o bot realmente usa.</text>
+  <rect x="132" y="438" width="470" height="52" rx="10" fill="#111827" stroke="#334155"/>
+  <circle cx="560" cy="464" r="16" fill="#22c55e"/>
+  <text x="156" y="471" fill="#e5e7eb" font-family="Segoe UI, Arial, sans-serif" font-size="18">Server Members Intent</text>
+  <rect x="132" y="506" width="470" height="52" rx="10" fill="#111827" stroke="#334155"/>
+  <circle cx="560" cy="532" r="16" fill="#22c55e"/>
+  <text x="156" y="539" fill="#e5e7eb" font-family="Segoe UI, Arial, sans-serif" font-size="18">Message Content Intent</text>
+  <rect x="694" y="414" width="342" height="112" rx="12" fill="#1f2937" stroke="#facc15" stroke-width="2"/>
+  <text x="724" y="450" fill="#fde68a" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Importante</text>
+  <text x="724" y="480" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18">Nunca envie esse token</text>
+  <text x="724" y="506" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18">em print, Git ou Discord.</text>
+</svg>
