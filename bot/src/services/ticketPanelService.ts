@@ -2796,21 +2796,39 @@ async function sendTranscriptDm(guild: Guild, transcript: TranscriptCreateResult
   const url = resolveTranscriptUrl(transcript);
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt ?? null;
   const expiresLine = expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "1 ano após a criação";
-  await user.send({
-    allowedMentions: { parse: [] },
-    content: [
-      "Seu atendimento foi finalizado com sucesso.",
-      "",
-      "Você pode acessar o histórico completo da conversa utilizando o link abaixo.",
-      "",
-      `Transcript: ${url}`,
-      `Senha: ||${password}||`,
-      `Validade: ${expiresLine}`,
-      "",
-      "Por motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
-    ].join("\n")
-  });
+  await user.send(buildTranscriptDmPayload({ expiresLine, password, transcriptUrl: url }));
   return true;
+}
+
+export function buildTranscriptDmPayload(input: { expiresLine: string; password: string; transcriptUrl: string }) {
+  return {
+    ...componentsV2Payload({
+    accentColor: 0x5865f2,
+    components: [
+      {
+        type: 10,
+        content: [
+          "## Seu atendimento foi finalizado com sucesso.",
+          "",
+          "Você pode acessar o histórico completo da conversa utilizando o link abaixo."
+        ].join("\n")
+      },
+      { type: 14, divider: true, spacing: 1 },
+      {
+        type: 10,
+        content: [
+          `**Transcript:** ${input.transcriptUrl}`,
+          `**Senha:** ||${input.password}||`,
+          `**Validade:** ${input.expiresLine}`,
+          "",
+          "Por motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
+        ].join("\n")
+      }
+    ],
+      footer: { enabled: false }
+    }),
+    allowedMentions: { parse: [] }
+  };
 }
 
 async function sendTicketOpenedDm(guild: Guild, userId: string, input: { channelId: string; createdAt: string; guildName: string; status: string; ticketId: string }) {

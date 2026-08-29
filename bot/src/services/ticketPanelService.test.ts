@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTicketClaimedPayload, isTicketScopeCompatible, normalizeTicketDescription, normalizeTicketSubject, resolveTicketCategoryId, shouldDeleteSupportTicketChannelAfterClose } from "./ticketPanelService";
+import { MessageFlags } from "discord.js";
+import {
+  createTicketClaimedPayload,
+  isTicketScopeCompatible,
+  normalizeTicketDescription,
+  normalizeTicketSubject,
+  resolveTicketCategoryId,
+  shouldDeleteSupportTicketChannelAfterClose,
+  buildTranscriptDmPayload
+} from "./ticketPanelService";
 
 test("ticket aceita texto curto e rejeita vazio", () => {
   assert.equal(normalizeTicketDescription("Ajuda"), "Ajuda");
@@ -67,3 +76,44 @@ test("categoria de ticket usa fallback quando a principal não existe", async ()
     assert.equal(resolved, "fallback-category");
   });
 });
+
+test("buildTranscriptDmPayload gera painel Components V2 com transcript e senha", () => {
+  const payload = buildTranscriptDmPayload({
+    expiresLine: "29/08/2026",
+    password: "abc123",
+    transcriptUrl: "https://example.com/transcript"
+  });
+
+  assert.equal(payload.flags, MessageFlags.IsComponentsV2);
+  assert.ok(Array.isArray(payload.components));
+  assert.deepEqual(collectText(payload), [
+    "## Seu atendimento foi finalizado com sucesso.\n\nVocê pode acessar o histórico completo da conversa utilizando o link abaixo.",
+    "**Transcript:** https://example.com/transcript\n**Senha:** ||abc123||\n**Validade:** 29/08/2026\n\nPor motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
+  ]);
+});
+
+function collectText(value: unknown): string[] {
+  const collected: string[] = [];
+
+  visit(value);
+
+  return collected;
+
+  function visit(current: unknown) {
+    if (typeof current === "string") {
+      collected.push(current);
+      return;
+    }
+    if (Array.isArray(current)) {
+      current.forEach(visit);
+      return;
+    }
+    if (!current || typeof current !== "object") {
+      return;
+    }
+
+    for (const next of Object.values(current as Record<string, unknown>)) {
+      visit(next);
+    }
+  }
+}
