@@ -30,11 +30,15 @@ if (!target.startsWith(root + path.sep)) {
 
 rmSync(target, { recursive: true, force: true });
 mkdirSync(path.join(target, "scripts"), { recursive: true });
+mkdirSync(path.join(target, "assets"), { recursive: true });
 mkdirSync(path.join(target, "backend"), { recursive: true });
 mkdirSync(path.join(target, "bot"), { recursive: true });
 mkdirSync(path.join(target, "frontend"), { recursive: true });
 
 cpSync(path.join(root, "index.js"), path.join(target, "index.js"));
+if (existsSync(path.join(root, "assets"))) {
+  cpSync(path.join(root, "assets"), path.join(target, "assets"), { recursive: true });
+}
 cpSync(path.join(root, "scripts/start-production.mjs"), path.join(target, "scripts/start-production.mjs"));
 cpSync(path.join(root, "scripts/runtime-env.mjs"), path.join(target, "scripts/runtime-env.mjs"));
 cpSync(path.join(root, "scripts/start-dev-bot-worker.mjs"), path.join(target, "scripts/start-dev-bot-worker.mjs"));

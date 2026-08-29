@@ -411,16 +411,28 @@ function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
     "",
     technicalLine,
   ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
+  const banner = updatePanelBanner();
   const footer = updatePanelFooter(footerText, footerIconUrl);
+  const components = [
+    ...(banner.url ? [{ type: 12, items: [{ media: { url: banner.url }, description: "Banner da atualização NexTech" }] }] : []),
+    {
+      type: 10,
+      content: [
+        `# ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
+        `-# ${escapeMarkdown(appName)} • ${escapeMarkdown(changelog.version)}`
+      ].join("\n")
+    },
+    { type: 10, content: description },
+    ...(footer?.text ? [{ type: 10, content: `-# ${escapeMarkdown(footer.text)}` }] : []),
+    buildUpdateActionRow(changelog)
+  ];
 
   return {
     allowed_mentions: { parse: [] },
-    embeds: [{
-      color,
-      description,
-      footer,
-      title: `ATUALIZAÇÕES – ${formatUpdateDate(date)}`
-    }]
+    attachments: banner.file ? [{ description: "Banner da atualização NexTech", filename: banner.file.name, id: 0 }] : undefined,
+    components: [{ type: 17, accent_color: color, components }],
+    flags: 32768,
+    __files: banner.file ? [banner.file] : undefined
   };
 }
 
@@ -806,6 +818,27 @@ function updatePanelFooter(text, iconUrl) {
     : { text: footerText.slice(0, 2048) };
 }
 
+function updatePanelBanner() {
+  const configuredUrl = readConfigValue("UPDATE_PANEL_BANNER_URL");
+  if (isHttpUrl(configuredUrl)) return { url: configuredUrl.trim() };
+
+  const configuredPath = readConfigValue("UPDATE_PANEL_BANNER_PATH");
+  const candidate = configuredPath
+    ? path.resolve(root, configuredPath)
+    : path.join(root, "assets", "update-panel-banner.png");
+  if (!existsSync(candidate)) return { url: "" };
+
+  const name = "nextech-update-panel.png";
+  return {
+    file: {
+      contentType: "image/png",
+      name,
+      path: candidate
+    },
+    url: `attachment://${name}`
+  };
+}
+
 function discordBotAvatarUrl(bot) {
   if (!bot?.id || !bot?.avatar) return "";
   const extension = String(bot.avatar).startsWith("a_") ? "gif" : "png";
@@ -848,11 +881,14 @@ async function fetchDiscordBot(token) {
 }
 
 async function sendDiscordMessage(token, channelId, payload) {
+  const files = Array.isArray(payload.__files) ? payload.__files : [];
+  const discordPayload = stripInternalPayloadFields(payload);
+  const body = files.length ? multipartDiscordBody(discordPayload, files) : JSON.stringify(discordPayload);
   const response = await fetch(`${discordApi}/channels/${encodeURIComponent(channelId)}/messages`, {
-    body: JSON.stringify(payload),
+    body,
     headers: {
       Authorization: `Bot ${token}`,
-      "Content-Type": "application/json"
+      ...(files.length ? {} : { "Content-Type": "application/json" })
     },
     method: "POST"
   });
@@ -861,6 +897,20 @@ async function sendDiscordMessage(token, channelId, payload) {
     throw new Error(`Discord changelog HTTP ${response.status}: ${body.slice(0, 500)}`);
   }
   return response.json().catch(() => null);
+}
+
+function stripInternalPayloadFields(payload) {
+  const { __files, ...discordPayload } = payload;
+  return JSON.parse(JSON.stringify(discordPayload));
+}
+
+function multipartDiscordBody(payload, files) {
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify(payload));
+  files.forEach((file, index) => {
+    form.append(`files[${index}]`, new Blob([readFileSync(file.path)], { type: file.contentType }), file.name);
+  });
+  return form;
 }
 
 async function hasRecentDiscordRelease(token, channelId, commit, version) {
