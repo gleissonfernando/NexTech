@@ -3637,7 +3637,7 @@ export async function updateDevBotModules(botId: string, enabledModules: string[
 
 export async function restartDevBot(botId: string) {
   const { data } = await api.post<{ bot: DevBot }>(`/dev/bots/${botId}/restart`, undefined, {
-    timeout: 16000
+    timeout: 45000
   });
   return data.bot;
 }

@@ -31,6 +31,7 @@ type VerificationResult = TagVerificationRunResult & {
 const MODULE_ID = "tag-verification";
 const BATCH_SIZE = 25;
 const BATCH_DELAY_MS = 250;
+const INITIAL_BACKGROUND_CHECK_DELAY_MS = 30_000;
 const schedulers = new Map<string, SchedulerEntry>();
 const runningChecks = new Map<string, Promise<TagVerificationRunResult>>();
 let socketHandlersRegistered = false;
@@ -45,7 +46,7 @@ export async function startTagVerificationService(client: Client, context: BotCo
   }
 
   for (const guild of client.guilds.cache.values()) {
-    await restartGuildScheduler(guild, context, true).catch((error) => {
+    await restartGuildScheduler(guild, context, false).catch((error) => {
       console.warn(`[tag-verification] falha ao iniciar ${guild.id}:`, readError(error));
     });
   }
@@ -117,10 +118,11 @@ async function restartGuildScheduler(guild: Guild, context: BotContext, runImmed
   if (schedulers.get(key)?.generation !== generation) return result;
 
   const intervalMs = config.updateIntervalMinutes * 60_000;
-  const nextCheckAt = new Date(Date.now() + intervalMs).toISOString();
+  const delayMs = runImmediately ? intervalMs : Math.min(INITIAL_BACKGROUND_CHECK_DELAY_MS, intervalMs);
+  const nextCheckAt = new Date(Date.now() + delayMs).toISOString();
   entry.timeout = setTimeout(() => {
     void restartGuildScheduler(guild, context, true);
-  }, intervalMs);
+  }, delayMs);
   entry.timeout.unref();
 
   if (result) {
