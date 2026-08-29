@@ -5583,6 +5583,9 @@ export type NexTechNoticeRecord = {
   deliveries: NexTechNoticeDelivery[];
   failedCount: number;
   highlight: string | null;
+  recipientMode: "global" | "person";
+  recipientUserId: string | null;
+  recipientUserName: string | null;
   message: string;
   recipientCount: number;
   title: string;
@@ -5599,6 +5602,8 @@ export type SendNexTechNoticePayload = {
   buttonUrl?: string | null;
   highlight?: string | null;
   message: string;
+  recipientMode: "global" | "person";
+  recipientUserId?: string | null;
   title: string;
 };
 

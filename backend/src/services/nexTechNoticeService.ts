@@ -24,6 +24,8 @@ export type SendNexTechNoticeInput = {
   createdByName?: string | null;
   highlight?: string | null;
   message: string;
+  recipientMode: "global" | "person";
+  recipientUserId?: string | null;
   title: string;
 };
 
@@ -86,7 +88,7 @@ export async function sendNexTechNotice(input: SendNexTechNoticeInput) {
     throw serviceError("DISCORD_BOT_TOKEN não configurado.", 503);
   }
 
-  const recipients = await getNexTechNoticeAudience();
+  const recipients = await resolveNexTechNoticeRecipients(input);
 
   if (!recipients.length) {
     throw serviceError("Nenhum responsável de bot encontrado para receber o aviso.", 404);
@@ -115,6 +117,9 @@ export async function sendNexTechNotice(input: SendNexTechNoticeInput) {
     createdByName: input.createdByName ?? null,
     deliveries,
     highlight: normalizeOptionalText(input.highlight),
+    recipientMode: input.recipientMode,
+    recipientUserId: normalizeOptionalText(input.recipientUserId),
+    recipientUserName: input.recipientMode === "person" ? deliveries[0]?.userName ?? null : null,
     message: input.message.trim(),
     title: input.title.trim()
   };
@@ -190,6 +195,7 @@ export async function sendNexTechStartupNotice(botId: string) {
     createdByName: bot.ownerName ?? bot.name,
     highlight: "Aviso automático de inicialização",
     message: `O bot **${bot.name}** voltou a ficar online.\nSe ele estava em manutenção, o aviso continua sendo enviado normalmente.`,
+    recipientMode: "global",
     title: `${bot.name} voltou online`
   };
 
@@ -258,6 +264,25 @@ function buildStartupRecipients(bot: Pick<{ billingRecipientUserIds?: string[]; 
   }
 
   return [...recipientMap.values()];
+}
+
+export async function resolveNexTechNoticeRecipients(input: Pick<SendNexTechNoticeInput, "recipientMode" | "recipientUserId">) {
+  if (input.recipientMode === "person") {
+    const userId = normalizeOptionalText(input.recipientUserId);
+
+    if (!userId) {
+      throw serviceError("Informe o ID do destinatário para o modo pessoa.", 400);
+    }
+
+    return [{
+      botCount: 1,
+      botNames: [],
+      userId,
+      userName: null
+    }];
+  }
+
+  return await getNexTechNoticeAudience();
 }
 
 export function buildNexTechNoticePayloadForTest(input: SendNexTechNoticeInput) {
@@ -408,6 +433,9 @@ function toNoticeDto(notice: MongoNexTechNotice) {
     deliveries: notice.deliveries,
     failedCount: notice.deliveries.length - deliveredCount,
     highlight: notice.highlight,
+    recipientMode: notice.recipientMode ?? "global",
+    recipientUserId: notice.recipientUserId ?? null,
+    recipientUserName: notice.recipientUserName ?? null,
     message: notice.message,
     recipientCount: notice.deliveries.length,
     title: notice.title

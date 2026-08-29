@@ -4033,6 +4033,9 @@ export type MongoNexTechNotice = {
   createdByName: string | null;
   deliveries: MongoNexTechNoticeDelivery[];
   highlight: string | null;
+  recipientMode: "global" | "person";
+  recipientUserId: string | null;
+  recipientUserName: string | null;
   message: string;
   title: string;
 };

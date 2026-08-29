@@ -616,6 +616,8 @@ const defaultNoticeForm: SendNexTechNoticePayload = {
   buttonUrl: "",
   highlight: "Comunicado oficial da NexTech",
   message: "Escreva aqui o aviso que sera enviado por DM para os responsaveis cadastrados nos bots.",
+  recipientMode: "global",
+  recipientUserId: "",
   title: "SEJA UM CRIADOR NO HYPE!"
 };
 
@@ -699,6 +701,21 @@ function DevNexTechNoticesPanel() {
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <DevTextInput label="Titulo" onChange={(value) => setForm((current) => ({ ...current, title: value }))} required value={form.title} />
               <DevTextInput label="Destaque" onChange={(value) => setForm((current) => ({ ...current, highlight: value }))} value={form.highlight ?? ""} />
+              <DevSelect
+                label="Modo de envio"
+                onChange={(value) => setForm((current) => ({ ...current, recipientMode: value as "global" | "person", recipientUserId: value === "global" ? "" : current.recipientUserId ?? "" }))}
+                options={["global", "person"]}
+                value={form.recipientMode}
+              />
+              {form.recipientMode === "person" ? (
+                <DevTextInput
+                  label="ID da pessoa"
+                  onChange={(value) => setForm((current) => ({ ...current, recipientUserId: value.replace(/\D/g, "") }))}
+                  placeholder="1426287249020158018"
+                  required
+                  value={form.recipientUserId ?? ""}
+                />
+              ) : null}
               <label className="space-y-1">
                 <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">Mensagem</span>
                 <textarea className="min-h-36 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" required value={form.message} onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} />
@@ -711,7 +728,7 @@ function DevNexTechNoticesPanel() {
                 <DevTextInput label="Botao" onChange={(value) => setForm((current) => ({ ...current, buttonLabel: value }))} placeholder="Opcional" value={form.buttonLabel ?? ""} />
                 <DevTextInput label="URL do botao" onChange={(value) => setForm((current) => ({ ...current, buttonUrl: value }))} placeholder="https://..." value={form.buttonUrl ?? ""} />
               </div>
-              <Button disabled={saving || !form.title.trim() || !form.message.trim() || !audienceCount} type="submit">
+              <Button disabled={saving || !form.title.trim() || !form.message.trim() || !audienceCount || (form.recipientMode === "person" && !form.recipientUserId?.trim())} type="submit">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
                 {saving ? "Enviando DMs..." : "Enviar aviso por DM"}
               </Button>
@@ -743,6 +760,12 @@ function NoticePreview({ form }: { form: SendNexTechNoticePayload }) {
     <Card className="overflow-hidden border-[#FFD500]/20 bg-[#0a0a0b]">
       <CardContent className="space-y-4 p-5">
         <div className="text-center text-xl font-black text-white">{form.title || "Titulo do aviso"}</div>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#FFEA70]">
+          <span className="rounded-full border border-[#FFD500]/25 bg-[#FFD500]/10 px-2 py-1">{form.recipientMode === "person" ? "Modo: pessoa" : "Modo: global"}</span>
+          {form.recipientMode === "person" && form.recipientUserId ? (
+            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300">Destino: {form.recipientUserId}</span>
+          ) : null}
+        </div>
         <div className="border-t border-zinc-800" />
         <div className="h-36 bg-[url('/assets/avisos-nextech-banner.png')] bg-cover bg-center sm:h-44" />
         {form.highlight ? <p className="text-sm font-black text-white">{form.highlight}</p> : null}
@@ -761,6 +784,9 @@ function NoticePreview({ form }: { form: SendNexTechNoticePayload }) {
 
 function NoticeHistoryRow({ notice }: { notice: NexTechNoticeRecord }) {
   const deliveredNames = notice.deliveries.filter((delivery) => delivery.status === "sent").map((delivery) => delivery.userName || delivery.userId);
+  const recipientLabel = notice.recipientMode === "person"
+    ? `Pessoa${notice.recipientUserName || notice.recipientUserId ? ` • ${notice.recipientUserName || notice.recipientUserId}` : ""}`
+    : "Global";
   return (
     <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -768,11 +794,13 @@ function NoticeHistoryRow({ notice }: { notice: NexTechNoticeRecord }) {
           <p className="truncate text-sm font-bold text-white">{notice.title}</p>
           <p className="text-xs font-semibold text-zinc-500">{formatDate(notice.createdAt)} por {notice.createdByName || notice.createdBy}</p>
         </div>
-        <Badge className="border-[#FFEA70]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">
-          {notice.deliveredCount}/{notice.recipientCount} DMs
-        </Badge>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge className="border-[#FFEA70]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">{recipientLabel}</Badge>
+          <Badge className="border-[#FFEA70]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">{notice.deliveredCount}/{notice.recipientCount} DMs</Badge>
+        </div>
       </div>
       {deliveredNames.length ? <p className="mt-2 text-xs font-semibold text-zinc-300">Enviado para: {deliveredNames.join(", ")}</p> : null}
+      {notice.recipientMode === "person" && notice.recipientUserId ? <p className="mt-1 text-xs font-semibold text-zinc-500">Destinatario: {notice.recipientUserName || notice.recipientUserId}</p> : null}
       {notice.failedCount ? <p className="mt-2 text-xs font-semibold text-red-300">{notice.failedCount} falha(s) no envio.</p> : null}
     </div>
   );
@@ -783,6 +811,9 @@ function formatQuotePreview(value: string) {
 }
 
 function summarizeNoticeRecipients(notice: NexTechNoticeRecord) {
+  if (notice.recipientMode === "person") {
+    return notice.recipientUserName || notice.recipientUserId || "destinatario unico";
+  }
   const names = notice.deliveries.filter((delivery) => delivery.status === "sent").map((delivery) => delivery.userName || delivery.userId);
   return names.length ? names.join(", ") : "nenhum nome resolvido";
 }

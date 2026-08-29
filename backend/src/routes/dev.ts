@@ -161,10 +161,15 @@ const sendNexTechNoticeSchema = z.object({
   message: z.string().trim().min(5).max(1800),
   additionalInfo: z.string().trim().max(900).optional().or(z.literal("")),
   buttonLabel: z.string().trim().max(80).optional().or(z.literal("")),
-  buttonUrl: z.string().trim().url().max(2048).optional().or(z.literal(""))
+  buttonUrl: z.string().trim().url().max(2048).optional().or(z.literal("")),
+  recipientMode: z.enum(["global", "person"]).default("global"),
+  recipientUserId: z.string().trim().regex(/^\d{5,32}$/).optional().or(z.literal(""))
 }).refine((input) => !input.buttonLabel || input.buttonUrl, {
   message: "Informe a URL do botão.",
   path: ["buttonUrl"]
+}).refine((input) => input.recipientMode !== "person" || input.recipientUserId, {
+  message: "Informe o ID do destinatário no modo pessoa.",
+  path: ["recipientUserId"]
 });
 
 const updateBotSchema = z.object({
@@ -1256,8 +1261,9 @@ devRouter.post("/nextech-notices/send", async (req, res, next) => {
       createdBy: auth.user.discordId,
       createdByName: auth.user.globalName || auth.user.username
     });
-    await writeDevBotAudit(auth, "global", null, "nextech_notice.send", `Aviso NexTech enviado para ${notice.deliveredCount}/${notice.recipientCount} responsáveis.`, {
+    await writeDevBotAudit(auth, "global", null, "nextech_notice.send", `Aviso NexTech enviado no modo ${notice.recipientMode === "person" ? "pessoa" : "global"} para ${notice.deliveredCount}/${notice.recipientCount} destinatários.`, {
       failedCount: notice.failedCount,
+      recipientMode: notice.recipientMode,
       title: notice.title
     });
 

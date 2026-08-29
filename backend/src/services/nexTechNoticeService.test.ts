@@ -4,7 +4,8 @@ import {
   buildNexTechNoticePayloadForTest,
   clearNexTechStartupNoticePending,
   consumeNexTechStartupNoticePending,
-  markNexTechStartupNoticePending
+  markNexTechStartupNoticePending,
+  resolveNexTechNoticeRecipients
 } from "./nexTechNoticeService";
 
 describe("nexTechNoticeService", () => {
@@ -17,6 +18,8 @@ describe("nexTechNoticeService", () => {
       createdByName: "Dev",
       highlight: "Comunicado oficial",
       message: "Mensagem enviada aos responsaveis.",
+      recipientMode: "global",
+      recipientUserId: null,
       title: "SEJA UM CRIADOR NO HYPE!"
     }) as {
       attachments: Array<{ filename: string; id: string }>;
@@ -52,5 +55,16 @@ describe("nexTechNoticeService", () => {
     assert.equal(consumeNexTechStartupNoticePending(botId), true);
     assert.equal(consumeNexTechStartupNoticePending(botId), false);
     clearNexTechStartupNoticePending(botId);
+  });
+
+  it("resolve destinatario unico quando o modo e pessoa", async () => {
+    const recipients = await resolveNexTechNoticeRecipients({
+      recipientMode: "person",
+      recipientUserId: "1426287249020158018"
+    });
+
+    assert.equal(recipients.length, 1);
+    assert.equal(recipients[0]?.userId, "1426287249020158018");
+    assert.equal(recipients[0]?.botCount, 1);
   });
 });
