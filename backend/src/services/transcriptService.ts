@@ -389,6 +389,8 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
   const duration = formatDuration(transcript.createdAt, transcript.closedAt);
   const ticketId = transcript.ticketId ?? transcript._id;
   const participantStats = buildParticipantStats(transcript);
+  const brandName = theme.brandName ?? transcript.guildName ?? "NexTech";
+  const subject = transcript.openReason ?? transcript.closeReason ?? transcript.finalResult ?? "Sem assunto informado.";
   const summaryItems: Array<[string, string]> = [
     [theme.labels.openedAt, formatDate(transcript.createdAt)],
     [theme.labels.closedAt, transcript.closedAt ? formatDate(transcript.closedAt) : "-"],
@@ -397,7 +399,12 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
     [theme.labels.openedBy, formatUser(transcript.openedById)],
     [theme.labels.assumedBy, formatUser(transcript.responsibleUserId)],
     [theme.labels.category, transcript.categoryName ?? "-"],
-    [theme.labels.status, transcript.status],
+    [theme.labels.status, transcript.status]
+  ];
+  const technicalItems: Array<[string, string]> = [
+    ["Canal", transcript.channelName ? `#${transcript.channelName}` : "-"],
+    ["Anexos", String(transcript.attachments.length)],
+    ["Links", String(transcript.messages.reduce((total, message) => total + countLinks(message.content), 0))],
     [theme.labels.ticketId, ticketId],
     [theme.labels.transcriptId, transcript._id],
     ["Proteção", "Senha obrigatória"],
@@ -405,12 +412,10 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
     ["Expira em", temporaryPasswordExpiresAt ? formatDate(new Date(temporaryPasswordExpiresAt)) : transcript.expiresAt ? formatDate(transcript.expiresAt) : "-"]
   ];
   const messages = renderMessages(transcript, theme);
-  const attachmentCount = transcript.attachments.length;
-  const linkCount = transcript.messages.reduce((total, message) => total + countLinks(message.content), 0);
-  const closedFooter = theme.labels.footerText || "Atendimento encerrado e preservado pela Nevsec.";
+  const closedFooter = theme.labels.footerText || "Atendimento encerrado e preservado pela NexTech.";
   const logo = theme.logoUrl
-    ? `<img class="brand-logo" src="${escapeAttribute(theme.logoUrl)}" alt="${escapeAttribute(theme.brandName ?? "Logo")}" />`
-    : `<div class="brand-logo brand-logo-fallback">${escapeHtml((theme.brandName ?? "N").slice(0, 1).toUpperCase())}</div>`;
+    ? `<img class="brand-logo" src="${escapeAttribute(theme.logoUrl)}" alt="${escapeAttribute(brandName)}" />`
+    : `<div class="brand-logo brand-logo-fallback">${escapeHtml(brandName.slice(0, 1).toUpperCase())}</div>`;
   const densityClass = `density-${theme.density}`;
   const radiusClass = `radius-${theme.cardRadius}`;
   const styleClass = `style-${theme.style}`;
@@ -425,33 +430,33 @@ export function renderTranscriptHtml(transcript: MongoTranscript, passwordType: 
   <title>${escapeHtml(theme.labels.pageTitle)} - ${escapeHtml(ticketId)}</title>
   <style>
     :root{color-scheme:${colorScheme};--bg:${theme.backgroundColor};--bg2:${theme.secondaryBackgroundColor};--card:${theme.cardColor};--msg:${theme.messageColor};--line:${theme.borderColor};--text:${theme.textColor};--muted:${theme.mutedTextColor};--primary:${theme.primaryColor};--secondary:${theme.secondaryColor};--accent:${theme.accentColor};--button:${theme.buttonColor};--link:${theme.linkColor};--title:${theme.titleColor};--icon:${theme.iconColor};--status:${theme.statusColor};--hover:${theme.hoverColor};--search:${theme.searchColor};--radius:10px;--pad:16px}
-    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}a{color:var(--link)}button,input{font:inherit}
-    main{width:min(1180px,100%);margin:0 auto;padding:24px 16px 42px}.radius-square{--radius:2px}.radius-rounded{--radius:10px}.radius-pill{--radius:18px}.density-compact{--pad:12px}.density-spacious{--pad:22px}
-    header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border:1px solid var(--line);border-left:5px solid var(--primary);border-radius:var(--radius);background:rgba(255,255,255,.03);padding:var(--pad);box-shadow:0 16px 50px rgba(0,0,0,.24)}
-    .brand{display:flex;gap:13px;align-items:center}.brand-logo{width:48px;height:48px;border-radius:12px;object-fit:cover;border:1px solid var(--line);background:var(--card)}.brand-logo-fallback{display:grid;place-items:center;color:var(--bg);font-weight:900;background:var(--primary)}
-    .eyebrow{color:var(--primary);font-size:12px;font-weight:800;text-transform:uppercase}.brand h1{color:var(--title);font-size:30px;margin:2px 0 0}.brand p{margin:2px 0 0;color:var(--muted)}.top-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}a{color:var(--link)}button,input{font:inherit}
+    main{width:min(1100px,100%);margin:0 auto;padding:28px 16px 42px}.radius-square{--radius:3px}.radius-rounded{--radius:8px}.radius-pill{--radius:18px}.density-compact{--pad:12px}.density-spacious{--pad:22px}
+    header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border-bottom:1px solid var(--line);padding:0 0 18px}
+    .brand{display:flex;gap:13px;align-items:center}.brand-logo{width:54px;height:54px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--card)}.brand-logo-fallback{display:grid;place-items:center;color:var(--bg);font-weight:900;background:var(--primary)}
+    .eyebrow{color:var(--muted);font-size:13px;font-weight:700}.brand h1{color:var(--title);font-size:32px;margin:2px 0 0}.brand p{margin:2px 0 0;color:var(--muted)}.top-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
     .btn{border:1px solid color-mix(in srgb,var(--button) 55%,var(--line));border-radius:8px;background:var(--button);color:#08090d;padding:9px 11px;text-decoration:none;font-weight:800;cursor:pointer}.btn.secondary{background:transparent;color:var(--text)}
     section{margin-top:16px}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}h2{color:var(--title);font-size:18px;margin:0}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}.box,.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);padding:var(--pad)}.box span{display:block;color:var(--muted);font-size:12px}.box strong{display:block;margin-top:3px;word-break:break-word}.status{color:var(--status)}
-    .contact-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px}.contact-text{white-space:pre-wrap;margin:0}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.search{min-width:min(360px,100%);flex:1;border:1px solid var(--line);border-radius:8px;background:var(--search);color:var(--text);padding:10px 12px;outline:none}.search:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 20%,transparent)}
-    .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.chip{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--text);padding:7px 10px;cursor:pointer}.chip.active,.chip:hover{border-color:var(--primary);background:var(--hover)}
+    .contact-text{white-space:pre-wrap;margin:0}.ticket-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.search{min-width:min(360px,100%);flex:1;border:1px solid var(--line);border-radius:8px;background:var(--search);color:var(--text);padding:10px 12px;outline:none}.search:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 20%,transparent)}
+    .conversation-count{color:var(--muted);font-size:13px;margin:0 0 10px}.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.chip{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--text);padding:7px 10px;cursor:pointer}.chip.active,.chip:hover{border-color:var(--primary);background:var(--hover)}
     .date-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;margin:18px 0 10px}.date-divider:before,.date-divider:after{content:"";height:1px;flex:1;background:var(--line)}
     .message{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--msg);padding:var(--pad);margin-bottom:10px}.avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:var(--card);border:1px solid var(--line)}.avatar-fallback{display:grid;place-items:center;color:var(--primary);font-weight:900}.message-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.author{font-weight:800;color:var(--title)}time{color:var(--muted);font-size:12px}.content{white-space:pre-wrap;margin:7px 0 0}.flag{display:inline-flex;border:1px solid color-mix(in srgb,var(--primary) 55%,var(--line));color:var(--primary);border-radius:999px;padding:1px 7px;font-size:11px}
     .attachment,.embed{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.18);overflow:hidden}.attachment img{display:block;max-width:100%;height:auto}.attachment a,.embed{display:block;padding:10px}.embed{border-left:4px solid var(--secondary)}.embed pre{white-space:pre-wrap;margin:0;color:var(--muted);font-size:12px}
-    mark{background:color-mix(in srgb,var(--primary) 32%,transparent);color:var(--text);padding:0 2px}.footer{color:var(--muted);text-align:center}.hidden{display:none!important}@media(max-width:760px){main{padding:12px 10px 28px}header,.contact-grid{display:block}.top-actions{margin-top:12px;justify-content:flex-start}.brand h1{font-size:24px}.message{grid-template-columns:34px minmax(0,1fr)}.avatar{width:34px;height:34px}}
+    mark{background:color-mix(in srgb,var(--primary) 32%,transparent);color:var(--text);padding:0 2px}.footer{color:var(--muted);text-align:center}.hidden{display:none!important}@media(max-width:760px){main{padding:12px 10px 28px}header{display:block}.top-actions{margin-top:12px;justify-content:flex-start}.brand h1{font-size:24px}.message{grid-template-columns:34px minmax(0,1fr)}.avatar{width:34px;height:34px}}
     @media print{body{background:#fff;color:#000}.top-actions,.toolbar,.chips{display:none}.box,.panel,.message{break-inside:avoid}}
   </style>
 </head>
 <body>
 <main class="${densityClass} ${radiusClass} ${styleClass}">
   <header>
-    <div class="brand">${logo}<div><div class="eyebrow">${escapeHtml(theme.brandName ?? transcript.guildName ?? "Nevsec")}</div><h1>${escapeHtml(theme.labels.pageTitle)}</h1><p>${escapeHtml(transcript.guildName ?? transcript.guildId)}</p></div></div>
+    <div class="brand">${logo}<div><div class="eyebrow">${escapeHtml(theme.labels.pageTitle)}</div><h1>${escapeHtml(brandName)}</h1><p>${escapeHtml(transcript.guildName ?? transcript.guildId)}</p></div></div>
     <div class="top-actions"><button class="btn secondary" type="button" data-copy-link>Copiar link</button><button class="btn secondary" type="button" onclick="window.print()">Imprimir</button><a class="btn" href="#export" data-export>Exportar</a></div>
   </header>
   ${transcript.isPartial ? `<section class="panel"><h2>Transcript parcial</h2><p>Motivo: ${escapeHtml(transcript.partialReason ?? "indisponível")}</p></section>` : ""}
   <section><div class="section-head"><h2>${escapeHtml(theme.labels.summaryTitle)}</h2><strong class="status">${escapeHtml(transcript.status)}</strong></div><div class="summary">${summaryItems.map(([label, value]) => infoBox(label, value)).join("")}</div></section>
-  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.contactTitle)}</h2></div><div class="contact-grid"><p class="contact-text">${escapeHtml(transcript.openReason ?? transcript.closeReason ?? transcript.finalResult ?? "Sem assunto informado.")}</p><div>${infoBox("Canal", transcript.channelName ? `#${transcript.channelName}` : "-")}${infoBox("Anexos", String(attachmentCount))}${infoBox("Links", String(linkCount))}</div></div></section>
-  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.conversationTitle)}</h2><div class="toolbar"><input class="search" data-search placeholder="${escapeAttribute(theme.labels.searchPlaceholder)}" /><button class="btn secondary" type="button" data-filter="media">Mídia</button><button class="btn secondary" type="button" data-filter="links">Link</button><button class="btn secondary" type="button" onclick="window.print()">Imprimir</button></div></div><div class="chips"><button class="chip active" data-participant="all">Todos ${transcript.messages.length}</button>${participantStats.map((participant) => `<button class="chip" data-participant="${escapeAttribute(participant.id)}">${escapeHtml(participant.name)} ${participant.count}</button>`).join("")}</div><div data-messages>${messages || "<p>Nenhuma mensagem registrada.</p>"}</div></section>
-  <section class="footer" id="export"><p>${escapeHtml(theme.labels.endOfConversation)}</p><p>${escapeHtml(closedFooter)}${theme.showNevsecBranding ? " Tecnologia Nevsec." : ""}</p></section>
+  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.contactTitle)}</h2></div><p class="contact-text">${escapeHtml(subject)}</p><div class="ticket-meta">${technicalItems.map(([label, value]) => infoBox(label, value)).join("")}</div></section>
+  <section class="panel"><div class="section-head"><h2>${escapeHtml(theme.labels.conversationTitle)}</h2><div class="toolbar"><input class="search" data-search placeholder="${escapeAttribute(theme.labels.searchPlaceholder)}" /><button class="btn secondary" type="button" data-filter="media">Mídia</button><button class="btn secondary" type="button" data-filter="links">Link</button><button class="btn secondary" type="button" onclick="window.print()">Imprimir</button></div></div><p class="conversation-count">${transcript.messages.length} mensagens</p><div class="chips"><button class="chip active" data-participant="all">Todos ${transcript.messages.length}</button>${participantStats.map((participant) => `<button class="chip" data-participant="${escapeAttribute(participant.id)}">${escapeHtml(participant.name)} ${participant.count}</button>`).join("")}</div><div data-messages>${messages || "<p>Nenhuma mensagem registrada.</p>"}</div></section>
+  <section class="footer" id="export"><p>${escapeHtml(theme.labels.endOfConversation)}</p><p>${escapeHtml(closedFooter)}${theme.showNevsecBranding ? " Tecnologia NexTech." : ""}</p></section>
 </main>
 <script>
 (() => {
@@ -507,7 +512,7 @@ function renderMessages(transcript: MongoTranscript, theme: TranscriptThemeDto) 
 
 const DEFAULT_TRANSCRIPT_THEME: TranscriptThemeDto = {
   logoUrl: null,
-  brandName: "Nevsec",
+  brandName: "NexTech",
   primaryColor: "#f5c542",
   secondaryColor: "#38bdf8",
   accentColor: "#f43f5e",
@@ -548,7 +553,7 @@ const DEFAULT_TRANSCRIPT_THEME: TranscriptThemeDto = {
     ticketId: "ID do ticket",
     transcriptId: "ID do transcript",
     endOfConversation: "Fim da conversa",
-    footerText: "Atendimento encerrado e preservado pela Nevsec."
+    footerText: "Atendimento encerrado e preservado pela NexTech."
   }
 };
 

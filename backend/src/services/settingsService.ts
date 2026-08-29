@@ -512,7 +512,7 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
   showAnonymousAuthorToRoleIds: [],
   transcriptTheme: {
     logoUrl: null,
-    brandName: "Nevsec",
+    brandName: "NexTech",
     primaryColor: "#f5c542",
     secondaryColor: "#38bdf8",
     accentColor: "#f43f5e",
@@ -553,7 +553,7 @@ const DEFAULT_GLOBAL_LOG_CONFIG: GlobalLogConfigDto = {
       ticketId: "ID do ticket",
       transcriptId: "ID do transcript",
       endOfConversation: "Fim da conversa",
-      footerText: "Atendimento encerrado e preservado pela Nevsec."
+      footerText: "Atendimento encerrado e preservado pela NexTech."
     }
   }
 };
