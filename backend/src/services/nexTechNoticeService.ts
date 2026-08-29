@@ -7,6 +7,7 @@ import { getMongoCollections, type MongoNexTechNotice, type MongoNexTechNoticeDe
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const BANNER_FILENAME = "nextech-avisos-banner.png";
 const BANNER_PATH = join(process.cwd(), "assets", "avisos-nextech-banner.png");
+const NEXTECH_RUNTIME_NOTICE_CHANNEL_ID = "1529352275401900073";
 const startupNoticePending = new Set<string>();
 
 export type NexTechNoticeRecipient = {
@@ -175,8 +176,38 @@ export async function sendNexTechStartupNotice(botId: string) {
     return null;
   }
 
-  const recipients = buildStartupRecipients(bot);
-  if (!recipients.length) {
+  const token = env.DISCORD_BOT_TOKEN.trim();
+  if (!token) {
+    return null;
+  }
+
+  const banner = await readFile(BANNER_PATH).catch(() => null);
+  if (!banner) {
+    return null;
+  }
+
+  return await sendNexTechRuntimeChannelNotice(token, {
+    additionalInfo: `Bot ID: ${botId}`,
+    highlight: "Aviso automático de inicialização",
+    kind: "startup",
+    message: `O bot **${bot.name}** voltou a ficar online.\nSe ele estava em manutenção, o aviso continua sendo enviado normalmente.`,
+    title: `${bot.name} voltou online`
+  }, banner);
+}
+
+export async function sendNexTechStartupErrorNotice(botId: string, error: string) {
+  const { devBots } = await getMongoCollections();
+  const bot = await devBots.findOne(
+    { _id: botId },
+    {
+      projection: {
+        name: 1,
+        ownerName: 1
+      }
+    }
+  );
+
+  if (!bot) {
     return null;
   }
 
@@ -190,27 +221,48 @@ export async function sendNexTechStartupNotice(botId: string) {
     return null;
   }
 
-  const input: SendNexTechNoticeInput = {
-    createdBy: botId,
-    createdByName: bot.ownerName ?? bot.name,
-    highlight: "Aviso automático de inicialização",
-    message: `O bot **${bot.name}** voltou a ficar online.\nSe ele estava em manutenção, o aviso continua sendo enviado normalmente.`,
-    recipientMode: "global",
-    title: `${bot.name} voltou online`
-  };
+  return await sendNexTechRuntimeChannelNotice(token, {
+    additionalInfo: `Bot ID: ${botId}`,
+    highlight: "Erro na inicialização",
+    kind: "startup_error",
+    message: `O bot **${bot.name}** não conseguiu iniciar.\nErro: ${error.trim()}`,
+    title: `${bot.name} falhou ao iniciar`
+  }, banner);
+}
 
-  const deliveries: MongoNexTechNoticeDelivery[] = [];
-  for (const recipient of recipients) {
-    deliveries.push(await sendNoticeToUser(token, recipient, input, banner));
+export async function sendNexTechShutdownNotice(botId: string, detail: string) {
+  const { devBots } = await getMongoCollections();
+  const bot = await devBots.findOne(
+    { _id: botId },
+    {
+      projection: {
+        name: 1,
+        ownerName: 1
+      }
+    }
+  );
+
+  if (!bot) {
+    return null;
   }
 
-  return {
-    botId,
-    botName: bot.name,
-    deliveredCount: deliveries.filter((delivery) => delivery.status === "sent").length,
-    deliveries,
-    recipientCount: deliveries.length
-  };
+  const token = env.DISCORD_BOT_TOKEN.trim();
+  if (!token) {
+    return null;
+  }
+
+  const banner = await readFile(BANNER_PATH).catch(() => null);
+  if (!banner) {
+    return null;
+  }
+
+  return await sendNexTechRuntimeChannelNotice(token, {
+    additionalInfo: `Bot ID: ${botId}`,
+    highlight: "Bot desligado sozinho",
+    kind: "shutdown",
+    message: `O bot **${bot.name}** encerrou inesperadamente.\nErro: ${detail.trim()}`,
+    title: `${bot.name} caiu sozinho`
+  }, banner);
 }
 
 async function sendNoticeToUser(token: string, recipient: NexTechNoticeRecipient, input: SendNexTechNoticeInput, banner: Buffer): Promise<MongoNexTechNoticeDelivery> {
@@ -250,20 +302,33 @@ async function sendNoticeToUser(token: string, recipient: NexTechNoticeRecipient
   }
 }
 
-function buildStartupRecipients(bot: Pick<{ billingRecipientUserIds?: string[]; name: string; ownerId: string; ownerName: string }, "billingRecipientUserIds" | "name" | "ownerId" | "ownerName">) {
-  const recipientMap = new Map<string, NexTechNoticeRecipient>();
-  const userIds = sanitizeDiscordIds([bot.ownerId, ...(bot.billingRecipientUserIds ?? [])]);
+async function sendNexTechRuntimeChannelNotice(
+  token: string,
+  input: { additionalInfo?: string | null; highlight?: string | null; kind: "shutdown" | "startup" | "startup_error"; message: string; title: string },
+  banner: Buffer
+) {
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify(buildNoticePayload({
+    additionalInfo: normalizeOptionalText(input.additionalInfo) ?? undefined,
+    buttonLabel: null,
+    buttonUrl: null,
+    createdBy: NEXTECH_RUNTIME_NOTICE_CHANNEL_ID,
+    createdByName: "NexTech Runtime",
+    highlight: input.highlight ?? null,
+    message: input.message,
+    title: input.title
+  })));
+  form.append("files[0]", new Blob([new Uint8Array(banner)], { type: "image/png" }), BANNER_FILENAME);
+  const message = await discordRequest<{ id: string }>(token, `/channels/${NEXTECH_RUNTIME_NOTICE_CHANNEL_ID}/messages`, {
+    body: form,
+    method: "POST"
+  });
 
-  for (const userId of userIds) {
-    recipientMap.set(userId, {
-      botCount: 1,
-      botNames: [bot.name],
-      userId,
-      userName: userId === bot.ownerId ? bot.ownerName : null
-    });
-  }
-
-  return [...recipientMap.values()];
+  return {
+    channelId: NEXTECH_RUNTIME_NOTICE_CHANNEL_ID,
+    kind: input.kind,
+    messageId: message.id
+  };
 }
 
 export async function resolveNexTechNoticeRecipients(input: Pick<SendNexTechNoticeInput, "recipientMode" | "recipientUserId">) {
@@ -289,7 +354,12 @@ export function buildNexTechNoticePayloadForTest(input: SendNexTechNoticeInput) 
   return buildNoticePayload(input);
 }
 
-function buildNoticePayload(input: SendNexTechNoticeInput) {
+type NexTechNoticePayloadInput = Pick<
+  SendNexTechNoticeInput,
+  "additionalInfo" | "buttonLabel" | "buttonUrl" | "createdBy" | "createdByName" | "highlight" | "message" | "title"
+>;
+
+function buildNoticePayload(input: NexTechNoticePayloadInput) {
   const components: Array<Record<string, unknown>> = [
     {
       type: 10,

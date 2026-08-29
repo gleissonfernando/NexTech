@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveDevBotStartBatchPlan, resolveDevBotStartRetryDelayMs } from "./devBotRuntimeService";
+import { resolveDevBotStartBatchPlan, resolveDevBotStartRetryDelayMs, shouldEmitDevBotShutdownSignal } from "./devBotRuntimeService";
 
 test("startup batch plan preserva limites configurados para evitar burst no Discord", () => {
   const plan = resolveDevBotStartBatchPlan(12, 1, 45_000, true);
@@ -22,4 +22,10 @@ test("retry de start usa backoff deterministico por bot", () => {
 
   assert.ok(second > first);
   assert.equal(first % 1_000, 234);
+});
+
+test("shutdown por socket só é emitido quando existe runtime filho", () => {
+  assert.equal(shouldEmitDevBotShutdownSignal(false, true), false);
+  assert.equal(shouldEmitDevBotShutdownSignal(true, false), false);
+  assert.equal(shouldEmitDevBotShutdownSignal(true, true), true);
 });

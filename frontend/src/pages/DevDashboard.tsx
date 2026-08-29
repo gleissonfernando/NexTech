@@ -822,6 +822,8 @@ function DevMonthlyContractsPanel() {
   const [dashboard, setDashboard] = useState<MonthlyBillingDashboard | null>(null);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [bulkConfirm, setBulkConfirm] = useState<MonthlyBulkConfirmState | null>(null);
+  const [statusConfirm, setStatusConfirm] = useState<MonthlyStatusConfirmState | null>(null);
   const [customerFormBot, setCustomerFormBot] = useState<MonthlyBillingBot | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<MonthlyBillingCustomer | null>(null);
   const [adjustCustomer, setAdjustCustomer] = useState<MonthlyBillingCustomer | null>(null);
@@ -831,7 +833,11 @@ function DevMonthlyContractsPanel() {
   const [history, setHistory] = useState<MonthlyBillingHistory | null>(null);
   const [settingsType, setSettingsType] = useState<"hosting" | "monthly">("hosting");
   const [preview, setPreview] = useState<{ message: string; pixKey: string | null; pixQrCodeUrl: string | null } | null>(null);
-  const [bulkFilters, setBulkFilters] = useState({ billingType: "hosting", period: "all", status: "overdue" });
+  const [bulkFilters, setBulkFilters] = useState<{ billingType: "hosting" | "monthly" | "all"; period: string; status: string }>({
+    billingType: "hosting",
+    period: "all",
+    status: "overdue"
+  });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -906,7 +912,22 @@ function DevMonthlyContractsPanel() {
     const total = scoped.reduce((sum, customer) => sum + customer.totalDueInCents, 0);
     const bots = [...new Set(scoped.map((customer) => customer.botName))].join(", ");
     const failed = scoped.filter((customer) => customer.lastChargeStatus === "failed").length;
-    if (!window.confirm(`Confirmar cobrança em massa?\n\nClientes: ${scoped.length}\nMensagens: ${ids.length}\nTotal em débito: ${formatCurrency(total)}\nBots: ${bots || "-"}\nClientes com última DM falha: ${failed}`)) return;
+    setBulkConfirm({
+      action: () => void runBulkSend(ids),
+      body: [
+        { label: "Clientes", value: String(scoped.length) },
+        { label: "Mensagens", value: String(ids.length) },
+        { label: "Total em débito", value: formatCurrency(total) },
+        { label: "Bots", value: bots || "-" },
+        { label: "Clientes com última DM falha", value: String(failed) }
+      ],
+      description: "Confirmar cobrança em massa?",
+      title: "Cobrança em massa"
+    });
+  }
+
+  async function runBulkSend(ids: string[]) {
+    setBulkConfirm(null);
     setSendingId("bulk");
     try {
       const result = await sendMonthlyBillingBulkCharges(ids);
@@ -923,10 +944,26 @@ function DevMonthlyContractsPanel() {
     const allCustomers = dashboard?.bots.flatMap((bot) => bot.customers) ?? [];
     const matches = allCustomers.filter((customer) => monthlyBulkFilterMatches(customer, bulkFilters));
     const typeLabel = bulkFilters.billingType === "hosting" ? "Hospedagem" : bulkFilters.billingType === "monthly" ? "Mensalidade" : "Todos";
-    if (!window.confirm(`Confirmar envio em massa?\n\nClientes encontrados: ${matches.length}\nTipo: ${typeLabel}\nStatus: ${bulkFilters.status}\nPeríodo: ${bulkFilters.period}\n\nO backend validará pagamento, vencimento, tipo e Discord antes de enviar.`)) return;
+    const filtersSnapshot = { ...bulkFilters };
+    setBulkConfirm({
+      action: () => void runBulkSendByFilter(filtersSnapshot),
+      body: [
+        { label: "Clientes encontrados", value: String(matches.length) },
+        { label: "Tipo", value: typeLabel },
+        { label: "Status", value: bulkFilters.status },
+        { label: "Período", value: bulkFilters.period },
+        { label: "Validação", value: "Pagamento, vencimento, tipo e Discord" }
+      ],
+      description: "Confirmar envio em massa?",
+      title: "Cobrança filtrada"
+    });
+  }
+
+  async function runBulkSendByFilter(filters: { billingType: "hosting" | "monthly" | "all"; period: string; status: string }) {
+    setBulkConfirm(null);
     setSendingId("bulk-filter");
     try {
-      const result = await sendMonthlyBillingBulkChargesByFilter(bulkFilters as { billingType: "hosting" | "monthly" | "all"; period: string; status: string });
+      const result = await sendMonthlyBillingBulkChargesByFilter(filters);
       setDashboard(result.dashboard);
       setSelectedCustomerIds([]);
     } catch (sendError) {
@@ -1038,7 +1075,16 @@ function DevMonthlyContractsPanel() {
 
   async function handleStatus(customer: MonthlyBillingCustomer, action: "suspend" | "reactivate" | "cancel" | "delete") {
     const label = { cancel: "cancelar assinatura", delete: "remover cadastro", reactivate: "reativar serviço", suspend: "suspender serviço" }[action];
-    if (!window.confirm(`Confirmar ação: ${label} para ${customer.customerName}?`)) return;
+    setStatusConfirm({
+      action: () => void runStatusChange(customer, action, label),
+      customerName: customer.customerName,
+      label,
+      title: "Confirmar ação"
+    });
+  }
+
+  async function runStatusChange(customer: MonthlyBillingCustomer, action: "suspend" | "reactivate" | "cancel" | "delete", label: string) {
+    setStatusConfirm(null);
     setSaving(true);
     try {
       setDashboard(await setMonthlyBillingCustomerStatus(customer.id, { action, reason: label }));
@@ -1143,19 +1189,19 @@ function DevMonthlyContractsPanel() {
                   <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
                     <p className="text-sm font-semibold text-white">Enviar para todos por filtro</p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, billingType: event.target.value }))} value={bulkFilters.billingType}>
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, billingType: event.target.value as "hosting" | "monthly" | "all" }))} value={bulkFilters.billingType}>
                         <option value="hosting">Hospedagem</option>
                         <option value="monthly">Mensalidade</option>
                         <option value="all">Todos</option>
                       </select>
-                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, status: event.target.value }))} value={bulkFilters.status}>
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, status: event.target.value as string }))} value={bulkFilters.status}>
                         <option value="overdue">Vencidos</option>
                         <option value="due_today">Vencendo hoje</option>
                         <option value="due_soon">Vencendo em breve</option>
                         <option value="pending">Pendentes</option>
                         <option value="all">Todos</option>
                       </select>
-                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, period: event.target.value }))} value={bulkFilters.period}>
+                      <select className="h-10 rounded-lg border border-zinc-800 bg-black/35 px-3 text-sm text-white" onChange={(event) => setBulkFilters((current) => ({ ...current, period: event.target.value as string }))} value={bulkFilters.period}>
                         <option value="all">Todos períodos</option>
                         <option value="today">Hoje</option>
                         <option value="overdue_1">1 dia vencido</option>
@@ -1297,6 +1343,8 @@ function DevMonthlyContractsPanel() {
       {chargeCustomer ? (
         <MonthlyChargeConfirm customer={chargeCustomer} onClose={() => setChargeCustomer(null)} onConfirm={() => void handleSendCharge(chargeCustomer)} sending={sendingId === chargeCustomer.id} />
       ) : null}
+      {bulkConfirm ? <MonthlyBulkConfirmModal confirm={bulkConfirm} loading={sendingId === "bulk" || sendingId === "bulk-filter"} onClose={() => setBulkConfirm(null)} onConfirm={() => void bulkConfirm.action()} /> : null}
+      {statusConfirm ? <MonthlyStatusConfirmModal confirm={statusConfirm} loading={saving} onClose={() => setStatusConfirm(null)} onConfirm={() => void statusConfirm.action()} /> : null}
       {historyCustomer ? <MonthlyHistoryModal customer={historyCustomer} history={history} onClose={() => { setHistoryCustomer(null); setHistory(null); }} /> : null}
     </section>
   );
@@ -1310,6 +1358,84 @@ function MonthlyMetric({ label, value }: { label: string; value: number | string
         <p className="mt-2 text-2xl font-bold text-white">{value}</p>
       </CardContent>
     </Card>
+  );
+}
+
+type MonthlyBulkConfirmState = {
+  action: () => void;
+  body: Array<{ label: string; value: string }>;
+  description: string;
+  title: string;
+};
+
+type MonthlyStatusConfirmState = {
+  action: () => void;
+  customerName: string;
+  label: string;
+  title: string;
+};
+
+function MonthlyBulkConfirmModal({
+  confirm,
+  loading,
+  onClose,
+  onConfirm
+}: {
+  confirm: MonthlyBulkConfirmState;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <MonthlyModal onClose={onClose} title={confirm.title}>
+      <div className="grid gap-4">
+        <p className="text-sm font-semibold text-zinc-200">{confirm.description}</p>
+        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-black/35 p-3 text-sm">
+          {confirm.body.map((row) => (
+            <div className="flex items-center justify-between gap-4" key={row.label}>
+              <span className="text-zinc-400">{row.label}</span>
+              <span className="font-semibold text-white">{row.value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={loading} onClick={onConfirm} type="button">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+            Confirmar
+          </Button>
+        </div>
+      </div>
+    </MonthlyModal>
+  );
+}
+
+function MonthlyStatusConfirmModal({
+  confirm,
+  loading,
+  onClose,
+  onConfirm
+}: {
+  confirm: MonthlyStatusConfirmState;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <MonthlyModal onClose={onClose} title={confirm.title}>
+      <div className="grid gap-4">
+        <p className="text-sm font-semibold text-zinc-200">
+          Confirmar ação: <span className="text-white">{confirm.label}</span> para <span className="text-white">{confirm.customerName}</span>?
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} type="button" variant="outline">Cancelar</Button>
+          <Button disabled={loading} onClick={onConfirm} type="button">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+            Confirmar
+          </Button>
+        </div>
+      </div>
+    </MonthlyModal>
   );
 }
 

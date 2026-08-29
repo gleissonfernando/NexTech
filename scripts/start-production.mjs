@@ -285,7 +285,7 @@ function publishAutoUpdateLogOnce() {
   }
 
   autoUpdateLoggerStarted = true;
-  runAutoUpdateLogger().catch((error) => {
+  runAutoUpdateLogger({ mode: process.env.UPDATE_PANEL_MODE || "realtime-summary", send: true }).catch((error) => {
     console.warn("[start] auto update logger ignorado:", error instanceof Error ? error.message : error);
   });
 }

@@ -133,23 +133,54 @@ export async function runAutoUpdateLogger(options = {}) {
     return { release, skipped: true };
   }
 
+  const publicationState = buildAutoUpdatePublicationState(channelId);
+  writeReleaseDraft(release, sendPayload);
+  upsertHistoryRelease(history, {
+    ...release,
+    discordChannelId: publicationState.pending.discordChannelId,
+    discordPublishStatus: publicationState.pending.discordPublishStatus,
+    discordPublishStartedAt: publicationState.pending.discordPublishStartedAt,
+    discordSkippedReason: null
+  });
+  writeHistory(history);
+  await persistChangelog(changelog, publicationState.pending);
+
   const message = await sendDiscordMessage(token, channelId, sendPayload);
+  const discordSentAt = new Date().toISOString();
   upsertHistoryRelease(history, {
     ...release,
     discordChannelId: channelId,
     discordMessageId: message?.id ?? null,
-    discordSentAt: new Date().toISOString(),
+    discordPublishStatus: publicationState.sent.discordPublishStatus,
+    discordSentAt,
     discordSkippedReason: null
   });
   writeHistory(history);
   await persistChangelog(changelog, {
     discordChannelId: channelId,
     discordMessageId: message?.id ?? null,
-    discordSentAt: new Date().toISOString(),
+    discordPublishStatus: publicationState.sent.discordPublishStatus,
+    discordSentAt,
     publishSkippedReason: null
   });
   console.log(`[auto-update] changelog ${version} enviado para o canal ${channelId}.`);
   return { release, skipped: false };
+}
+
+export function buildAutoUpdatePublicationState(channelId, startedAt = new Date().toISOString()) {
+  return {
+    pending: {
+      discordChannelId: channelId,
+      discordPublishStartedAt: startedAt,
+      discordPublishStatus: "pending",
+      publishSkippedReason: null
+    },
+    sent: {
+      discordChannelId: channelId,
+      discordPublishStatus: "sent",
+      publishSkippedReason: null
+    }
+  };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -58,6 +58,7 @@ function isMaintenanceBypass(req: Request) {
     || path.startsWith("/api/health")
     || path.startsWith("/auth")
     || path.startsWith("/api/auth")
+    || path.startsWith("/api/system-updates")
     || path.startsWith("/api/persistent-images")
     || path.startsWith("/dev")
     || path.startsWith("/api/dev")
