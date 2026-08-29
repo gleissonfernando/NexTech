@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { MongoTranscript } from "../database/mongo";
-import { renderTranscriptHtml } from "./transcriptService";
+import { generateTemporaryPassword, renderTranscriptHtml } from "./transcriptService";
 
 describe("renderTranscriptHtml", () => {
   it("renderiza transcript personalizável com busca, filtros, participantes e conteúdo escapado", () => {
@@ -67,6 +67,12 @@ describe("renderTranscriptHtml", () => {
     assert.match(html, /anexo\.png/);
     assert.match(html, /Embed seguro/);
     assert.match(html, /Tecnologia Nevsec/);
+  });
+});
+
+describe("generateTemporaryPassword", () => {
+  it("gera uma senha numérica de 4 dígitos", () => {
+    assert.match(generateTemporaryPassword(), /^\d{4}$/);
   });
 });
 

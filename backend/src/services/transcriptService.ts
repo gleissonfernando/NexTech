@@ -1,4 +1,4 @@
-import { createHash, pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { APP_BASE_URL, TRANSCRIPT_BASE_URL, buildTranscriptUrl } from "../config/appUrl";
 import { env } from "../config/env";
 import { getMongoCollections, type MongoTicket, type MongoTranscript, type MongoTranscriptAccessLog, type MongoTranscriptMessage } from "../database/mongo";
@@ -10,7 +10,6 @@ const HASH_KEY_LENGTH = 32;
 const HASH_DIGEST = "sha256";
 const TRANSCRIPT_TTL_DAYS = 365;
 const DEFAULT_TEMP_PASSWORD_TTL_HOURS = TRANSCRIPT_TTL_DAYS * 24;
-const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
 
 export type TranscriptInput = {
@@ -743,22 +742,18 @@ async function registerAccess(transcript: MongoTranscript, accessType: MongoTran
   emitRealtime("transcripts:access", { ...log, createdAt: log.createdAt.toISOString() });
 }
 
-function generateTemporaryPassword(length = 19) {
-  const raw = Array.from({ length }, () => {
-    const byte = randomBytes(1).at(0) ?? 0;
-    return TEMP_PASSWORD_CHARS[byte % TEMP_PASSWORD_CHARS.length] ?? "x";
-  }).join("");
-  return `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7, 11)}-${raw.slice(11, 15)}-${raw.slice(15)}`;
+export function generateTemporaryPassword() {
+  return randomInt(0, 10_000).toString().padStart(4, "0");
 }
 
 async function generateUniqueTemporaryPassword(collection: { findOne(query: Record<string, unknown>): Promise<unknown> }) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const password = generateTemporaryPassword();
     const fingerprint = passwordFingerprint(password);
-    const existing = await collection.findOne({ passwordFingerprint });
+    const existing = await collection.findOne({ passwordFingerprint: fingerprint });
     if (!existing) return password;
   }
-  return generateTemporaryPassword(24);
+  return generateTemporaryPassword();
 }
 
 function passwordFingerprint(password: string) {

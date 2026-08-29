@@ -80,16 +80,24 @@ test("categoria de ticket usa fallback quando a principal não existe", async ()
 test("buildTranscriptDmPayload gera painel Components V2 com transcript e senha", () => {
   const payload = buildTranscriptDmPayload({
     expiresLine: "29/08/2026",
+    guildName: "Core Network LTDA",
     password: "abc123",
-    transcriptUrl: "https://example.com/transcript"
+    transcriptUrl: "https://example.com/transcript",
+    username: "vilafps7"
   });
 
   assert.equal(payload.flags, MessageFlags.IsComponentsV2);
   assert.ok(Array.isArray(payload.components));
-  assert.deepEqual(collectText(payload), [
-    "## Seu atendimento foi finalizado com sucesso.\n\nVocê pode acessar o histórico completo da conversa utilizando o link abaixo.",
-    "**Transcript:** https://example.com/transcript\n**Senha:** ||abc123||\n**Validade:** 29/08/2026\n\nPor motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
-  ]);
+  const text = collectText(payload).join("\n");
+  assert.match(text, /## Ticket finalizado/);
+  assert.match(text, /Olá vilafps7, seu ticket foi finalizado no servidor Core Network LTDA\./);
+  assert.match(text, /\*\*Considerações finais:\*\*/);
+  assert.match(text, /Atendimento concluído!/);
+  assert.match(text, /\*\*Histórico da conversa:\*\*/);
+  assert.match(text, /\*\*Transcript:\*\* https:\/\/example\.com\/transcript/);
+  assert.match(text, /\*\*Senha:\*\* \|\|abc123\|\|/);
+  assert.match(text, /\*\*Validade:\*\* 29\/08\/2026/);
+  assert.match(text, /Acessar transcript/);
 });
 
 function collectText(value: unknown): string[] {

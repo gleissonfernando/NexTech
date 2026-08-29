@@ -2796,35 +2796,57 @@ async function sendTranscriptDm(guild: Guild, transcript: TranscriptCreateResult
   const url = resolveTranscriptUrl(transcript);
   const expiresAt = transcript.temporaryPasswordExpiresAt ?? transcript.transcript.expiresAt ?? null;
   const expiresLine = expiresAt ? `<t:${Math.floor(Date.parse(expiresAt) / 1000)}:D>` : "1 ano após a criação";
-  await user.send(buildTranscriptDmPayload({ expiresLine, password, transcriptUrl: url }));
+  await user.send(buildTranscriptDmPayload({
+    expiresLine,
+    guildName: guild.name,
+    password,
+    transcriptUrl: url,
+    username: user.username
+  }));
   return true;
 }
 
-export function buildTranscriptDmPayload(input: { expiresLine: string; password: string; transcriptUrl: string }) {
+export function buildTranscriptDmPayload(input: { expiresLine: string; guildName: string; password: string; transcriptUrl: string; username: string }) {
   return {
     ...componentsV2Payload({
-    accentColor: 0x5865f2,
-    components: [
-      {
-        type: 10,
-        content: [
-          "## Seu atendimento foi finalizado com sucesso.",
-          "",
-          "Você pode acessar o histórico completo da conversa utilizando o link abaixo."
-        ].join("\n")
-      },
-      { type: 14, divider: true, spacing: 1 },
-      {
-        type: 10,
-        content: [
-          `**Transcript:** ${input.transcriptUrl}`,
-          `**Senha:** ||${input.password}||`,
-          `**Validade:** ${input.expiresLine}`,
-          "",
-          "Por motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
-        ].join("\n")
-      }
-    ],
+      accentColor: 0x5865f2,
+      components: [
+        {
+          type: 10,
+          content: [
+            "## Ticket finalizado",
+            "",
+            `Olá ${input.username}, seu ticket foi finalizado no servidor ${input.guildName}.`
+          ].join("\n")
+        },
+        { type: 14, divider: true, spacing: 1 },
+        {
+          type: 10,
+          content: [
+            "**Considerações finais:**",
+            "",
+            "> Atendimento concluído! Agradecemos o seu contato e ficamos à disposição para qualquer outra necessidade."
+          ].join("\n")
+        },
+        { type: 14, divider: true, spacing: 1 },
+        {
+          type: 10,
+          content: [
+            "**Histórico da conversa:**",
+            "",
+            "Acesse o transcript no botão abaixo.",
+            "",
+            `**Transcript:** ${input.transcriptUrl}`,
+            `**Senha:** ||${input.password}||`,
+            `**Validade:** ${input.expiresLine}`,
+            "",
+            "Por motivos de segurança, compartilhe essa senha apenas com pessoas autorizadas."
+          ].join("\n")
+        },
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setLabel("Acessar transcript").setStyle(ButtonStyle.Link).setURL(input.transcriptUrl)
+        )
+      ],
       footer: { enabled: false }
     }),
     allowedMentions: { parse: [] }
