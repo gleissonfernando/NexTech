@@ -59,6 +59,10 @@ import {
   updateSystemEmojiConfig
 } from "../services/systemEmojiService";
 import {
+  getNexTechNoticeDashboard,
+  sendNexTechNotice
+} from "../services/nexTechNoticeService";
+import {
   canManageDevPermissions,
   deleteDevPermission,
   listDevPermissions,
@@ -147,7 +151,20 @@ const devModuleIdSchema = z.string().refine((moduleId) => (
 
 const createBotSchema = z.object({
   token: z.string().min(10),
-  mainGuildId: z.string().regex(/^\d{5,32}$/)
+  mainGuildId: z.string().regex(/^\d{5,32}$/),
+  ownerId: z.string().regex(/^\d{5,32}$/).optional().or(z.literal(""))
+});
+
+const sendNexTechNoticeSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  highlight: z.string().trim().max(180).optional().or(z.literal("")),
+  message: z.string().trim().min(5).max(1800),
+  additionalInfo: z.string().trim().max(900).optional().or(z.literal("")),
+  buttonLabel: z.string().trim().max(80).optional().or(z.literal("")),
+  buttonUrl: z.string().trim().url().max(2048).optional().or(z.literal(""))
+}).refine((input) => !input.buttonLabel || input.buttonUrl, {
+  message: "Informe a URL do botão.",
+  path: ["buttonUrl"]
 });
 
 const updateBotSchema = z.object({
@@ -1222,16 +1239,51 @@ devRouter.post("/bots/detect-guild", async (req, res, next) => {
   }
 });
 
+devRouter.get("/nextech-notices", async (_req, res, next) => {
+  try {
+    return res.json(await getNexTechNoticeDashboard());
+  } catch (error) {
+    return next(error);
+  }
+});
+
+devRouter.post("/nextech-notices/send", async (req, res, next) => {
+  try {
+    const input = sendNexTechNoticeSchema.parse(req.body);
+    const auth = res.locals.dashboardAuth as DashboardAuth;
+    const notice = await sendNexTechNotice({
+      ...input,
+      createdBy: auth.user.discordId,
+      createdByName: auth.user.globalName || auth.user.username
+    });
+    await writeDevBotAudit(auth, "global", null, "nextech_notice.send", `Aviso NexTech enviado para ${notice.deliveredCount}/${notice.recipientCount} responsáveis.`, {
+      failedCount: notice.failedCount,
+      title: notice.title
+    });
+
+    return res.status(201).json({
+      notice
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 devRouter.post("/bots/create", async (req, res, next) => {
   try {
     const input = createBotSchema.parse(req.body);
     const auth = res.locals.dashboardAuth as DashboardAuth;
+    const ownerId = input.ownerId?.trim() || auth.user.discordId;
+    const ownerName = ownerId === auth.user.discordId
+      ? auth.user.globalName || auth.user.username
+      : `Usuario ${ownerId}`;
 
     const createdBot = await createDevBot({
       token: input.token,
       mainGuildId: input.mainGuildId,
-      ownerName: auth.user.globalName || auth.user.username,
-      ownerId: auth.user.discordId,
+      ownerName,
+      ownerId,
+      billingRecipientUserIds: [ownerId],
       createdBy: auth.user.discordId,
       verifyOwnerUserId: auth.user.discordId
     });

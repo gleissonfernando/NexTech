@@ -105,6 +105,8 @@ import {
     type MessageControlUser,
     type NexTechInvite,
     type NexTechInviteDashboard,
+    type NexTechNoticeDashboard,
+    type NexTechNoticeRecord,
     type NexTechProduct,
     type NexTechSale,
     type NexTechSaleStatus,
@@ -148,6 +150,7 @@ import {
     type SaveNexTechSalePayload,
     type SaveNexTechSalesPlanPayload,
     type SaveNexTechSalesSettingsPayload,
+    type SendNexTechNoticePayload,
     type SaveOpenDutySettingsPayload,
     type SavePanelImageSettingsPayload,
     type SavePaymentSettingsPayload,
@@ -3602,6 +3605,18 @@ export async function createDevBot(payload: CreateDevBotPayload) {
     timeout: 16000
   });
   return data.bot;
+}
+
+export async function getNexTechNoticeDashboard() {
+  const { data } = await api.get<NexTechNoticeDashboard>("/dev/nextech-notices");
+  return data;
+}
+
+export async function sendNexTechNotice(payload: SendNexTechNoticePayload) {
+  const { data } = await api.post<{ notice: NexTechNoticeRecord }>("/dev/nextech-notices/send", payload, {
+    timeout: 60000
+  });
+  return data.notice;
 }
 
 export async function updateDevBotToken(botId: string, token: string) {

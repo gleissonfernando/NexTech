@@ -478,6 +478,7 @@ type CreateDevBotInput = {
   ownerName: string;
   ownerId: string;
   mainGuildId: string;
+  billingRecipientUserIds?: string[];
   enabledModules?: string[];
   createdBy: string;
   verifyOwnerUserId?: string | null;
@@ -925,6 +926,7 @@ export async function createDevBot(input: CreateDevBotInput) {
     maintenanceUpdatedByName: null,
     enabledModules: sanitizeModules(input.enabledModules ?? ["live"]),
     desiredOnline: true,
+    billingRecipientUserIds: sanitizeDiscordIds(input.billingRecipientUserIds ?? [input.ownerId]),
     createdBy: input.createdBy,
     createdAt: now,
     updatedAt: now
@@ -2752,6 +2754,10 @@ function sanitizeModules(modules: string[]) {
       .map((module) => LEGACY_MODULE_ALIASES[module] ?? module)
       .filter((module) => DEV_MODULE_IDS.has(module as (typeof DEV_MODULES)[number]["id"]) || isCustomFivemModuleId(module))
   )];
+}
+
+function sanitizeDiscordIds(ids: string[]) {
+  return [...new Set(ids.map((id) => id.trim()).filter((id) => /^\d{5,32}$/.test(id)))];
 }
 
 function devBotModuleReleaseIds(moduleId: string) {

@@ -5550,8 +5550,54 @@ export type PublicNexTechInvitePage = {
 };
 
 export type CreateDevBotPayload = {
+  ownerId?: string;
   token: string;
   mainGuildId: string;
+};
+
+export type NexTechNoticeRecipient = {
+  botCount: number;
+  botNames: string[];
+  userId: string;
+};
+
+export type NexTechNoticeDelivery = {
+  channelId: string | null;
+  error: string | null;
+  messageId: string | null;
+  status: "sent" | "failed";
+  userId: string;
+};
+
+export type NexTechNoticeRecord = {
+  id: string;
+  additionalInfo: string | null;
+  buttonLabel: string | null;
+  buttonUrl: string | null;
+  createdAt: string;
+  createdBy: string;
+  createdByName: string | null;
+  deliveredCount: number;
+  deliveries: NexTechNoticeDelivery[];
+  failedCount: number;
+  highlight: string | null;
+  message: string;
+  recipientCount: number;
+  title: string;
+};
+
+export type NexTechNoticeDashboard = {
+  audience: NexTechNoticeRecipient[];
+  history: NexTechNoticeRecord[];
+};
+
+export type SendNexTechNoticePayload = {
+  additionalInfo?: string | null;
+  buttonLabel?: string | null;
+  buttonUrl?: string | null;
+  highlight?: string | null;
+  message: string;
+  title: string;
 };
 
 export type PlanBillingCycle = "monthly" | "quarterly" | "semiannual" | "annual" | "lifetime" | "custom";

@@ -238,6 +238,7 @@ const fallbackModules: DevModuleDefinition[] = [
 ];
 
 const emptyForm: CreateDevBotPayload = {
+  ownerId: "",
   token: "",
   mainGuildId: ""
 };
@@ -1050,9 +1051,10 @@ export function DevPanel({
   useEffect(() => {
     setForm((current) => ({
       ...current,
+      ownerId: current.ownerId || user?.discordId || "",
       mainGuildId: current.mainGuildId || selectedGuildId || guilds[0]?.id || ""
     }));
-  }, [guilds, selectedGuildId]);
+  }, [guilds, selectedGuildId, user?.discordId]);
 
   useEffect(() => {
     if (!selectedBot) {
@@ -1110,6 +1112,7 @@ export function DevPanel({
   async function handleCreateBot() {
     const token = form.token.trim();
     const mainGuildId = form.mainGuildId.trim();
+    const ownerId = form.ownerId?.trim() || user?.discordId || "";
 
     if (token.length < 10) {
       setMessage("Informe um token de bot válido.");
@@ -1121,11 +1124,17 @@ export function DevPanel({
       return;
     }
 
+    if (!/^\d{5,32}$/.test(ownerId)) {
+      setMessage("Informe o ID do usuário responsável pelo bot.");
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
     try {
       const bot = await createDevBot({
+        ownerId,
         token,
         mainGuildId
       });
@@ -1133,6 +1142,7 @@ export function DevPanel({
       onBotCreated?.(bot);
       handleSelectBotId(bot.id);
       setForm({
+        ownerId: user?.discordId || "",
         token: "",
         mainGuildId: selectedGuildId || ""
       });
@@ -1479,6 +1489,13 @@ export function DevPanel({
               placeholder="123456789012345678"
               value={form.mainGuildId}
             />
+            <DevInput
+              inputMode="numeric"
+              label="ID do usuário responsável"
+              onChange={(value) => updateForm("ownerId", value.replace(/\D/g, ""))}
+              placeholder={user?.discordId || "123456789012345678"}
+              value={form.ownerId ?? ""}
+            />
 
             <div className="flex flex-col gap-3 rounded-lg border border-[#FFD500]/15 bg-white/[0.05] p-4 sm:flex-row sm:items-center">
               <Avatar
@@ -1490,14 +1507,14 @@ export function DevPanel({
                 <p className="truncate text-sm font-medium text-white">
                   {user?.globalName || user?.username || "Usuário Discord autenticado"}
                 </p>
-                <p className="truncate text-xs font-medium text-zinc-300">Responsável via Discord OAuth2</p>
+                <p className="truncate text-xs font-medium text-zinc-300">Responsável salvo: {form.ownerId || user?.discordId || "não informado"}</p>
               </div>
               <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
             </div>
 
             <Button
               className="h-12 w-full bg-[#E5C000] text-white shadow-[0_14px_34px_rgba(255,213,0,0.30)] hover:bg-[#FFD500]"
-              disabled={saving || form.token.trim().length < 10 || !/^\d{5,32}$/.test(form.mainGuildId)}
+              disabled={saving || form.token.trim().length < 10 || !/^\d{5,32}$/.test(form.mainGuildId) || !/^\d{5,32}$/.test(form.ownerId ?? "")}
               onClick={handleCreateBot}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}

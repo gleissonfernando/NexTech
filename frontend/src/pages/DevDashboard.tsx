@@ -69,12 +69,14 @@ import {
   getLogs,
   getMonthlyBillingCustomerHistory,
   getMonthlyBillingDashboard,
+  getNexTechNoticeDashboard,
   getSystemHealth,
   getSystemMetrics,
   previewMonthlyBillingMessage,
   publishNexTechInvitePanel,
   replaceNexTechInviteUrl,
   sendMaintenanceAlert,
+  sendNexTechNotice,
   saveDevAccessEntry,
   registerMonthlyBillingPayment,
   setMaintenanceMode,
@@ -93,7 +95,7 @@ import {
 } from "../lib/api";
 import { createDashboardSocket } from "../lib/socket";
 import { dashboardUrl } from "../lib/urls";
-import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, SaveNexTechInvitePayload, SystemBootComponentStatus, SystemBootSnapshot, SystemHealthResponse, SystemMemoryMonitorSnapshot, SystemMemoryPressureStatus, SystemMetricsResponse, SystemServerIssue } from "../types";
+import type { AuthResponse, BotResponseTimeStats, DashboardBot, DashboardMeResponse, DevAccessEntry, DevAccessRole, DevBot, DevBotStatus, DiscloudBotSnapshot, DiscloudHistoryEvent, DiscloudLogsResponse, DiscloudMonitoringResponse, FivemExpenseConfig, FivemModuleDefinition, LogEntry, MaintenanceState, MonthlyBillingBot, MonthlyBillingCustomer, MonthlyBillingDashboard, MonthlyBillingHistory, NexTechInvite, NexTechInviteDashboard, NexTechInviteStatus, NexTechNoticeDashboard, NexTechNoticeRecord, SaveNexTechInvitePayload, SendNexTechNoticePayload, SystemBootComponentStatus, SystemBootSnapshot, SystemHealthResponse, SystemMemoryMonitorSnapshot, SystemMemoryPressureStatus, SystemMetricsResponse, SystemServerIssue } from "../types";
 
 type DevDashboardProps = {
   auth: AuthResponse;
@@ -101,7 +103,7 @@ type DevDashboardProps = {
   onLogout: () => void;
 };
 
-type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "monitoring" | "discloud" | "fivem" | "expenses" | "police" | "logs" | "access" | "maintenance";
+type DevView = "bots" | "connected" | "bot-menu" | "cloning" | "nextech" | "sales" | "plans" | "monthly" | "avisos" | "monitoring" | "discloud" | "fivem" | "expenses" | "police" | "logs" | "access" | "maintenance";
 
 type FiveMModuleView = FivemModuleDefinition & {
   icon: LucideIcon;
@@ -127,7 +129,8 @@ const DEV_NAV_GROUPS: Array<{ items: DevNavItem[]; label: string }> = [
       { icon: Sparkles, id: "nextech", label: "Menu NexTech" },
       { icon: CreditCard, id: "sales", label: "Sistema de Vendas" },
       { icon: PackagePlus, id: "plans", label: "Planos" },
-      { icon: CalendarClock, id: "monthly", label: "Mensalidades" }
+      { icon: CalendarClock, id: "monthly", label: "Mensalidades" },
+      { icon: Bell, id: "avisos", label: "Avisos" }
     ]
   },
   {
@@ -357,6 +360,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
         {activeView === "plans" ? <DevPlansPanel /> : null}
         {activeView === "monthly" ? <DevMonthlyContractsPanel /> : null}
+        {activeView === "avisos" ? <DevNexTechNoticesPanel /> : null}
         {activeView === "monitoring" ? <RealtimeSystemMonitoringPanel /> : null}
         {activeView === "discloud" ? <DiscloudMonitoringPanel /> : null}
         {activeView === "logs" ? <TechnicalLogsPanel botId={selectedBotId} guildId={selectedGuildId} /> : null}
@@ -396,6 +400,7 @@ function devPathForView(view: DevView) {
   if (view === "sales") return "/dev/sistema-de-vendas";
   if (view === "plans") return "/dev/planos";
   if (view === "monthly") return "/dev/mensalidades";
+  if (view === "avisos") return "/dev/avisos";
   if (view === "monitoring") return "/dev/monitoramento";
   if (view === "discloud") return "/dev/discloud";
   if (view === "fivem") return "/dev/fivem";
@@ -551,6 +556,13 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
       label: "Planos NexTech",
       stats: "Assinaturas e limites",
       view: "plans" as DevView
+    },
+    {
+      description: "Envio de comunicados oficiais por DM para responsáveis cadastrados nos bots.",
+      icon: Bell,
+      label: "Avisos NexTech",
+      stats: "DM em Component V2",
+      view: "avisos" as DevView
     }
   ];
 
@@ -594,6 +606,171 @@ function DevNexTechHub({ onChangeView }: { onChangeView: (view: DevView) => void
           </Card>
         ))}
       </section>
+    </div>
+  );
+}
+
+const defaultNoticeForm: SendNexTechNoticePayload = {
+  additionalInfo: "No nosso Discord voce recebe novidades, suporte e comunicados importantes da plataforma NexTech.",
+  buttonLabel: "",
+  buttonUrl: "",
+  highlight: "Comunicado oficial da NexTech",
+  message: "Escreva aqui o aviso que sera enviado por DM para os responsaveis cadastrados nos bots.",
+  title: "SEJA UM CRIADOR NO HYPE!"
+};
+
+function DevNexTechNoticesPanel() {
+  const [dashboard, setDashboard] = useState<NexTechNoticeDashboard | null>(null);
+  const [form, setForm] = useState<SendNexTechNoticePayload>(defaultNoticeForm);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setMessage(null);
+    try {
+      setDashboard(await getNexTechNoticeDashboard());
+    } catch (error) {
+      setMessage(readDevDashboardError(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const notice = await sendNexTechNotice(form);
+      setDashboard((current) => current ? {
+        ...current,
+        history: [notice, ...current.history.filter((item) => item.id !== notice.id)].slice(0, 25)
+      } : current);
+      setMessage(`Aviso enviado por DM para ${notice.deliveredCount}/${notice.recipientCount} responsaveis.`);
+    } catch (error) {
+      setMessage(readDevDashboardError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const audienceCount = dashboard?.audience.length ?? 0;
+
+  return (
+    <div className="min-w-0 space-y-6">
+      <section className="rounded-2xl border border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.94),rgba(5,5,6,0.98))] p-5 shadow-[0_0_50px_rgba(255,213,0,0.10)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-black uppercase text-[#FFEA70]">
+              <Bell className="h-4 w-4" />
+              NexTech Avisos
+            </div>
+            <h2 className="mt-2 text-2xl font-black text-white">Painel de avisos por DM</h2>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-zinc-300">
+              Envia um comunicado Component V2 com o banner oficial somente na DM dos responsaveis cadastrados nos bots.
+            </p>
+          </div>
+          <div className="rounded-lg border border-[#FFD500]/25 bg-[#FFD500]/10 px-3 py-2 text-sm font-black text-[#FFEA70]">
+            {loading ? "Carregando..." : `${audienceCount} responsaveis`}
+          </div>
+        </div>
+      </section>
+
+      {message ? (
+        <Card className="border-[#FFD500]/20 bg-[#FFD500]/10">
+          <CardContent className="p-4 text-sm font-semibold text-[#FFF2A8]">{message}</CardContent>
+        </Card>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <Card className="border-[#FFD500]/18 bg-zinc-950/85">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Pencil className="h-5 w-5 text-[#FFEA70]" />Criar aviso</CardTitle>
+            <CardDescription>O envio usa o bot principal e nao publica no canal.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="grid gap-4" onSubmit={handleSubmit}>
+              <DevTextInput label="Titulo" onChange={(value) => setForm((current) => ({ ...current, title: value }))} required value={form.title} />
+              <DevTextInput label="Destaque" onChange={(value) => setForm((current) => ({ ...current, highlight: value }))} value={form.highlight ?? ""} />
+              <label className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">Mensagem</span>
+                <textarea className="min-h-36 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" required value={form.message} onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">Informacao adicional</span>
+                <textarea className="min-h-24 w-full rounded-lg border border-zinc-800 bg-black/40 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#FFEA70]/60" value={form.additionalInfo ?? ""} onChange={(event) => setForm((current) => ({ ...current, additionalInfo: event.target.value }))} />
+              </label>
+              <div className="grid gap-3 md:grid-cols-2">
+                <DevTextInput label="Botao" onChange={(value) => setForm((current) => ({ ...current, buttonLabel: value }))} placeholder="Opcional" value={form.buttonLabel ?? ""} />
+                <DevTextInput label="URL do botao" onChange={(value) => setForm((current) => ({ ...current, buttonUrl: value }))} placeholder="https://..." value={form.buttonUrl ?? ""} />
+              </div>
+              <Button disabled={saving || !form.title.trim() || !form.message.trim() || !audienceCount} type="submit">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                {saving ? "Enviando DMs..." : "Enviar aviso por DM"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-5">
+          <NoticePreview form={form} />
+          <Card className="border-zinc-800/80 bg-zinc-950/80">
+            <CardHeader>
+              <CardTitle>Ultimos avisos</CardTitle>
+              <CardDescription>Historico salvo dos envios por DM.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loading ? <p className="text-sm font-semibold text-zinc-400">Carregando avisos...</p> : null}
+              {dashboard?.history.map((notice) => <NoticeHistoryRow key={notice.id} notice={notice} />)}
+              {!loading && !dashboard?.history.length ? <p className="text-sm font-semibold text-zinc-500">Nenhum aviso enviado ainda.</p> : null}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoticePreview({ form }: { form: SendNexTechNoticePayload }) {
+  return (
+    <Card className="overflow-hidden border-[#FFD500]/20 bg-[#0a0a0b]">
+      <div className="h-36 bg-[url('/assets/avisos-nextech-banner.png')] bg-cover bg-center sm:h-44" />
+      <CardContent className="space-y-4 p-5">
+        <div className="border-b border-zinc-800 pb-3 text-center text-xl font-black text-white">{form.title || "Titulo do aviso"}</div>
+        {form.highlight ? <p className="text-sm font-black text-white">{form.highlight}</p> : null}
+        <div className="border-l-2 border-[#FFD500]/60 bg-white/[0.04] px-3 py-2 text-sm font-medium leading-6 text-zinc-300 whitespace-pre-wrap">{form.message}</div>
+        {form.additionalInfo ? <p className="text-sm font-medium leading-6 text-zinc-300 whitespace-pre-wrap">{form.additionalInfo}</p> : null}
+        {form.buttonLabel ? (
+          <div className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-black text-white">
+            {form.buttonLabel}
+          </div>
+        ) : null}
+        <div className="border-t border-zinc-800 pt-3 text-xs font-semibold text-zinc-500">NexTech • Sistema de Avisos</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NoticeHistoryRow({ notice }: { notice: NexTechNoticeRecord }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-white">{notice.title}</p>
+          <p className="text-xs font-semibold text-zinc-500">{formatDate(notice.createdAt)} por {notice.createdByName || notice.createdBy}</p>
+        </div>
+        <Badge className="border-[#FFEA70]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">
+          {notice.deliveredCount}/{notice.recipientCount} DMs
+        </Badge>
+      </div>
+      {notice.failedCount ? <p className="mt-2 text-xs font-semibold text-red-300">{notice.failedCount} falha(s) no envio.</p> : null}
     </div>
   );
 }

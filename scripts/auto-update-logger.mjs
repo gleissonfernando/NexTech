@@ -393,14 +393,14 @@ function looksLikeModuleLabel(value) {
 
 function buildDiscordPayload({ analysis, changelog, mode, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#5865F2");
-  const observation = readConfigValue("UPDATE_PANEL_OBS")
-    || "Estamos trabalhando em uma grande atualização que será lançada na próxima semana. Por esse motivo, alguns sistemas ainda não foram incluídos nesta atualização.";
+  const observation = readConfigValue("UPDATE_PANEL_OBS");
+  const mentionRoleId = updatePanelMentionRoleId();
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
   const date = new Date(release.publishedAt);
   const compact = mode === "realtime-summary";
   const sections = compact ? buildCompactChangelogSections(changelog) : buildFullChangelogSections(changelog, analysis, showTechnical);
   const technicalLine = showTechnical ? `\n-# Hash interno: ${release.commit.slice(0, 12)}` : "";
-  const contentComponents = buildUpdatePanelContentComponents({ changelog, date, observation, sections, technicalLine });
+  const contentComponents = buildUpdatePanelContentComponents({ changelog, date, mentionRoleId, observation, sections, technicalLine });
   const banner = updatePanelBanner();
   const components = [
     ...contentComponents,
@@ -408,7 +408,7 @@ function buildDiscordPayload({ analysis, changelog, mode, release }) {
   ];
 
   return {
-    allowed_mentions: { parse: [] },
+    allowed_mentions: { parse: [], roles: mentionRoleId ? [mentionRoleId] : [] },
     attachments: banner.file ? [{ description: "Banner da atualização NexTech", filename: banner.file.name, id: 0 }] : undefined,
     components: [{ type: 17, accent_color: color, components }],
     flags: 32768,
@@ -416,7 +416,7 @@ function buildDiscordPayload({ analysis, changelog, mode, release }) {
   };
 }
 
-function buildUpdatePanelContentComponents({ changelog, date, observation, sections, technicalLine }) {
+function buildUpdatePanelContentComponents({ changelog, date, mentionRoleId, observation, sections, technicalLine }) {
   const byTitle = new Map(sections.map(([title, items]) => [normalizeSimpleUpdateTitle(title), items]));
   const news = unique([
     ...toList(byTitle.get("🆕 Novidades")),
@@ -424,6 +424,7 @@ function buildUpdatePanelContentComponents({ changelog, date, observation, secti
   ]).slice(0, 10);
   const corrections = unique(toList(byTitle.get("🔧 Correções"))).slice(0, 16);
   const components = [
+    ...(mentionRoleId ? [{ type: 10, content: `<@&${mentionRoleId}>` }] : []),
     { type: 10, content: `# ATUALIZAÇÃO - [${formatUpdateDate(date)}]` }
   ];
 
@@ -441,15 +442,21 @@ function buildUpdatePanelContentComponents({ changelog, date, observation, secti
     );
   }
 
-  components.push({
-    type: 10,
-    content: [
-      `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
-      technicalLine
-    ].filter(Boolean).join("\n")
-  });
+  const footerLines = [
+    observation ? `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}` : "",
+    technicalLine
+  ].filter(Boolean);
+  if (footerLines.length) {
+    components.push({ type: 10, content: footerLines.join("\n") });
+  }
 
   return components;
+}
+
+function updatePanelMentionRoleId() {
+  const configured = readConfigValue("UPDATE_PANEL_MENTION_ROLE_ID") || "1505184193766752386";
+  const roleId = String(configured || "").trim();
+  return /^\d{17,20}$/.test(roleId) ? roleId : "";
 }
 
 function buildChangelogRecord({ analysis, release }) {

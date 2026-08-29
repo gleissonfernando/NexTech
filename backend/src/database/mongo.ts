@@ -4014,6 +4014,28 @@ export type MongoNexTechInviteLog = {
   inviteId: string | null;
 };
 
+export type MongoNexTechNoticeDelivery = {
+  channelId: string | null;
+  error: string | null;
+  messageId: string | null;
+  status: "sent" | "failed";
+  userId: string;
+};
+
+export type MongoNexTechNotice = {
+  _id: string;
+  additionalInfo: string | null;
+  buttonLabel: string | null;
+  buttonUrl: string | null;
+  createdAt: Date;
+  createdBy: string;
+  createdByName: string | null;
+  deliveries: MongoNexTechNoticeDelivery[];
+  highlight: string | null;
+  message: string;
+  title: string;
+};
+
 export type MongoNexTechSalesPaymentProvider = {
   id: string;
   gatewayId: string;
@@ -6480,6 +6502,7 @@ export async function getMongoCollections() {
     applicationEmojiSettings: db.collection<MongoApplicationEmojiSettings>("application_emoji_settings"),
     nexTechInvites: db.collection<MongoNexTechInvite>("nextech_invites"),
     nexTechInviteLogs: db.collection<MongoNexTechInviteLog>("nextech_invite_logs"),
+    nexTechNotices: db.collection<MongoNexTechNotice>("nextech_notices"),
     nexTechSalesSettings: db.collection<MongoNexTechSalesSettings>("nexTech_sales_settings"),
     nexTechSalesPlans: db.collection<MongoNexTechSalesPlan>("nexTech_sales_plans"),
     nexTechProducts: db.collection<MongoNexTechProduct>("nexTech_products"),
@@ -7597,7 +7620,9 @@ async function ensureNexTechInviteIndexes(db: Db) {
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ createdAt: -1 }),
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ guildId: 1, createdAt: -1 }),
     db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ inviteId: 1, createdAt: -1 }),
-    db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ inviteCode: 1, createdAt: -1 })
+    db.collection<MongoNexTechInviteLog>("nextech_invite_logs").createIndex({ inviteCode: 1, createdAt: -1 }),
+    db.collection<MongoNexTechNotice>("nextech_notices").createIndex({ createdAt: -1 }),
+    db.collection<MongoNexTechNotice>("nextech_notices").createIndex({ createdBy: 1, createdAt: -1 })
   ]);
 }
 
