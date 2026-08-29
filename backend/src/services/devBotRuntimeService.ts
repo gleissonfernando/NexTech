@@ -8,6 +8,11 @@ import { env } from "../config/env";
 import type { MongoDevBotStatus } from "../database/mongo";
 import { getMongoCollections } from "../database/mongo";
 import { devBotRealtimeRoom, emitRealtimeToRoom } from "../realtime/events";
+import {
+  clearNexTechStartupNoticePending,
+  markNexTechStartupNoticePending,
+  sendNexTechStartupNotice
+} from "./nexTechNoticeService";
 import { resolveDevBotUnexpectedExitLog, sendDevBotUnexpectedExitLog } from "./devBotDiscordLogService";
 import {
     getDevBotRuntimeConfig,
@@ -565,17 +570,23 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
   }
 
   if (!bot.desiredOnline) {
+    clearNexTechStartupNoticePending(bot.id);
     await updateDevBotRuntimeStatus(bot.id, "offline", "Bot mantido desligado pelo controle persistente DEV.");
     return;
   }
   if (bot.token === env.DISCORD_BOT_TOKEN) {
+    markNexTechStartupNoticePending(bot.id);
     await updateDevBotRuntimeStatus(bot.id, "ready", "Executado pelo processo principal.");
+    void sendNexTechStartupNotice(bot.id).catch((error) => {
+      console.warn("[nextech-notice] falha ao enviar aviso automático de inicialização:", error instanceof Error ? error.message : error);
+    });
     return;
   }
 
   const entry = path.resolve(__dirname, "../../../bot/dist/index.js");
 
   if (!existsSync(entry)) {
+    clearNexTechStartupNoticePending(bot.id);
     await updateDevBotRuntimeStatus(bot.id, "waiting_retry", "Build do bot não encontrado. Aguardando próxima tentativa automática.");
     scheduleDevBotStartRetry(bot.id, "build do bot ausente");
     return;
@@ -595,6 +606,7 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
   }
 
   const memberEventsEnabled = await canUseGuildMemberIntent(bot);
+  markNexTechStartupNoticePending(bot.id);
   const backendRuntimeUrl = `http://127.0.0.1:${env.PORT}`;
 
   await updateDevBotRuntimeStatus(bot.id, "authenticating", "Processo iniciado; autenticando no Discord.");
@@ -632,6 +644,9 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
     } else if (/comandos sincronizados/i.test(message)) {
       restartAttempts.delete(bot.id);
       void updateDevBotRuntimeStatus(bot.id, "ready", "Bot pronto; comandos sincronizados no Discord.");
+      void sendNexTechStartupNotice(bot.id).catch((error) => {
+        console.warn("[nextech-notice] falha ao enviar aviso automático de inicialização:", error instanceof Error ? error.message : error);
+      });
       void resolveDevBotUnexpectedExitLog({
         botId: bot.id,
         botName: bot.name,
@@ -653,6 +668,7 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
   });
   child.on("error", (error: Error) => {
     runtime.lastError = `Falha ao iniciar processo: ${error.message}`;
+    clearNexTechStartupNoticePending(bot.id);
     void updateDevBotRuntimeStatus(bot.id, "error", `Falha ao iniciar processo: ${error.message}`);
   });
   child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
@@ -661,6 +677,7 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
     if (current?.child === child) {
       runningBots.delete(bot.id);
     }
+    clearNexTechStartupNoticePending(bot.id);
 
     if (runtime.stopping) {
       return;

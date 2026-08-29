@@ -7,11 +7,13 @@ import { getMongoCollections, type MongoNexTechNotice, type MongoNexTechNoticeDe
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const BANNER_FILENAME = "nextech-avisos-banner.png";
 const BANNER_PATH = join(process.cwd(), "assets", "avisos-nextech-banner.png");
+const startupNoticePending = new Set<string>();
 
 export type NexTechNoticeRecipient = {
   botCount: number;
   botNames: string[];
   userId: string;
+  userName: string | null;
 };
 
 export type SendNexTechNoticeInput = {
@@ -46,7 +48,8 @@ export async function getNexTechNoticeAudience(): Promise<NexTechNoticeRecipient
       projection: {
         name: 1,
         ownerId: 1,
-        billingRecipientUserIds: 1
+        billingRecipientUserIds: 1,
+        ownerName: 1
       }
     }
   ).toArray();
@@ -59,11 +62,15 @@ export async function getNexTechNoticeAudience(): Promise<NexTechNoticeRecipient
       const recipient = recipients.get(userId) ?? {
         botCount: 0,
         botNames: [],
-        userId
+        userId,
+        userName: null
       };
       recipient.botCount += 1;
       if (bot.name && !recipient.botNames.includes(bot.name)) {
         recipient.botNames.push(bot.name);
+      }
+      if (userId === bot.ownerId && bot.ownerName && !recipient.userName) {
+        recipient.userName = bot.ownerName;
       }
       recipients.set(userId, recipient);
     }
@@ -94,7 +101,7 @@ export async function sendNexTechNotice(input: SendNexTechNoticeInput) {
   const deliveries: MongoNexTechNoticeDelivery[] = [];
 
   for (const recipient of recipients) {
-    deliveries.push(await sendNoticeToUser(token, recipient.userId, input, banner));
+    deliveries.push(await sendNoticeToUser(token, recipient, input, banner));
   }
 
   const { nexTechNotices } = await getMongoCollections();
@@ -117,13 +124,98 @@ export async function sendNexTechNotice(input: SendNexTechNoticeInput) {
   return toNoticeDto(notice);
 }
 
-async function sendNoticeToUser(token: string, userId: string, input: SendNexTechNoticeInput, banner: Buffer): Promise<MongoNexTechNoticeDelivery> {
+export function markNexTechStartupNoticePending(botId: string) {
+  const normalized = normalizeOptionalText(botId);
+  if (normalized) {
+    startupNoticePending.add(normalized);
+  }
+}
+
+export function clearNexTechStartupNoticePending(botId: string) {
+  const normalized = normalizeOptionalText(botId);
+  if (normalized) {
+    startupNoticePending.delete(normalized);
+  }
+}
+
+export function consumeNexTechStartupNoticePending(botId: string) {
+  const normalized = normalizeOptionalText(botId);
+  if (!normalized || !startupNoticePending.has(normalized)) {
+    return false;
+  }
+
+  startupNoticePending.delete(normalized);
+  return true;
+}
+
+export async function sendNexTechStartupNotice(botId: string) {
+  if (!consumeNexTechStartupNoticePending(botId)) {
+    return null;
+  }
+
+  const { devBots } = await getMongoCollections();
+  const bot = await devBots.findOne(
+    { _id: botId },
+    {
+      projection: {
+        billingRecipientUserIds: 1,
+        name: 1,
+        ownerId: 1,
+        ownerName: 1
+      }
+    }
+  );
+
+  if (!bot) {
+    return null;
+  }
+
+  const recipients = buildStartupRecipients(bot);
+  if (!recipients.length) {
+    return null;
+  }
+
+  const token = env.DISCORD_BOT_TOKEN.trim();
+  if (!token) {
+    return null;
+  }
+
+  const banner = await readFile(BANNER_PATH).catch(() => null);
+  if (!banner) {
+    return null;
+  }
+
+  const input: SendNexTechNoticeInput = {
+    createdBy: botId,
+    createdByName: bot.ownerName ?? bot.name,
+    highlight: "Aviso automático de inicialização",
+    message: `O bot **${bot.name}** voltou a ficar online.\nSe ele estava em manutenção, o aviso continua sendo enviado normalmente.`,
+    title: `${bot.name} voltou online`
+  };
+
+  const deliveries: MongoNexTechNoticeDelivery[] = [];
+  for (const recipient of recipients) {
+    deliveries.push(await sendNoticeToUser(token, recipient, input, banner));
+  }
+
+  return {
+    botId,
+    botName: bot.name,
+    deliveredCount: deliveries.filter((delivery) => delivery.status === "sent").length,
+    deliveries,
+    recipientCount: deliveries.length
+  };
+}
+
+async function sendNoticeToUser(token: string, recipient: NexTechNoticeRecipient, input: SendNexTechNoticeInput, banner: Buffer): Promise<MongoNexTechNoticeDelivery> {
   try {
-    const dmChannel = await discordRequest<{ id: string }>(token, "/users/@me/channels", {
-      body: JSON.stringify({ recipient_id: userId }),
+    const resolvedUserName = recipient.userName ?? await resolveDiscordUserNameById(token, recipient.userId);
+    const dmChannel = await discordRequest<{ id: string; recipients?: Array<{ global_name?: string | null; username?: string | null }> }>(token, "/users/@me/channels", {
+      body: JSON.stringify({ recipient_id: recipient.userId }),
       headers: { "content-type": "application/json" },
       method: "POST"
     });
+    const userName = resolveDiscordUserName(dmChannel.recipients?.[0]) ?? resolvedUserName;
     const form = new FormData();
     form.append("payload_json", JSON.stringify(buildNoticePayload(input)));
     form.append("files[0]", new Blob([new Uint8Array(banner)], { type: "image/png" }), BANNER_FILENAME);
@@ -137,7 +229,8 @@ async function sendNoticeToUser(token: string, userId: string, input: SendNexTec
       error: null,
       messageId: message.id,
       status: "sent",
-      userId
+      userId: recipient.userId,
+      userName
     };
   } catch (error) {
     return {
@@ -145,9 +238,26 @@ async function sendNoticeToUser(token: string, userId: string, input: SendNexTec
       error: error instanceof Error ? error.message : "Falha desconhecida ao enviar DM.",
       messageId: null,
       status: "failed",
-      userId
+      userId: recipient.userId,
+      userName: recipient.userName ?? await resolveDiscordUserNameById(token, recipient.userId).catch(() => null)
     };
   }
+}
+
+function buildStartupRecipients(bot: Pick<{ billingRecipientUserIds?: string[]; name: string; ownerId: string; ownerName: string }, "billingRecipientUserIds" | "name" | "ownerId" | "ownerName">) {
+  const recipientMap = new Map<string, NexTechNoticeRecipient>();
+  const userIds = sanitizeDiscordIds([bot.ownerId, ...(bot.billingRecipientUserIds ?? [])]);
+
+  for (const userId of userIds) {
+    recipientMap.set(userId, {
+      botCount: 1,
+      botNames: [bot.name],
+      userId,
+      userName: userId === bot.ownerId ? bot.ownerName : null
+    });
+  }
+
+  return [...recipientMap.values()];
 }
 
 export function buildNexTechNoticePayloadForTest(input: SendNexTechNoticeInput) {
@@ -157,6 +267,15 @@ export function buildNexTechNoticePayloadForTest(input: SendNexTechNoticeInput) 
 function buildNoticePayload(input: SendNexTechNoticeInput) {
   const components: Array<Record<string, unknown>> = [
     {
+      type: 10,
+      content: `# ${input.title.trim()}`
+    },
+    {
+      type: 14,
+      divider: true,
+      spacing: 1
+    },
+    {
       type: 12,
       items: [
         {
@@ -165,10 +284,6 @@ function buildNoticePayload(input: SendNexTechNoticeInput) {
           }
         }
       ]
-    },
-    {
-      type: 10,
-      content: `# ${input.title.trim()}`
     }
   ];
   const highlight = normalizeOptionalText(input.highlight);
@@ -185,15 +300,14 @@ function buildNoticePayload(input: SendNexTechNoticeInput) {
 
   components.push({
     type: 10,
-    content: input.message.trim()
+    content: quoteBlock(input.message.trim())
   });
 
-  if (additionalInfo) {
-    components.push({
-      type: 10,
-      content: additionalInfo
-    });
-  }
+  components.push({
+    type: 14,
+    divider: true,
+    spacing: 1
+  });
 
   if (buttonLabel && buttonUrl) {
     components.push({
@@ -209,9 +323,20 @@ function buildNoticePayload(input: SendNexTechNoticeInput) {
     });
   }
 
+  if (additionalInfo) {
+    components.push({
+      type: 10,
+      content: additionalInfo
+    });
+  }
+
   components.push({
     type: 10,
     content: "-# NexTech • Sistema de Avisos"
+  }, {
+    type: 14,
+    divider: true,
+    spacing: 1
   });
 
   return {
@@ -234,6 +359,21 @@ function buildNoticePayload(input: SendNexTechNoticeInput) {
     ],
     flags: 32768
   };
+}
+
+function quoteBlock(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function resolveDiscordUserName(user: { global_name?: string | null; username?: string | null } | null | undefined) {
+  return normalizeOptionalText(user?.global_name) ?? normalizeOptionalText(user?.username);
+}
+
+async function resolveDiscordUserNameById(token: string, userId: string) {
+  return resolveDiscordUserName(await discordRequest<{ global_name?: string | null; username?: string | null }>(token, `/users/${userId}`, { method: "GET" }).catch(() => null));
 }
 
 async function discordRequest<T>(token: string, path: string, init: RequestInit): Promise<T> {

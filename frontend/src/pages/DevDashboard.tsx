@@ -653,7 +653,7 @@ function DevNexTechNoticesPanel() {
         ...current,
         history: [notice, ...current.history.filter((item) => item.id !== notice.id)].slice(0, 25)
       } : current);
-      setMessage(`Aviso enviado por DM para ${notice.deliveredCount}/${notice.recipientCount} responsaveis.`);
+      setMessage(`Aviso enviado por DM para ${notice.deliveredCount}/${notice.recipientCount} responsaveis: ${summarizeNoticeRecipients(notice)}.`);
     } catch (error) {
       setMessage(readDevDashboardError(error));
     } finally {
@@ -741,11 +741,12 @@ function DevNexTechNoticesPanel() {
 function NoticePreview({ form }: { form: SendNexTechNoticePayload }) {
   return (
     <Card className="overflow-hidden border-[#FFD500]/20 bg-[#0a0a0b]">
-      <div className="h-36 bg-[url('/assets/avisos-nextech-banner.png')] bg-cover bg-center sm:h-44" />
       <CardContent className="space-y-4 p-5">
-        <div className="border-b border-zinc-800 pb-3 text-center text-xl font-black text-white">{form.title || "Titulo do aviso"}</div>
+        <div className="text-center text-xl font-black text-white">{form.title || "Titulo do aviso"}</div>
+        <div className="border-t border-zinc-800" />
+        <div className="h-36 bg-[url('/assets/avisos-nextech-banner.png')] bg-cover bg-center sm:h-44" />
         {form.highlight ? <p className="text-sm font-black text-white">{form.highlight}</p> : null}
-        <div className="border-l-2 border-[#FFD500]/60 bg-white/[0.04] px-3 py-2 text-sm font-medium leading-6 text-zinc-300 whitespace-pre-wrap">{form.message}</div>
+        <div className="border-l-2 border-[#FFD500]/60 bg-white/[0.04] px-3 py-2 text-sm font-medium leading-6 text-zinc-300 whitespace-pre-wrap">{formatQuotePreview(form.message)}</div>
         {form.additionalInfo ? <p className="text-sm font-medium leading-6 text-zinc-300 whitespace-pre-wrap">{form.additionalInfo}</p> : null}
         {form.buttonLabel ? (
           <div className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-black text-white">
@@ -759,6 +760,7 @@ function NoticePreview({ form }: { form: SendNexTechNoticePayload }) {
 }
 
 function NoticeHistoryRow({ notice }: { notice: NexTechNoticeRecord }) {
+  const deliveredNames = notice.deliveries.filter((delivery) => delivery.status === "sent").map((delivery) => delivery.userName || delivery.userId);
   return (
     <div className="rounded-lg border border-zinc-800 bg-black/35 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -770,9 +772,19 @@ function NoticeHistoryRow({ notice }: { notice: NexTechNoticeRecord }) {
           {notice.deliveredCount}/{notice.recipientCount} DMs
         </Badge>
       </div>
+      {deliveredNames.length ? <p className="mt-2 text-xs font-semibold text-zinc-300">Enviado para: {deliveredNames.join(", ")}</p> : null}
       {notice.failedCount ? <p className="mt-2 text-xs font-semibold text-red-300">{notice.failedCount} falha(s) no envio.</p> : null}
     </div>
   );
+}
+
+function formatQuotePreview(value: string) {
+  return value.split(/\r?\n/).map((line) => `> ${line}`).join("\n");
+}
+
+function summarizeNoticeRecipients(notice: NexTechNoticeRecord) {
+  const names = notice.deliveries.filter((delivery) => delivery.status === "sent").map((delivery) => delivery.userName || delivery.userId);
+  return names.length ? names.join(", ") : "nenhum nome resolvido";
 }
 
 function DevMonthlyContractsPanel() {

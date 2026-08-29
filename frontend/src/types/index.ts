@@ -5559,6 +5559,7 @@ export type NexTechNoticeRecipient = {
   botCount: number;
   botNames: string[];
   userId: string;
+  userName: string | null;
 };
 
 export type NexTechNoticeDelivery = {
@@ -5567,6 +5568,7 @@ export type NexTechNoticeDelivery = {
   messageId: string | null;
   status: "sent" | "failed";
   userId: string;
+  userName?: string | null;
 };
 
 export type NexTechNoticeRecord = {
