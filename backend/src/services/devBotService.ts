@@ -1572,7 +1572,8 @@ export async function getDevBotToken(botId: string | null | undefined) {
     return null;
   }
 
-  return (await getDevBotRuntimeConfig(botId))?.token ?? null;
+  const token = (await getDevBotRuntimeConfig(botId))?.token ?? null;
+  return token ? normalizeDiscordBotToken(token) : null;
 }
 
 export async function updateDevBotRuntimeStatus(botId: string, status: MongoDevBotStatus, statusMessage: string) {
@@ -3038,7 +3039,7 @@ function toDevBotRuntimeConfig(bot: MongoDevBot, guildIds: string[] = [bot.mainG
     clientId: bot.clientId,
     databaseName: bot.databaseName ?? null,
     name: bot.name,
-    token: decryptSecret(bot.tokenEncrypted),
+    token: normalizeDiscordBotToken(decryptSecret(bot.tokenEncrypted)),
     mainGuildId: bot.mainGuildId,
     guildIds: allBotGuildIds(bot, guildIds),
     enabledModules,
@@ -3193,7 +3194,7 @@ function isDevBotError(error: unknown): error is Error & { statusCode: number } 
   return error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number";
 }
 
-function normalizeDiscordBotToken(value: string) {
+export function normalizeDiscordBotToken(value: string) {
   return value
     .trim()
     .replace(/^["'`]+|["'`]+$/g, "")
