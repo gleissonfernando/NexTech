@@ -391,13 +391,8 @@ function looksLikeModuleLabel(value) {
   return /(sistema|m[oó]dulo|dashboard|painel|five|pol[ií]cia|captcha|media|vídeo|video)/i.test(value);
 }
 
-function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
+function buildDiscordPayload({ analysis, changelog, mode, release }) {
   const color = parseColor(readConfigValue("UPDATE_PANEL_COLOR") || "#5865F2");
-  const appName = readConfigValue("UPDATE_APP_NAME") || "NexTech";
-  const footerText = readConfigValue("UPDATE_PANEL_FOOTER_TEXT")
-    || readConfigValue("UPDATE_PANEL_SIGNATURE")
-    || `Atenciosamente, ${appName}`;
-  const footerIconUrl = readConfigValue("UPDATE_PANEL_FOOTER_ICON_URL") || discordBotAvatarUrl(bot);
   const observation = readConfigValue("UPDATE_PANEL_OBS")
     || "Estamos trabalhando em uma grande atualização que será lançada na próxima semana. Por esse motivo, alguns sistemas ainda não foram incluídos nesta atualização.";
   const showTechnical = readConfigValue("UPDATE_PANEL_SHOW_TECHNICAL") === "true";
@@ -405,26 +400,11 @@ function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
   const compact = mode === "realtime-summary";
   const sections = compact ? buildCompactChangelogSections(changelog) : buildFullChangelogSections(changelog, analysis, showTechnical);
   const technicalLine = showTechnical ? `\n-# Hash interno: ${release.commit.slice(0, 12)}` : "";
-  const description = [
-    ...sections.flatMap(([title, items]) => formatSimpleUpdateSection(title, items)),
-    `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
-    "",
-    technicalLine,
-  ].filter((item) => item !== null && item !== undefined && item !== false).join("\n").slice(0, 3900);
+  const contentComponents = buildUpdatePanelContentComponents({ changelog, date, observation, sections, technicalLine });
   const banner = updatePanelBanner();
-  const footer = updatePanelFooter(footerText, footerIconUrl);
   const components = [
-    ...(banner.url ? [{ type: 12, items: [{ media: { url: banner.url }, description: "Banner da atualização NexTech" }] }] : []),
-    {
-      type: 10,
-      content: [
-        `# ATUALIZAÇÕES - ${formatUpdateDate(date)}`,
-        `-# ${escapeMarkdown(appName)} • ${escapeMarkdown(changelog.version)}`
-      ].join("\n")
-    },
-    { type: 10, content: description },
-    ...(footer?.text ? [{ type: 10, content: `-# ${escapeMarkdown(footer.text)}` }] : []),
-    buildUpdateActionRow(changelog)
+    ...contentComponents,
+    ...(banner.url ? [{ type: 12, items: [{ media: { url: banner.url }, description: "Banner da atualização NexTech" }] }] : [])
   ];
 
   return {
@@ -434,6 +414,42 @@ function buildDiscordPayload({ analysis, bot, changelog, mode, release }) {
     flags: 32768,
     __files: banner.file ? [banner.file] : undefined
   };
+}
+
+function buildUpdatePanelContentComponents({ changelog, date, observation, sections, technicalLine }) {
+  const byTitle = new Map(sections.map(([title, items]) => [normalizeSimpleUpdateTitle(title), items]));
+  const news = unique([
+    ...toList(byTitle.get("🆕 Novidades")),
+    ...toList(byTitle.get("✨ Melhorias"))
+  ]).slice(0, 10);
+  const corrections = unique(toList(byTitle.get("🔧 Correções"))).slice(0, 16);
+  const components = [
+    { type: 10, content: `# ATUALIZAÇÃO - [${formatUpdateDate(date)}]` }
+  ];
+
+  if (news.length) {
+    components.push(
+      { type: 10, content: "🆕 **Novidades:**" },
+      { type: 10, content: formatDiffBlock(news, "add") }
+    );
+  }
+
+  if (corrections.length) {
+    components.push(
+      { type: 10, content: "🛠️ **Correções:**" },
+      { type: 10, content: formatDiffBlock(corrections, "correction") }
+    );
+  }
+
+  components.push({
+    type: 10,
+    content: [
+      `**OBS:** ${escapeMarkdown(observation).slice(0, 650)}`,
+      technicalLine
+    ].filter(Boolean).join("\n")
+  });
+
+  return components;
 }
 
 function buildChangelogRecord({ analysis, release }) {
@@ -510,31 +526,6 @@ function buildCompactChangelogSections(changelog) {
     ["✨ MELHORIAS", changelog.categories.melhorias.slice(0, 5)],
     ["🛠️ CORREÇÕES", changelog.categories.correcoes.slice(0, 5)]
   ].filter(([, items]) => items.length);
-}
-
-function buildUpdateActionRow(changelog) {
-  const detailsUrl = updateUrl("UPDATE_DETAILS_URL", `/dev/maintenance?update=${encodeURIComponent(changelog.version)}`);
-  const historyUrl = updateUrl("UPDATE_HISTORY_URL", "/dev/maintenance?tab=versions");
-  const reportUrl = updateUrl("UPDATE_REPORT_PROBLEM_URL", `/dev/maintenance?report=${encodeURIComponent(changelog.version)}`);
-  const buttons = [
-    actionButton("Ver detalhes", detailsUrl, `nextech_update_details:${changelog.version}`, 1),
-    actionButton("Histórico de versões", historyUrl, "nextech_update_history", 2),
-    actionButton("Reportar problema", reportUrl, `nextech_update_report:${changelog.version}`, 4)
-  ];
-  return { type: 1, components: buttons };
-}
-
-function actionButton(label, url, customId, style) {
-  if (url) return { type: 2, label, style: 5, url };
-  return { type: 2, custom_id: customId.slice(0, 100), disabled: true, label, style };
-}
-
-function updateUrl(envKey, fallbackPath) {
-  const configured = readConfigValue(envKey);
-  if (isHttpUrl(configured)) return configured;
-  const base = readConfigValue("FRONTEND_URL") || readConfigValue("SITE_ORIGIN") || readConfigValue("BACKEND_URL");
-  if (!isHttpUrl(base)) return "";
-  return `${base.replace(/\/+$/, "")}${fallbackPath}`;
 }
 
 function validateChangelogForPublish(changelog) {
@@ -793,29 +784,20 @@ function humanizeRealtimeItem(item, kind) {
   return normalized;
 }
 
-function formatUpdateSection(title, items) {
-  return [
-    `**${title}**`,
-    ...items.map((item) => `- ${escapeMarkdown(item).slice(0, 220)}`),
-    ""
-  ];
+function formatDiffBlock(items, kind) {
+  const lines = items
+    .map((item) => `${diffPrefixForUpdateItem(item, kind)} ${sanitizeDiffLine(item).slice(0, 180)}`)
+    .join("\n");
+  return `\`\`\`diff\n${lines}\n\`\`\``;
 }
 
-function formatSimpleUpdateSection(title, items) {
-  return [
-    `**${normalizeSimpleUpdateTitle(title)}**`,
-    ...items.map((item) => `• ${escapeMarkdown(item).slice(0, 220)}`),
-    ""
-  ];
+function diffPrefixForUpdateItem(item, kind) {
+  if (kind === "correction" && /(retir|remov|remove|desativ|bloquead|exclu)/i.test(item)) return "-";
+  return "+";
 }
 
-function updatePanelFooter(text, iconUrl) {
-  const footerText = sanitizeSingleLine(text);
-  if (!footerText) return undefined;
-  const cleanIconUrl = isHttpUrl(iconUrl) ? String(iconUrl).trim() : "";
-  return cleanIconUrl
-    ? { icon_url: cleanIconUrl, text: footerText.slice(0, 2048) }
-    : { text: footerText.slice(0, 2048) };
+function sanitizeDiffLine(item) {
+  return escapeMarkdown(String(item || "").replace(/`/g, "'").replace(/\s+/g, " ").trim());
 }
 
 function updatePanelBanner() {
@@ -837,12 +819,6 @@ function updatePanelBanner() {
     },
     url: `attachment://${name}`
   };
-}
-
-function discordBotAvatarUrl(bot) {
-  if (!bot?.id || !bot?.avatar) return "";
-  const extension = String(bot.avatar).startsWith("a_") ? "gif" : "png";
-  return `${discordApi}/avatars/${bot.id}/${bot.avatar}.${extension}?size=128`;
 }
 
 function normalizeSimpleUpdateTitle(title) {
