@@ -518,7 +518,6 @@ botDevApiRouter.put("/runtime/command-sync", async (req, res, next) => {
           instanceId: botId,
           metadata: state,
           service: "bot-command-sync",
-          startedAt: now,
           updatedAt: now
         },
         $setOnInsert: {
