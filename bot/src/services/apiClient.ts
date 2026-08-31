@@ -955,6 +955,14 @@ export type BotCommandSyncState = {
   } | null;
 };
 
+export type BotCommandSyncLease = {
+  acquired: boolean;
+  botId: string;
+  expiresAt?: string;
+  holderBotId?: string | null;
+  retryAfterMs: number;
+};
+
 export type BotRuntimeStatusInput = {
   botGuilds?: Array<{
     id: string;
@@ -2791,6 +2799,28 @@ export class ApiClient {
 
   async saveCommandSyncState(input: BotCommandSyncState["state"]) {
     const { data } = await this.http.put<BotCommandSyncState>("/bot/runtime/command-sync", input, {
+      timeout: 8_000
+    });
+    return data;
+  }
+
+  async acquireCommandSyncLease(input: { ttlMs: number }) {
+    try {
+      const { data } = await this.http.post<BotCommandSyncLease>("/bot/runtime/command-sync/lease", input, {
+        timeout: 8_000
+      });
+      return data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409 && error.response.data) {
+        return error.response.data as BotCommandSyncLease;
+      }
+
+      throw error;
+    }
+  }
+
+  async releaseCommandSyncLease() {
+    const { data } = await this.http.delete<{ ok: boolean }>("/bot/runtime/command-sync/lease", {
       timeout: 8_000
     });
     return data;

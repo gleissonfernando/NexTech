@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCommandSyncSignature, shouldSkipCommandSync } from "./commandSyncManager";
+import { buildCommandSyncSignature, commandSyncRetryDelayMs, shouldSkipCommandSync } from "./commandSyncManager";
 
 test("command sync hash permanece estável com mesma estrutura e ordem diferente", () => {
   const commandsA = [
@@ -63,4 +63,11 @@ test("command sync não é ignorado quando force está ativo", () => {
     ),
     false
   );
+});
+
+test("command sync retry respeita retry-after e aplica jitter por bot", () => {
+  const delay = commandSyncRetryDelayMs(5_000, 2, "bot-1234");
+
+  assert.ok(delay >= 5_234);
+  assert.ok(delay < 5_734);
 });

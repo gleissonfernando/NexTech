@@ -632,7 +632,7 @@ async function startRuntime(bot: DevBotRuntimeConfig, options: { ignoreCapacityL
     const message = writeBotLog(bot.id, chunk);
 
     if (message.includes("[bot] conectado como")) {
-      void updateDevBotRuntimeStatus(bot.id, "syncing_config", "Bot conectado ao Discord; sincronizando comandos e configurações.");
+      void updateDevBotRuntimeStatus(bot.id, "online", "Bot conectado ao Discord; sincronizações secundárias em background.");
     } else if (/comandos sincronizados/i.test(message)) {
       restartAttempts.delete(bot.id);
       void updateDevBotRuntimeStatus(bot.id, "ready", "Bot pronto; comandos sincronizados no Discord.");

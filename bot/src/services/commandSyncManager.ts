@@ -20,6 +20,8 @@ type SyncOptions = {
 };
 
 const COMMAND_SYNC_VERSION = 1;
+const COMMAND_SYNC_LEASE_TTL_MS = 120_000;
+const COMMAND_SYNC_LEASE_ATTEMPTS = 10;
 const stateCache = new Map<string, { state: CommandSyncState | null; expiresAt: number }>();
 const inFlight = new Map<string, Promise<void>>();
 
@@ -92,42 +94,44 @@ async function syncVisibleGuildCommandsNow(client: Client<true>, context: BotCon
     return;
   }
 
-  if (!currentState || currentState.globalCleanupHash !== commandHash) {
-    try {
-      await clearGlobalCommands(client.user.id);
-      console.log(`[COMMAND_SYNC] global cleanup applied (${reason})`);
-    } catch (error) {
-      console.warn(`[COMMAND_SYNC] falha ao limpar comandos globais (${reason}):`, error instanceof Error ? error.message : error);
+  await withCommandSyncLease(context, client.user.id, reason, async () => {
+    if (!currentState || currentState.globalCleanupHash !== commandHash) {
+      try {
+        await clearGlobalCommands(client.user.id);
+        console.log(`[COMMAND_SYNC] global cleanup applied (${reason})`);
+      } catch (error) {
+        console.warn(`[COMMAND_SYNC] falha ao limpar comandos globais (${reason}):`, error instanceof Error ? error.message : error);
+      }
     }
-  }
 
-  for (const commandGuildId of commandGuildIds) {
-    try {
-      await registerGuildCommands(commands, client.user.id, commandGuildId);
-      console.log(`[COMMAND_SYNC] guild=${commandGuildId} ok (${reason})`);
-    } catch (error) {
-      console.warn(`[COMMAND_SYNC] guild=${commandGuildId} falhou (${reason}):`, error instanceof Error ? error.message : error);
-      lastError = error;
+    for (const commandGuildId of commandGuildIds) {
+      try {
+        await registerGuildCommands(commands, client.user.id, commandGuildId);
+        console.log(`[COMMAND_SYNC] guild=${commandGuildId} ok (${reason})`);
+      } catch (error) {
+        console.warn(`[COMMAND_SYNC] guild=${commandGuildId} falhou (${reason}):`, error instanceof Error ? error.message : error);
+        lastError = error;
+      }
     }
-  }
 
-  if (lastError) {
-    throw lastError;
-  }
+    if (lastError) {
+      throw lastError;
+    }
 
-  const nextState: CommandSyncState = {
-    commandHash,
-    commandVersion: COMMAND_SYNC_VERSION,
-    dirty: false,
-    guildIdsHash,
-    guildCount: commandGuildIds.length,
-    globalCleanupHash: commandHash,
-    lastReason: reason,
-    lastSyncedAt: new Date().toISOString()
-  };
+    const nextState: CommandSyncState = {
+      commandHash,
+      commandVersion: COMMAND_SYNC_VERSION,
+      dirty: false,
+      guildIdsHash,
+      guildCount: commandGuildIds.length,
+      globalCleanupHash: commandHash,
+      lastReason: reason,
+      lastSyncedAt: new Date().toISOString()
+    };
 
-  await saveCommandSyncState(context, client.user.id, nextState);
-  console.log(`[COMMAND_SYNC] SYNC required (${reason}); commands=${commands.length} guilds=${commandGuildIds.length}`);
+    await saveCommandSyncState(context, client.user.id, nextState);
+    console.log(`[COMMAND_SYNC] SYNC required (${reason}); commands=${commands.length} guilds=${commandGuildIds.length}`);
+  });
 }
 
 async function loadCommandSyncState(context: BotContext, botId: string) {
@@ -155,6 +159,48 @@ async function saveCommandSyncState(context: BotContext, botId: string, state: C
   } catch (error) {
     console.warn("[COMMAND_SYNC] não foi possível persistir o estado do sync:", error instanceof Error ? error.message : error);
   }
+}
+
+async function withCommandSyncLease(context: BotContext, botId: string, reason: string, run: () => Promise<void>) {
+  let acquired = false;
+
+  try {
+    for (let attempt = 1; attempt <= COMMAND_SYNC_LEASE_ATTEMPTS; attempt += 1) {
+      const lease = await context.api.acquireCommandSyncLease({ ttlMs: COMMAND_SYNC_LEASE_TTL_MS });
+
+      if (lease.acquired) {
+        acquired = true;
+        if (attempt > 1) console.log(`[COMMAND_SYNC] lease acquired after ${attempt} attempt(s) (${reason})`);
+        await run();
+        return;
+      }
+
+      const waitMs = commandSyncRetryDelayMs(lease.retryAfterMs, attempt, botId);
+      console.log(`[COMMAND_SYNC] aguardando fila global holder=${lease.holderBotId ?? "unknown"} attempt=${attempt}/${COMMAND_SYNC_LEASE_ATTEMPTS} retry=${waitMs}ms (${reason})`);
+      await delay(waitMs);
+    }
+
+    throw new Error("fila global de command sync ocupada; sync será retomado na próxima reconciliação.");
+  } finally {
+    if (acquired) {
+      await context.api.releaseCommandSyncLease().catch((error) => {
+        console.warn("[COMMAND_SYNC] falha ao liberar lease:", error instanceof Error ? error.message : error);
+      });
+    }
+  }
+}
+
+export function commandSyncRetryDelayMs(retryAfterMs: number | null | undefined, attempt: number, botId: string) {
+  const numericSuffix = Number.parseInt(botId.replace(/\D/g, "").slice(-4), 10);
+  const deterministicJitter = Number.isFinite(numericSuffix) ? numericSuffix % 1_000 : 0;
+  const exponentialBackoff = Math.min(30_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+  const serverDelay = Math.max(1_000, Math.min(30_000, retryAfterMs ?? 1_000));
+
+  return Math.max(serverDelay, exponentialBackoff) + deterministicJitter + Math.floor(Math.random() * 500);
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function commandRegistrationGuildIds(client: Client<true>) {

@@ -68,6 +68,9 @@ const commandSyncStateSchema = z.object({
   lastReason: z.string().max(200).nullable().default(null),
   lastSyncedAt: z.string().datetime().nullable().default(null)
 });
+const commandSyncLeaseSchema = z.object({
+  ttlMs: z.number().int().min(15_000).max(300_000).default(120_000)
+});
 const tagVerificationStatusSchema = z.object({
   lastCheckAt: z.string().datetime(),
   nextCheckAt: z.string().datetime().nullable(),
@@ -141,6 +144,7 @@ const salesTicketLogSchema = z.object({
 const salesTicketPasswordRevealSchema = z.object({
   userId: z.string().regex(/^\d{5,32}$/)
 });
+const COMMAND_SYNC_LEASE_ID = "bot-command-sync-lease:global";
 
 botDevApiRouter.use(requireBot);
 
@@ -536,6 +540,87 @@ botDevApiRouter.put("/runtime/command-sync", async (req, res, next) => {
   }
 });
 
+botDevApiRouter.post("/runtime/command-sync/lease", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot não identificado na requisicao runtime." });
+    }
+
+    const input = commandSyncLeaseSchema.parse(req.body ?? {});
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + input.ttlMs);
+    const { serviceHeartbeats } = await getMongoCollections();
+
+    try {
+      const lease = await serviceHeartbeats.findOneAndUpdate(
+        {
+          _id: COMMAND_SYNC_LEASE_ID,
+          $or: [
+            { expiresAt: { $lte: now } },
+            { instanceId: botId }
+          ]
+        },
+        {
+          $set: {
+            expiresAt,
+            instanceId: botId,
+            metadata: { botId, ttlMs: input.ttlMs },
+            service: "bot-command-sync-lease",
+            updatedAt: now
+          },
+          $setOnInsert: { startedAt: now }
+        },
+        { returnDocument: "after", upsert: true }
+      );
+
+      if (lease?.instanceId === botId) {
+        return res.json({
+          acquired: true,
+          botId,
+          expiresAt: expiresAt.toISOString(),
+          retryAfterMs: 0
+        });
+      }
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+    }
+
+    const current = await serviceHeartbeats.findOne({ _id: COMMAND_SYNC_LEASE_ID });
+    const retryAfterMs = Math.max(1_000, Math.min(input.ttlMs, (current?.expiresAt?.getTime?.() ?? now.getTime() + 5_000) - now.getTime()));
+    return res.status(409).json({
+      acquired: false,
+      botId,
+      holderBotId: current?.instanceId ?? null,
+      retryAfterMs
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.delete("/runtime/command-sync/lease", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot não identificado na requisicao runtime." });
+    }
+
+    const { serviceHeartbeats } = await getMongoCollections();
+    await serviceHeartbeats.deleteOne({
+      _id: COMMAND_SYNC_LEASE_ID,
+      instanceId: botId
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 botDevApiRouter.get("/runtime/guilds/:guildId/modules/:moduleId/authorize", async (req, res, next) => {
   try {
     const botId = await resolveRequestBotId(req);
@@ -654,3 +739,7 @@ botDevApiRouter.get("/:botId/guild/:guildId/config", async (req, res, next) => {
     return next(error);
   }
 });
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === 11000;
+}
