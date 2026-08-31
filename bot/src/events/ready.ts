@@ -5,8 +5,8 @@ import {
   isBotModuleEnabled,
   setRuntimeEnabledModules
 } from "../config/env";
-import { clearGlobalCommands, registerGuildCommands } from "../handlers/commandHandler";
 import { startClipsMonitor } from "../services/clipsMonitor";
+import { syncVisibleGuildCommands } from "../services/commandSyncManager";
 import { startDiscordLogDelivery } from "../services/discordLogDeliveryService";
 import { startDatabaseMaintenanceService } from "../services/databaseMaintenanceService";
 import { startFivemFacService } from "../services/fivemFacService";
@@ -73,14 +73,11 @@ import { startApplicationEmojiAutoSync } from "../services/applicationEmojiSyncS
 import { botBootController, type BotBootTask, type BotBootTier } from "../services/bootController";
 import { startTagVerificationService, stopTagVerificationService } from "../services/tagVerificationService";
 import { startXMonitor } from "../services/xMonitor";
-import type { BotCommand, BotContext } from "../types";
+import type { BotContext } from "../types";
 
 let lastRuntimeModuleSignature = "";
 let lastRuntimeStatusWarningAt = 0;
-let commandSyncPromise: Promise<void> | null = null;
 const startedRuntimeServices = new Set<string>();
-const COMMAND_SYNC_ATTEMPTS = 3;
-const COMMAND_SYNC_RETRY_DELAY_MS = 5_000;
 
 export async function handleReady(client: Client<true>, context: BotContext) {
   console.log(`[bot] conectado como ${client.user.tag}`);
@@ -114,7 +111,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
     setRuntimeEnabledModules(payload.enabledModules);
     lastRuntimeModuleSignature = runtimeModuleSignature(true, runtimeBotId, payload.enabledModules);
     clearRuntimeModuleAuthorization();
-    void syncVisibleGuildCommands(client, context, "module_update");
+    void syncVisibleGuildCommands(client, context, "module_update", { force: true });
 
     if (!wasSelfBotEnabled && isSelfBotModuleEnabled()) {
       startSelfBotProtectionService(context);
@@ -216,7 +213,7 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   context.socket.onDmBarSettingsUpdated((payload) => {
     if (!runtimeBotId || !payload.botId || payload.botId === runtimeBotId) {
       clearDmBarConfigCache(payload.guildId);
-      void syncVisibleGuildCommands(client, context, "dm_bar_settings_update");
+      void syncVisibleGuildCommands(client, context, "dm_bar_settings_update", { force: true });
     }
   });
   startDiscordLogDelivery(context);
@@ -233,19 +230,6 @@ export async function handleReady(client: Client<true>, context: BotContext) {
   });
 
   await botBootController.runTier("STARTING_CRITICAL_MODULES", [
-    {
-      enabled: true,
-      name: "DiscordRequestManager",
-      run: () => undefined,
-      tier: "critical"
-    },
-    {
-      enabled: true,
-      name: "CommandSync",
-      run: () => syncVisibleGuildCommands(client, context, "ready"),
-      tier: "critical",
-      dependencies: ["Discord Gateway", "DiscordRequestManager"]
-    },
     {
       enabled: true,
       name: "RealtimeStatus",
@@ -307,66 +291,6 @@ function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function delay(milliseconds: number) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function syncVisibleGuildCommands(client: Client<true>, context: BotContext, reason: string) {
-  if (commandSyncPromise) {
-    await commandSyncPromise;
-  }
-
-  commandSyncPromise = syncVisibleGuildCommandsNow(client, context, reason).finally(() => {
-    commandSyncPromise = null;
-  });
-
-  await commandSyncPromise;
-}
-
-async function syncVisibleGuildCommandsNow(client: Client<true>, context: BotContext, reason: string) {
-  const commandGuildIds = commandRegistrationGuildIds(client);
-  const commands = visibleCommands([...context.commands.values()]);
-  const commandNames = commands.map((command) => command.data.name).join(", ") || "nenhum comando";
-
-  try {
-    await clearGlobalCommands(client.user.id);
-    console.log(`[bot] comandos globais limpos (${reason}).`);
-  } catch (error) {
-    console.warn(`[bot] falha ao limpar comandos globais (${reason}):`, error instanceof Error ? error.message : error);
-  }
-
-  for (const commandGuildId of commandGuildIds) {
-    try {
-      await registerGuildCommandsWithRetry(commands, client.user.id, commandGuildId, reason);
-      console.log(`[bot] comandos sincronizados no servidor ${commandGuildId} (${reason}): ${commandNames}`);
-    } catch (error) {
-      console.warn(`[bot] falha ao sincronizar comandos no servidor ${commandGuildId} (${reason}):`, error instanceof Error ? error.message : error);
-    }
-  }
-}
-
-async function registerGuildCommandsWithRetry(commands: BotCommand[], clientId: string, guildId: string, reason: string) {
-  let lastError: unknown = null;
-
-  for (let attempt = 1; attempt <= COMMAND_SYNC_ATTEMPTS; attempt += 1) {
-    try {
-      await registerGuildCommands(commands, clientId, guildId);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt >= COMMAND_SYNC_ATTEMPTS) break;
-      console.warn(`[bot] tentativa ${attempt}/${COMMAND_SYNC_ATTEMPTS} falhou ao sincronizar comandos em ${guildId} (${reason}); tentando novamente em ${COMMAND_SYNC_RETRY_DELAY_MS / 1_000}s:`, error instanceof Error ? error.message : error);
-      await delay(COMMAND_SYNC_RETRY_DELAY_MS);
-    }
-  }
-
-  throw lastError;
-}
-
-function visibleCommands(commands: BotCommand[]) {
-  return commands;
-}
-
 async function startOperationalRuntime(client: Client<true>, context: BotContext, reason: string) {
   if (isMaintenanceModeActive()) {
     console.log(`[maintenance] serviços operacionais seguem adiados (${reason}).`);
@@ -405,6 +329,10 @@ async function startOperationalRuntime(client: Client<true>, context: BotContext
   ], 1);
   botBootController.finish();
   await startRuntimeModuleServices(client, context, ["background"]);
+
+  void syncVisibleGuildCommands(client, context, reason, { force: false }).catch((error) => {
+    console.warn("[bot] falha ao sincronizar comandos em background:", error instanceof Error ? error.message : error);
+  });
 
   void syncAutomaticRolesAfterReady(client, context, reason).catch((error) => {
     console.warn("[roles] falha na sincronização pós-redeploy:", error instanceof Error ? error.message : error);
@@ -573,7 +501,7 @@ async function reconcileRuntimeModules(client: Client<true>, context: BotContext
     stopTagVerificationService();
   }
 
-  await syncVisibleGuildCommands(client, context, "module_reconcile");
+  await syncVisibleGuildCommands(client, context, "module_reconcile", { force: true });
 }
 
 function isReportSystemModuleEnabled() {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { getMongoCollections } from "../database/mongo";
 import { requireBot } from "../middleware/auth";
 import { authorizeBotCommand } from "../services/botCommandAuthorizationService";
 import {
@@ -56,6 +57,16 @@ const runtimeStatusSchema = z.object({
     username: z.string().min(1).max(100)
   }).optional(),
   online: z.boolean()
+});
+const commandSyncStateSchema = z.object({
+  commandHash: z.string().min(16).max(128),
+  commandVersion: z.number().int().min(1).max(1000),
+  dirty: z.boolean().default(false),
+  guildIdsHash: z.string().min(16).max(128),
+  guildCount: z.number().int().min(0).max(500),
+  globalCleanupHash: z.string().min(16).max(128).nullable().default(null),
+  lastReason: z.string().max(200).nullable().default(null),
+  lastSyncedAt: z.string().datetime().nullable().default(null)
 });
 const tagVerificationStatusSchema = z.object({
   lastCheckAt: z.string().datetime(),
@@ -400,6 +411,29 @@ async function assertSalesTicketRuntime(botId: string | null, guildId: string) {
   return botId;
 }
 
+function readCommandSyncState(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const record = metadata as Record<string, unknown>;
+
+  if (typeof record.commandHash !== "string" || typeof record.guildIdsHash !== "string") {
+    return null;
+  }
+
+  return {
+    commandHash: record.commandHash,
+    commandVersion: typeof record.commandVersion === "number" ? record.commandVersion : 1,
+    dirty: Boolean(record.dirty),
+    guildIdsHash: record.guildIdsHash,
+    guildCount: typeof record.guildCount === "number" ? record.guildCount : 0,
+    globalCleanupHash: typeof record.globalCleanupHash === "string" ? record.globalCleanupHash : null,
+    lastReason: typeof record.lastReason === "string" ? record.lastReason : null,
+    lastSyncedAt: typeof record.lastSyncedAt === "string" ? record.lastSyncedAt : null
+  };
+}
+
 botDevApiRouter.post("/runtime/status", async (req, res, next) => {
   try {
     const botId = await resolveRequestBotId(req);
@@ -429,6 +463,74 @@ botDevApiRouter.post("/runtime/status", async (req, res, next) => {
     return res.json({
       botId,
       status: bot?.status ?? (input.online ? "online" : "offline")
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.get("/runtime/command-sync", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot não identificado na requisicao runtime." });
+    }
+
+    const { serviceHeartbeats } = await getMongoCollections();
+    const doc = await serviceHeartbeats.findOne({ _id: `bot-command-sync:${botId}` });
+    return res.json({
+      botId,
+      state: readCommandSyncState(doc?.metadata ?? null)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+botDevApiRouter.put("/runtime/command-sync", async (req, res, next) => {
+  try {
+    const botId = await resolveRequestBotId(req);
+
+    if (!botId) {
+      return res.status(400).json({ message: "Bot não identificado na requisicao runtime." });
+    }
+
+    const input = commandSyncStateSchema.parse(req.body ?? {});
+    const now = new Date();
+    const { serviceHeartbeats } = await getMongoCollections();
+    const state = {
+      commandHash: input.commandHash,
+      commandVersion: input.commandVersion,
+      dirty: input.dirty,
+      guildIdsHash: input.guildIdsHash,
+      guildCount: input.guildCount,
+      globalCleanupHash: input.globalCleanupHash,
+      lastReason: input.lastReason,
+      lastSyncedAt: input.lastSyncedAt ?? now.toISOString()
+    };
+
+    await serviceHeartbeats.updateOne(
+      { _id: `bot-command-sync:${botId}` },
+      {
+        $set: {
+          expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          instanceId: botId,
+          metadata: state,
+          service: "bot-command-sync",
+          startedAt: now,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          startedAt: now
+        }
+      },
+      { upsert: true }
+    );
+
+    return res.json({
+      botId,
+      state
     });
   } catch (error) {
     return next(error);

@@ -941,6 +941,20 @@ export type BotRuntimeModules = {
   status: "online" | "offline" | "invalid_token" | "error";
 };
 
+export type BotCommandSyncState = {
+  botId: string;
+  state: {
+    commandHash: string;
+    commandVersion: number;
+    dirty: boolean;
+    guildIdsHash: string;
+    guildCount: number;
+    globalCleanupHash: string | null;
+    lastReason: string | null;
+    lastSyncedAt: string | null;
+  } | null;
+};
+
 export type BotRuntimeStatusInput = {
   botGuilds?: Array<{
     id: string;
@@ -2765,6 +2779,20 @@ export class ApiClient {
         timeout: 8_000
       }
     );
+    return data;
+  }
+
+  async getCommandSyncState() {
+    const { data } = await this.http.get<BotCommandSyncState>("/bot/runtime/command-sync", {
+      timeout: 8_000
+    });
+    return data;
+  }
+
+  async saveCommandSyncState(input: BotCommandSyncState["state"]) {
+    const { data } = await this.http.put<BotCommandSyncState>("/bot/runtime/command-sync", input, {
+      timeout: 8_000
+    });
     return data;
   }
 
