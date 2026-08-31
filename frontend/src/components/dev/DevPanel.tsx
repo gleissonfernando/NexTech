@@ -2347,8 +2347,8 @@ function billingDialogTitle(dialog: BotBillingActionDialogState) {
 function billingDialogDescription(dialog: BotBillingActionDialogState) {
   if (dialog.kind === "model") {
     return dialog.nextModel === "lifetime"
-      ? "O bot continuara pagando somente a hospedagem de R$ 12,00 todo dia 8."
-      : "O bot voltara a pagar o valor mensal contratado todo dia 8.";
+      ? "O bot continuara pagando somente a hospedagem de R$ 12,00 todo dia 7."
+      : "O bot voltara a pagar o valor mensal contratado todo dia 7.";
   }
   if (dialog.kind === "override") return "Libere temporariamente o bot e a dashboard registrando uma justificativa de auditoria.";
   if (dialog.kind === "removeOverride") return "A excecao ativa sera removida e a regra de cobranca voltara a valer em tempo real.";
@@ -2415,7 +2415,7 @@ function BotBillingPanel({
         <div>
           <p className="text-sm font-bold text-white">Cobrança do bot</p>
           <p className="mt-1 text-xs font-medium text-zinc-300">
-            {currentModel === "lifetime" ? "Bot vitalício: cobra somente hospedagem mensal de R$ 12,00." : `Plano mensal: cobra ${formatMoney(bot.contractAmountInCents ?? 1200, "BRL")} todo dia 8.`}
+            {currentModel === "lifetime" ? "Bot vitalício: cobra somente hospedagem mensal de R$ 12,00 todo dia 7." : `Plano mensal: cobra ${formatMoney(bot.contractAmountInCents ?? 1200, "BRL")} todo dia 7.`}
           </p>
           {billing?.access?.blocked ? <p className="mt-2 text-xs font-bold text-red-200">Bloqueado por fatura vencida.</p> : null}
           {message ? <p className="mt-2 text-xs font-semibold text-[#FFEA70]">{message}</p> : null}

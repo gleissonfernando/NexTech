@@ -105,7 +105,7 @@ console.log("[release] Preparando pacote runtime para Discloud...");
 run("node", ["scripts/prepare-discloud-package.mjs"], {
   env: {
     DEV_BOT_PROCESS_RUNNER_ENABLED: "true",
-    DEV_BOT_RUNTIME_RECONCILE_ENABLED: "true",
+    DEV_BOT_RUNTIME_RECONCILE_ENABLED: "false",
     START_REGISTERED_DEV_BOTS: process.env.START_REGISTERED_DEV_BOTS?.trim() === "true" ? "true" : "false",
     DEV_BOT_START_CONCURRENCY: process.env.DEV_BOT_START_CONCURRENCY?.trim() || "1",
     DEV_BOT_START_STAGGER_MS: process.env.DEV_BOT_START_STAGGER_MS?.trim() || "45000",

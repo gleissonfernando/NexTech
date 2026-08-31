@@ -24,6 +24,7 @@ import { startFivemCommandsService } from "../services/fivemCommandsService";
 import { startFactionChestService } from "../services/factionChestService";
 import { startZtkWebhookService } from "../services/ztkWebhookService";
 import { startPolicePatrolReportService } from "../services/policePatrolReportService";
+import { startPoliceRecruitmentService } from "../services/policeRecruitmentService";
 import { clearPoliceHiddenChannelSettingsCache } from "../services/policeHiddenChannelService";
 import { clearVehicleAbandonmentSettingsCache } from "../services/vehicleAbandonmentService";
 import { clearPoliceQruSettingsCache, startPoliceQruRankingService } from "../services/policeQruService";
@@ -460,6 +461,7 @@ function runtimeModuleTasks(client: Client<true>, context: BotContext): BotBootT
   runtimeModuleTask("fivem-commands", "normal", isBotModuleEnabled("fivem-commands"), () => startFivemCommandsService(client, context)),
   runtimeModuleTask("faction-chest", "normal", isBotModuleEnabled("faction-chest"), () => startFactionChestService(client, context)),
   runtimeModuleTask("police-patrol-reports", "normal", isBotModuleEnabled("police-patrol-reports"), () => startPolicePatrolReportService(client, context)),
+  runtimeModuleTask("police-recruitment", "normal", isBotModuleEnabled("police-recruitment"), () => startPoliceRecruitmentService(client, context)),
   runtimeModuleTask("police-qru-ranking", "background", true, () => startPoliceQruRankingService(client, context)),
   runtimeModuleTask("police-promotions", "normal", isBotModuleEnabled("police-promotions"), () => startPolicePromotionService(client, context)),
   runtimeModuleTask("police-rank-up", "normal", isBotModuleEnabled("police-rank-up"), () => startPoliceRankUpService(context)),

@@ -32,6 +32,8 @@
     "deploy:check:env": "npm run build && node scripts/deploy-check.mjs env",
     "audit:dev-bots": "npm run build --workspace backend && node scripts/audit-dev-bots.mjs",
     "bots:ensure-databases": "node scripts/ensure-bot-databases.mjs",
+    "db:audit-bot-configs": "node scripts/audit-bot-config-isolation.mjs",
+    "db:normalize-billing-due-day": "node scripts/normalize-monthly-billing-due-day.mjs",
     "db:reset-bot-system": "node scripts/reset-bot-system-database.mjs",
     "seed:panel-emojis": "npm run build --workspace backend && node scripts/seed-default-panel-emojis.mjs",
     "migrate:transcripts:url": "node scripts/migrate-transcript-urls.mjs",

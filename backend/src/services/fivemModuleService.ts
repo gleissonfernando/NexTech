@@ -151,6 +151,13 @@ export const BUILTIN_FIVEM_MODULES: FivemModuleDefinition[] = [
   },
   {
     builtIn: true,
+    description: "Relatórios guiados de recrutamento com canal temporário, questionário, auditoria e histórico por recrutador.",
+    id: "police-recruitment",
+    permissions: "Admin Polícia, Recrutador, Supervisor",
+    title: "Recrutamento Policial"
+  },
+  {
+    builtIn: true,
     description: "Registro de QRUs com oficiais envolvidos, evidências, auditoria e ranking automático.",
     id: "police-qru",
     permissions: "Admin Polícia, Supervisor",

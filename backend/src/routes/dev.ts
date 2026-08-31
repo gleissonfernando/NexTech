@@ -229,13 +229,15 @@ const resendInvoiceDmSchema = z.object({
   notificationType: z.enum(["invoice_created", "due_reminder", "due_today", "overdue", "payment_confirmed", "contract_activated", "upgrade_confirmed", "qr_expired", "payment_failed"]).default("invoice_created")
 });
 
+const DEFAULT_MONTHLY_BILLING_DUE_DAY = 7;
+
 const monthlyCustomerSchema = z.object({
   billingType: z.enum(["hosting", "monthly"]).optional(),
   discordUserId: z.string().regex(/^\d{5,32}$/),
   customerName: z.string().min(2).max(100),
   monthlyAmountInCents: z.coerce.number().int().min(0).max(100000000),
-  dueDate: z.coerce.date(),
-  fixedDueDay: z.coerce.number().int().min(1).max(28),
+  dueDate: z.coerce.date().default(() => defaultMonthlyBillingDueDate()),
+  fixedDueDay: z.coerce.number().int().min(1).max(28).default(DEFAULT_MONTHLY_BILLING_DUE_DAY),
   subscriptionStartDate: z.coerce.date(),
   planName: z.string().min(1).max(120),
   notes: z.string().max(1000).nullable().optional().or(z.literal("")),
@@ -254,6 +256,16 @@ const monthlyPaymentSchema = z.object({
   receiptUrl: z.string().url().max(2048).nullable().optional().or(z.literal("")),
   notes: z.string().max(1000).nullable().optional().or(z.literal(""))
 });
+
+function defaultMonthlyBillingDueDate(now = new Date()) {
+  const due = new Date(now);
+  due.setDate(DEFAULT_MONTHLY_BILLING_DUE_DAY);
+  due.setHours(0, 0, 0, 0);
+  if (due.getTime() < now.getTime()) {
+    due.setMonth(due.getMonth() + 1);
+  }
+  return due;
+}
 
 const monthlyCustomerPatchSchema = monthlyCustomerSchema.partial();
 

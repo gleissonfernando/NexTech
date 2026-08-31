@@ -24,6 +24,7 @@ import { handleFivemCaptchaInteraction } from "../services/fivemCaptchaService";
 import { handleFivemCommandsInteraction } from "../services/fivemCommandsService";
 import { handleFactionChestInteraction } from "../services/factionChestService";
 import { handlePolicePatrolInteraction } from "../services/policePatrolReportService";
+import { handlePoliceRecruitmentInteraction } from "../services/policeRecruitmentService";
 import { handlePoliceHiddenChannelInteraction } from "../services/policeHiddenChannelService";
 import { handleDmBarInteraction } from "../services/dmBarService";
 import { handleDafScaleInteraction } from "../services/dafScaleService";
@@ -157,6 +158,7 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
   if (await handleFivemCommandsInteraction(interaction, context)) return;
   if (await handleFactionChestInteraction(interaction, context)) return;
   if (await handlePolicePatrolInteraction(interaction, context)) return;
+  if (await handlePoliceRecruitmentInteraction(interaction, context)) return;
   if (await handlePoliceHiddenChannelInteraction(interaction, context)) return;
   if (await handleVehicleAbandonmentInteraction(interaction, context)) return;
   if (await handlePoliceQruInteraction(interaction, context)) return;

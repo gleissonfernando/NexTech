@@ -14,6 +14,7 @@ import type { AuthSessionUser } from "../types/session";
 const DISCORD_ID_PATTERN = /^\d{5,32}$/;
 const DEFAULT_SUPPORT_URL = "https://nextech.discloud.app/invite/nextech";
 const DEFAULT_PAYMENT_URL = "https://nextech.discloud.app/planos";
+export const DEFAULT_MONTHLY_BILLING_DUE_DAY = 7;
 
 export type MonthlyBillingCustomerInput = {
   billingType?: MongoMonthlyBillingType;
@@ -183,8 +184,8 @@ export async function createMonthlyBillingCustomer(botId: string, input: Monthly
     customerName: trimRequired(input.customerName, 100, "Nome do cliente"),
     planName: trimRequired(input.planName, 120, "Plano contratado"),
     monthlyAmountInCents: Math.max(0, Math.trunc(input.monthlyAmountInCents)),
-    fixedDueDay: clamp(Math.trunc(input.fixedDueDay), 1, 28),
-    firstDueDate: input.dueDate,
+    fixedDueDay: DEFAULT_MONTHLY_BILLING_DUE_DAY,
+    firstDueDate: dateWithDueDay(input.dueDate),
     subscriptionStartDate: input.subscriptionStartDate,
     initialOverdueMonths: clamp(Math.trunc(input.initialOverdueMonths ?? 0), 0, 60),
     paidInstallments: 0,
@@ -224,8 +225,10 @@ export async function updateMonthlyBillingCustomer(customerId: string, input: Mo
   if (input.customerName !== undefined) patch.customerName = trimRequired(input.customerName, 100, "Nome do cliente");
   if (input.planName !== undefined) patch.planName = trimRequired(input.planName, 120, "Plano contratado");
   if (input.monthlyAmountInCents !== undefined) patch.monthlyAmountInCents = Math.max(0, Math.trunc(input.monthlyAmountInCents));
-  if (input.dueDate !== undefined) patch.firstDueDate = input.dueDate;
-  if (input.fixedDueDay !== undefined) patch.fixedDueDay = clamp(Math.trunc(input.fixedDueDay), 1, 28);
+  if (input.dueDate !== undefined || input.fixedDueDay !== undefined) {
+    patch.fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY;
+    patch.firstDueDate = dateWithDueDay(input.dueDate ?? customer.firstDueDate);
+  }
   if (input.subscriptionStartDate !== undefined) patch.subscriptionStartDate = input.subscriptionStartDate;
   if (input.notes !== undefined) patch.notes = trim(input.notes, 1000);
   if (input.supportUrl !== undefined) patch.supportUrl = trim(input.supportUrl, 2048);
@@ -420,8 +423,8 @@ export async function previewMonthlyBillingMessage(input: { billingType: MongoMo
     discordUserId: "123456789",
     discountInCents: 0,
     fineInCents: 0,
-    firstDueDate: new Date(Date.now() - 3 * 86400000),
-    fixedDueDay: 8,
+    firstDueDate: dateWithDueDay(new Date(), DEFAULT_MONTHLY_BILLING_DUE_DAY),
+    fixedDueDay: DEFAULT_MONTHLY_BILLING_DUE_DAY,
     initialOverdueMonths: 0,
     interestInCents: 0,
     lastChargeAt: null,
@@ -532,6 +535,8 @@ export async function updateMonthlyBillingChargeResult(chargeId: string, ok: boo
 function toCustomerDto(customer: MongoMonthlyBillingCustomer, bot: MongoDevBot | null, user: { avatarUrl?: string | null; avatar?: string | null; username?: string | null } | null) {
   const computed = computeCustomerBilling(customer);
   const billingType = resolveBillingType(customer);
+  const fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY;
+  const firstDueDate = dateWithDueDay(customer.firstDueDate);
   return {
     id: customer._id,
     tenantId: customer.tenantId,
@@ -547,8 +552,8 @@ function toCustomerDto(customer: MongoMonthlyBillingCustomer, bot: MongoDevBot |
     customerName: customer.customerName,
     planName: customer.planName,
     monthlyAmountInCents: customer.monthlyAmountInCents,
-    dueDate: customer.firstDueDate.toISOString(),
-    fixedDueDay: customer.fixedDueDay,
+    dueDate: firstDueDate.toISOString(),
+    fixedDueDay,
     subscriptionStartDate: customer.subscriptionStartDate.toISOString(),
     lastPaymentAt: customer.lastPaymentAt?.toISOString() ?? null,
     nextDueDate: computed.nextDueDate.toISOString(),
@@ -734,15 +739,20 @@ function billingTypeLabel(type: MongoMonthlyBillingType) {
   return type === "hosting" ? "Hospedagem" : "Mensalidade";
 }
 
-function computeCustomerBilling(customer: Pick<MongoMonthlyBillingCustomer, "firstDueDate" | "fixedDueDay" | "initialOverdueMonths" | "paidInstallments" | "monthlyAmountInCents" | "discountInCents" | "fineInCents" | "interestInCents" | "status" | "lastChargeStatus">) {
-  const today = new Date();
-  const dueCycles = countDueCycles(customer.firstDueDate, today);
+function computeCustomerBilling(customer: Pick<MongoMonthlyBillingCustomer, "firstDueDate" | "fixedDueDay" | "initialOverdueMonths" | "paidInstallments" | "monthlyAmountInCents" | "discountInCents" | "fineInCents" | "interestInCents" | "status" | "lastChargeStatus">, today = new Date()) {
+  const fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY;
+  const firstDueDate = dateWithDueDay(customer.firstDueDate);
+  const dueCycles = countDueCycles(firstDueDate, today);
   const overdueMonths = Math.max(0, customer.initialOverdueMonths + dueCycles - customer.paidInstallments);
-  const oldestDueDate = overdueMonths > 0 ? addMonths(customer.firstDueDate, Math.max(0, customer.paidInstallments - customer.initialOverdueMonths)) : null;
-  const nextDueDate = addMonths(customer.firstDueDate, Math.max(0, customer.paidInstallments - customer.initialOverdueMonths + overdueMonths));
+  const oldestDueDate = overdueMonths > 0 ? addMonths(firstDueDate, Math.max(0, customer.paidInstallments - customer.initialOverdueMonths), fixedDueDay) : null;
+  const nextDueDate = addMonths(firstDueDate, Math.max(0, customer.paidInstallments - customer.initialOverdueMonths + overdueMonths), fixedDueDay);
   const base = customer.monthlyAmountInCents * overdueMonths;
   const totalDueInCents = Math.max(0, base + customer.fineInCents + customer.interestInCents - customer.discountInCents);
   return { nextDueDate, oldestDueDate, overdueMonths, statusLabel: customerStatusLabel(customer, overdueMonths, nextDueDate), totalDueInCents };
+}
+
+export function computeMonthlyBillingForTest(customer: Pick<MongoMonthlyBillingCustomer, "firstDueDate" | "fixedDueDay" | "initialOverdueMonths" | "paidInstallments" | "monthlyAmountInCents" | "discountInCents" | "fineInCents" | "interestInCents" | "status" | "lastChargeStatus">, today = new Date()) {
+  return computeCustomerBilling(customer, today);
 }
 
 function customerStatusLabel(customer: Pick<MongoMonthlyBillingCustomer, "status" | "lastChargeStatus">, overdueMonths: number, nextDueDate: Date) {
@@ -758,21 +768,33 @@ function customerStatusLabel(customer: Pick<MongoMonthlyBillingCustomer, "status
   return "Em dia";
 }
 
-function countDueCycles(firstDueDate: Date, today: Date) {
+function countDueCycles(firstDueDate: Date, today: Date, fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY) {
   if (startOfDay(today).getTime() < startOfDay(firstDueDate).getTime()) return 0;
   let count = 0;
   let cursor = new Date(firstDueDate);
   while (startOfDay(cursor).getTime() <= startOfDay(today).getTime() && count < 240) {
     count += 1;
-    cursor = addMonths(firstDueDate, count);
+    cursor = addMonths(firstDueDate, count, fixedDueDay);
   }
   return count;
 }
 
-function addMonths(date: Date, months: number) {
+function addMonths(date: Date, months: number, fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY) {
   const next = new Date(date);
+  next.setDate(1);
   next.setMonth(next.getMonth() + months);
+  next.setDate(normalizeDueDay(fixedDueDay));
   return next;
+}
+
+function dateWithDueDay(date: Date, fixedDueDay = DEFAULT_MONTHLY_BILLING_DUE_DAY) {
+  const next = new Date(date);
+  next.setDate(normalizeDueDay(fixedDueDay));
+  return next;
+}
+
+function normalizeDueDay(value: unknown) {
+  return clamp(Math.trunc(Number(value ?? DEFAULT_MONTHLY_BILLING_DUE_DAY)), 1, 28);
 }
 
 function startOfDay(date: Date) {

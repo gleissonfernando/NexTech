@@ -22,6 +22,7 @@ import { serverGeneratorCommand } from "./serverGenerator";
 import { ticketCommand } from "./ticket";
 import { iabCommand, sistemaCommand } from "./reportSystem";
 import { policePatrolReportCommand, viewPolicePatrolReportCommand } from "./policePatrolReports";
+import { policeRecruitmentPanelCommand } from "./policeRecruitment";
 import { policeHiddenChannelCommand } from "../services/policeHiddenChannelService";
 import { dmBarCommand } from "../services/dmBarService";
 import { dafCommand, escalaDafCommand } from "../services/dafScaleService";
@@ -71,6 +72,7 @@ export function createCommandCollection() {
     ticketCommand,
     policePatrolReportCommand,
     viewPolicePatrolReportCommand,
+    policeRecruitmentPanelCommand,
     policeHiddenChannelCommand,
     dmBarCommand,
     dafCommand,

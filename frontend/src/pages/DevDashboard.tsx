@@ -875,7 +875,7 @@ function DevMonthlyContractsPanel() {
         customerName: String(form.get("customerName") ?? ""),
         monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
         dueDate: String(form.get("dueDate") ?? ""),
-        fixedDueDay: Number(form.get("fixedDueDay") ?? "1"),
+        fixedDueDay: Number(form.get("fixedDueDay") ?? "7"),
         subscriptionStartDate: String(form.get("subscriptionStartDate") ?? ""),
         planName: String(form.get("planName") ?? ""),
         notes: String(form.get("notes") ?? ""),
@@ -1038,7 +1038,7 @@ function DevMonthlyContractsPanel() {
         customerName: String(form.get("customerName") ?? ""),
         monthlyAmountInCents: reaisToCents(String(form.get("monthlyAmount") ?? "0")),
         dueDate: String(form.get("dueDate") ?? ""),
-        fixedDueDay: Number(form.get("fixedDueDay") ?? "1"),
+        fixedDueDay: Number(form.get("fixedDueDay") ?? "7"),
         subscriptionStartDate: String(form.get("subscriptionStartDate") ?? ""),
         planName: String(form.get("planName") ?? ""),
         notes: String(form.get("notes") ?? ""),
@@ -1441,6 +1441,7 @@ function MonthlyStatusConfirmModal({
 
 function MonthlyCustomerModal({ bot, onClose, onSubmit, saving }: { bot: MonthlyBillingBot; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
   const today = new Date().toISOString().slice(0, 10);
+  const defaultDueDate = nextMonthlyBillingDueDate();
   return (
     <MonthlyModal title={`Cadastrar cliente - ${bot.name}`} onClose={onClose}>
       <form className="grid gap-3" onSubmit={onSubmit}>
@@ -1456,8 +1457,8 @@ function MonthlyCustomerModal({ bot, onClose, onSubmit, saving }: { bot: Monthly
           <MonthlyInput label="Nome do cliente" name="customerName" required />
           <MonthlyInput label="Valor da mensalidade (R$)" name="monthlyAmount" placeholder="12,00" required />
           <MonthlyInput label="Plano contratado" name="planName" required />
-          <MonthlyInput defaultValue={today} label="Data de vencimento" name="dueDate" required type="date" />
-          <MonthlyInput defaultValue="8" label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" required type="number" />
+          <MonthlyInput defaultValue={defaultDueDate} label="Data de vencimento" name="dueDate" required type="date" />
+          <MonthlyInput defaultValue="7" label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" readOnly required type="number" />
           <MonthlyInput defaultValue={today} label="Início da assinatura" name="subscriptionStartDate" required type="date" />
           <MonthlyInput defaultValue="0" label="Mensalidades atrasadas iniciais" min="0" name="initialOverdueMonths" type="number" />
         </div>
@@ -1521,7 +1522,7 @@ function MonthlyEditCustomerModal({ customer, onClose, onSubmit, saving }: { cus
           <MonthlyInput defaultValue={(customer.monthlyAmountInCents / 100).toFixed(2).replace(".", ",")} label="Valor da mensalidade (R$)" name="monthlyAmount" required />
           <MonthlyInput defaultValue={customer.planName} label="Plano contratado" name="planName" required />
           <MonthlyInput defaultValue={customer.dueDate.slice(0, 10)} label="Data de vencimento" name="dueDate" required type="date" />
-          <MonthlyInput defaultValue={String(customer.fixedDueDay)} label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" required type="number" />
+          <MonthlyInput defaultValue="7" label="Dia fixo mensal" max="28" min="1" name="fixedDueDay" readOnly required type="number" />
           <MonthlyInput defaultValue={customer.subscriptionStartDate.slice(0, 10)} label="Início da assinatura" name="subscriptionStartDate" required type="date" />
         </div>
         <MonthlyInput defaultValue={customer.paymentUrl ?? ""} label="Link de pagamento" name="paymentUrl" />
@@ -2413,6 +2414,21 @@ function NexTechInviteDetail({ label, value }: { label: string; value: string })
       <p className="mt-1 truncate text-sm font-black text-white">{value}</p>
     </div>
   );
+}
+
+function nextMonthlyBillingDueDate(now = new Date()) {
+  const due = new Date(now);
+  due.setDate(7);
+  if (due.getTime() < now.getTime()) {
+    due.setMonth(due.getMonth() + 1);
+  }
+  return formatDateInputValue(due);
+}
+
+function formatDateInputValue(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function NexTechInviteStatusBadge({ status }: { status: NexTechInviteStatus }) {

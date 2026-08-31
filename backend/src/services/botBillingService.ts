@@ -16,7 +16,7 @@ import { PAYMENT_METHODS } from "./payments/types";
 
 export const BOT_HOSTING_AMOUNT_IN_CENTS = 1200;
 const DEFAULT_MONTHLY_CONTRACT_AMOUNT_IN_CENTS = 1200;
-const DUE_DAY = 8;
+export const BOT_BILLING_DUE_DAY = 7;
 const BILLING_JOB_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const BOT_BILLING_PAID_STATUSES: MongoBotBillingInvoiceStatus[] = ["paid", "manually_released"];
 const OVERDUE_SHUTDOWN_GRACE_MS = 12 * 60 * 60 * 1000;
@@ -157,7 +157,7 @@ export async function migrateExistingBotBillingModels(source = "migration") {
 
 export async function generateDueBotInvoices(source = "billing_cycle") {
   const today = new Date();
-  if (today.getDate() < DUE_DAY) return { created: 0, skipped: true };
+  if (today.getDate() < BOT_BILLING_DUE_DAY) return { created: 0, skipped: true };
   const { devBots } = await getMongoCollections();
   const bots = await devBots.find({}).toArray();
   let created = 0;
@@ -289,6 +289,7 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
   if (!bot) return null;
 
   await ensureInvoiceWhenDashboardOpens(bot);
+  await normalizeOpenBotInvoiceDueDates(bot._id);
   await markOverdueBotInvoices("access_check", { botId, stopBots: false });
 
   const now = new Date();
@@ -300,7 +301,7 @@ export async function getBotBillingAccess(botId: string, user?: AuthSessionUser 
   ]);
   const dashboardOverrideActive = hasValidBotOverride(bot, "dashboard", now);
   const blocked = Boolean(blockingInvoice && !dashboardOverrideActive);
-  const nextDueDate = (nextInvoice?.dueDate ?? nextDueDateFromLatestInvoice(bot, latestInvoice))?.toISOString() ?? null;
+  const nextDueDate = (nextInvoice ? normalizedOpenInvoiceDueDate(nextInvoice) : nextDueDateFromLatestInvoice(bot, latestInvoice))?.toISOString() ?? null;
 
   return {
     blocked,
@@ -324,6 +325,7 @@ export async function canStartBotByBilling(botId: string) {
   if (hasValidBotOverride(bot, "bot")) {
     return { allowed: true, reason: null };
   }
+  await normalizeOpenBotInvoiceDueDates(bot._id);
   await markOverdueBotInvoices("bot_start_check", { botId, stopBots: false });
   const overdue = await findBlockingBotBillingInvoice(botId);
   if (!overdue || hasValidBotOverride(bot, "bot")) return { allowed: true, reason: null };
@@ -352,7 +354,7 @@ export function evaluateBotBillingShutdown(
     };
   }
 
-  const dueAt = invoice.dueDate.getTime();
+  const dueAt = normalizedOpenInvoiceDueDate(invoice).getTime();
   if (!Number.isFinite(dueAt) || dueAt >= now.getTime()) {
     return {
       allowed: false,
@@ -425,7 +427,7 @@ export async function generateBotInvoicePix(invoiceId: string, cpfCnpj: string, 
         paymentProvider: "asaas",
         pixCode: checkout.pixCode,
         pixCopyPaste: checkout.pixCode,
-        pixExpiresAt: invoice.dueDate,
+        pixExpiresAt: normalizedOpenInvoiceDueDate(invoice),
         pixQrCode: checkout.qrCode,
         providerPaymentId: checkout.providerOrderId,
         updatedAt: new Date()
@@ -585,6 +587,7 @@ export async function markBotInvoicePaidFromAsaas(paymentId: string | null, exte
 
 export async function getBotBillingInvoices(botId: string) {
   const { botBillingInvoices, devBots } = await getMongoCollections();
+  await normalizeOpenBotInvoiceDueDates(botId);
   const [bot, invoices] = await Promise.all([
     devBots.findOne({ _id: botId }),
     botBillingInvoices.find({ botId }).sort({ dueDate: -1 }).limit(24).toArray()
@@ -650,6 +653,25 @@ async function findLatestChargeableBotInvoice(botId: string) {
     { botId, status: { $in: ["overdue", "pending"] } },
     { sort: { status: 1, dueDate: -1 } }
   );
+}
+
+async function normalizeOpenBotInvoiceDueDates(botId: string) {
+  const { botBillingInvoices } = await getMongoCollections();
+  const invoices = await botBillingInvoices.find({ botId, status: { $in: ["pending", "overdue"] } }).toArray();
+  for (const invoice of invoices) {
+    const dueDate = normalizedOpenInvoiceDueDate(invoice);
+    if (dueDate.getTime() === invoice.dueDate.getTime() && monthKey(dueDate) === invoice.dueMonth) continue;
+    await botBillingInvoices.updateOne(
+      { _id: invoice._id },
+      {
+        $set: {
+          dueDate,
+          dueMonth: monthKey(dueDate),
+          updatedAt: new Date()
+        }
+      }
+    );
+  }
 }
 
 async function ensureNextBotInvoiceAfterPayment(bot: MongoDevBot, paidInvoice: MongoBotBillingInvoice, source: string) {
@@ -718,7 +740,7 @@ async function ensurePaidBotOnlineIfBillingAllows(bot: MongoDevBot) {
 
 async function ensureInvoiceWhenDashboardOpens(bot: MongoDevBot) {
   const now = new Date();
-  if (now.getDate() >= DUE_DAY) await ensureMonthlyBotInvoice(bot, now, "dashboard_access");
+  if (now.getDate() >= BOT_BILLING_DUE_DAY) await ensureMonthlyBotInvoice(bot, now, "dashboard_access");
 }
 
 function botBillingAmount(bot: MongoDevBot) {
@@ -741,7 +763,7 @@ function hasValidBotOverride(bot: MongoDevBot, mode: "bot" | "dashboard", now = 
 
 function dueDateForMonth(date: Date) {
   const due = new Date(date);
-  due.setDate(DUE_DAY);
+  due.setDate(BOT_BILLING_DUE_DAY);
   due.setHours(23, 59, 59, 999);
   return due;
 }
@@ -760,23 +782,22 @@ function planPeriodMonths(period: MongoBotPlanPeriod) {
 
 function nextDueDateForPeriod(contractedAt: Date, period: MongoBotPlanPeriod, referenceDate = new Date()) {
   const months = planPeriodMonths(period);
-  const due = new Date(contractedAt);
   const elapsedMonths = Math.max(
     0,
     (referenceDate.getFullYear() - contractedAt.getFullYear()) * 12 + referenceDate.getMonth() - contractedAt.getMonth()
   );
   const periodsElapsed = Math.max(1, Math.ceil((elapsedMonths || 1) / months));
-
+  const due = dueDateForMonth(contractedAt);
   due.setMonth(contractedAt.getMonth() + periodsElapsed * months);
-  due.setHours(23, 59, 59, 999);
+  due.setDate(BOT_BILLING_DUE_DAY);
   return due;
 }
 
 function nextDueDateAfterInvoice(invoice: MongoBotBillingInvoice, period: MongoBotPlanPeriod, referenceDate = new Date()) {
-  const due = new Date(invoice.dueDate);
+  const due = dueDateForMonth(invoice.dueDate);
   do {
     due.setMonth(due.getMonth() + planPeriodMonths(period));
-    due.setHours(23, 59, 59, 999);
+    due.setDate(BOT_BILLING_DUE_DAY);
   } while (due.getTime() <= referenceDate.getTime());
   return due;
 }
@@ -784,10 +805,18 @@ function nextDueDateAfterInvoice(invoice: MongoBotBillingInvoice, period: MongoB
 function nextDueDateFromLatestInvoice(bot: MongoDevBot, invoice: MongoBotBillingInvoice | null) {
   if (invoice) {
     return invoice.status === "pending" || invoice.status === "overdue"
-      ? invoice.dueDate
+      ? normalizedOpenInvoiceDueDate(invoice)
       : nextDueDateAfterInvoice(invoice, invoice.planPeriod ?? planPeriodForBot(bot));
   }
   return nextDueDateForPeriod(bot.createdAt, planPeriodForBot(bot));
+}
+
+export function nextBotBillingDueDateForTest(contractedAt: Date, period: MongoBotPlanPeriod, referenceDate = new Date()) {
+  return nextDueDateForPeriod(contractedAt, period, referenceDate);
+}
+
+export function nextBotBillingDueDateAfterInvoiceForTest(invoice: MongoBotBillingInvoice, period: MongoBotPlanPeriod, referenceDate = new Date()) {
+  return nextDueDateAfterInvoice(invoice, period, referenceDate);
 }
 
 function monthKey(date: Date) {
@@ -800,11 +829,17 @@ function appendInvoiceHistory(invoice: MongoBotBillingInvoice, status: MongoBotB
   return history;
 }
 
+function normalizedOpenInvoiceDueDate(invoice: MongoBotBillingInvoice) {
+  if (BOT_BILLING_PAID_STATUSES.includes(invoice.status) || invoice.status === "cancelled") return invoice.dueDate;
+  return dueDateForMonth(invoice.dueDate);
+}
+
 function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice, bot?: MongoDevBot | null): BotBillingInvoiceDto {
   const contractedAt = invoice.contractedAt ?? invoice.createdAt;
   const planPeriod = invoice.planPeriod ?? (invoice.billingModel === "lifetime" ? "lifetime" : "monthly");
+  const dueDate = normalizedOpenInvoiceDueDate(invoice);
   const daysOverdue = invoice.status === "overdue"
-    ? Math.max(1, Math.floor((Date.now() - invoice.dueDate.getTime()) / 86_400_000))
+    ? Math.max(1, Math.floor((Date.now() - dueDate.getTime()) / 86_400_000))
     : 0;
 
   return {
@@ -818,9 +853,9 @@ function toBotBillingInvoiceDto(invoice: MongoBotBillingInvoice, bot?: MongoDevB
     amountInCents: effectiveInvoiceAmount(invoice, bot),
     currency: invoice.currency,
     daysOverdue,
-    dueDate: invoice.dueDate.toISOString(),
+    dueDate: dueDate.toISOString(),
     dueMonth: invoice.dueMonth,
-    nextDueDate: invoice.dueDate.toISOString(),
+    nextDueDate: dueDate.toISOString(),
     planPeriod,
     status: invoice.status,
     statusLabel: invoiceStatusLabel(invoice.status),

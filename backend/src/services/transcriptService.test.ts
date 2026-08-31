@@ -66,7 +66,7 @@ describe("renderTranscriptHtml", () => {
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
     assert.match(html, /anexo\.png/);
     assert.match(html, /Embed seguro/);
-    assert.match(html, /Tecnologia Nevsec/);
+    assert.match(html, /Tecnologia NexTech/);
   });
 });
 

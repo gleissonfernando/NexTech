@@ -3141,6 +3141,54 @@ export type MongoPolicePatrolAudit = {
 };
 export type MongoPolicePatrolFile = { _id: string; reportId: string; botId: string; guildId: string; discordAttachmentId: string; name: string; mimeType: string; size: number; buffer: Buffer; createdAt: Date };
 
+export type MongoPoliceRecruitmentQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "BOOLEAN";
+export type MongoPoliceRecruitmentResult = "APPROVED" | "REJECTED" | "PENDING";
+export type MongoPoliceRecruitmentSessionStatus = "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED";
+
+export type MongoPoliceRecruitmentSettings = {
+  _id: string; botId: string; guildId: string; enabled: boolean; corporationName: string;
+  authorizedRoleIds: string[]; adminRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; editorRoleIds: string[]; supervisorRoleIds: string[];
+  forumChannelId: string | null; temporaryCategoryId: string | null; logChannelId: string | null; sessionExpirationHours: number; deleteDelaySeconds: number;
+  panelChannelId: string | null; panelMessageId: string | null; panelColor: string; createdAt: Date; updatedAt: Date; updatedBy: string | null;
+};
+
+export type MongoPoliceRecruitmentQuestion = {
+  _id: string; botId: string; guildId: string; order: number; title: string; description: string | null;
+  type: MongoPoliceRecruitmentQuestionType; required: boolean; options: string[]; enabled: boolean; createdAt: Date; updatedAt: Date; updatedBy: string | null;
+};
+
+export type MongoPoliceRecruiter = {
+  _id: string; botId: string; guildId: string; discordId: string; username: string; displayName: string; avatar: string | null; policeId: string | null;
+  forumThreadId: string | null; totalRecruitments: number; approved: number; rejected: number; pending: number; approvalRate: number;
+  lastRecruitment: Date | null; createdAt: Date; updatedAt: Date;
+};
+
+export type MongoPoliceRecruitmentAnswer = { questionId: string; title: string; type: MongoPoliceRecruitmentQuestionType; value: string | string[] | boolean | number | null };
+
+export type MongoPoliceRecruitmentSession = {
+  _id: string; botId: string; guildId: string; channelId: string | null; panelMessageId: string | null; openKey?: string;
+  recruiterDiscordId: string; recruiterUsername: string; recruiterDisplayName: string; recruiterAvatar: string | null; recruiterPoliceId: string | null;
+  recruitedDiscordId: string | null; recruitedUsername: string | null; recruitedDisplayName: string | null; recruitedAvatar: string | null;
+  currentQuestion: number; answers: MongoPoliceRecruitmentAnswer[]; status: MongoPoliceRecruitmentSessionStatus; reportId: string | null;
+  createdAt: Date; updatedAt: Date; expiresAt: Date; completedAt: Date | null; cancelledAt: Date | null;
+};
+
+export type MongoPoliceRecruitmentReport = {
+  _id: string; reportCode: string; botId: string; guildId: string; sessionId: string;
+  recruiterDiscordId: string; recruiterName: string; recruiterPoliceId: string | null;
+  recruitedDiscordId: string | null; recruitedName: string | null; recruitedPoliceId: string | null;
+  answers: MongoPoliceRecruitmentAnswer[]; theoreticalScore: number | null; practicalScore: number | null;
+  result: MongoPoliceRecruitmentResult; observations: string | null; forumThreadId: string | null; forumMessageId: string | null;
+  deleted: boolean; deletedAt: Date | null; deletedBy: string | null; editedBy: string | null; editedAt: Date | null;
+  previousValues: Array<{ at: Date; actorId: string; values: Record<string, unknown> }>; createdAt: Date; updatedAt: Date;
+};
+
+export type MongoPoliceRecruitmentAudit = {
+  _id: string; botId: string; guildId: string; sessionId: string | null; reportId: string | null; actorId: string | null; action: string; metadata: Record<string, unknown>; createdAt: Date;
+};
+
+export type MongoPoliceRecruitmentCounter = { _id: string; botId: string; guildId: string; seq: number; updatedAt: Date };
+
 export type MongoVehicleAbandonmentSettings = {
   _id: string;
   botId: string;
@@ -6468,6 +6516,13 @@ export async function getMongoCollections() {
     policePatrolMessages: db.collection<MongoPolicePatrolMessage>("police_patrol_messages"),
     policePatrolAudits: db.collection<MongoPolicePatrolAudit>("police_patrol_audits"),
     policePatrolFiles: db.collection<MongoPolicePatrolFile>("police_patrol_files"),
+    policeRecruitmentSettings: db.collection<MongoPoliceRecruitmentSettings>("police_recruitment_settings"),
+    policeRecruitmentQuestions: db.collection<MongoPoliceRecruitmentQuestion>("police_recruitment_questions"),
+    policeRecruiters: db.collection<MongoPoliceRecruiter>("police_recruiters"),
+    policeRecruitmentSessions: db.collection<MongoPoliceRecruitmentSession>("police_recruitment_sessions"),
+    policeRecruitmentReports: db.collection<MongoPoliceRecruitmentReport>("police_recruitment_reports"),
+    policeRecruitmentAudits: db.collection<MongoPoliceRecruitmentAudit>("police_recruitment_audits"),
+    policeRecruitmentCounters: db.collection<MongoPoliceRecruitmentCounter>("police_recruitment_counters"),
     vehicleAbandonmentSettings: db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings"),
     vehicleAbandonmentRecords: db.collection<MongoVehicleAbandonmentRecord>("vehicle_abandonment_records"),
     vehicleAbandonmentLogs: db.collection<MongoVehicleAbandonmentLog>("vehicle_abandonment_logs"),
@@ -7442,6 +7497,20 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoPolicePatrolAudit>("police_patrol_audits").createIndex({ reportId: 1, createdAt: 1 }),
     db.collection<MongoPolicePatrolFile>("police_patrol_files").createIndex({ botId: 1, discordAttachmentId: 1 }, { unique: true }),
     db.collection<MongoPolicePatrolFile>("police_patrol_files").createIndex({ reportId: 1, createdAt: 1 }),
+    db.collection<MongoPoliceRecruitmentSettings>("police_recruitment_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    db.collection<MongoPoliceRecruitmentQuestion>("police_recruitment_questions").createIndex({ botId: 1, guildId: 1, order: 1 }),
+    db.collection<MongoPoliceRecruiter>("police_recruiters").createIndex({ botId: 1, guildId: 1, discordId: 1 }, { unique: true }),
+    db.collection<MongoPoliceRecruitmentSession>("police_recruitment_sessions").createIndex({ openKey: 1 }, { unique: true, partialFilterExpression: { openKey: { $type: "string" } } }),
+    db.collection<MongoPoliceRecruitmentSession>("police_recruitment_sessions").createIndex({ botId: 1, guildId: 1, status: 1, updatedAt: -1 }),
+    db.collection<MongoPoliceRecruitmentSession>("police_recruitment_sessions").createIndex({ botId: 1, channelId: 1, status: 1 }),
+    db.collection<MongoPoliceRecruitmentSession>("police_recruitment_sessions").createIndex({ botId: 1, expiresAt: 1, status: 1 }),
+    db.collection<MongoPoliceRecruitmentReport>("police_recruitment_reports").createIndex({ botId: 1, guildId: 1, reportCode: 1 }, { unique: true }),
+    db.collection<MongoPoliceRecruitmentReport>("police_recruitment_reports").createIndex({ botId: 1, guildId: 1, recruiterDiscordId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRecruitmentReport>("police_recruitment_reports").createIndex({ botId: 1, guildId: 1, recruitedDiscordId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRecruitmentReport>("police_recruitment_reports").createIndex({ botId: 1, guildId: 1, deleted: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRecruitmentAudit>("police_recruitment_audits").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
+    db.collection<MongoPoliceRecruitmentAudit>("police_recruitment_audits").createIndex({ reportId: 1, createdAt: 1 }),
+    db.collection<MongoPoliceRecruitmentCounter>("police_recruitment_counters").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoVehicleAbandonmentSettings>("vehicle_abandonment_settings").createIndex({ botId: 1, guildId: 1, systemChannelId: 1 }),
     db.collection<MongoVehicleAbandonmentRecord>("vehicle_abandonment_records").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),

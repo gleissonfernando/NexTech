@@ -1,10 +1,15 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import type { MongoBotBillingInvoice, MongoDevBot } from "../database/mongo";
-import { evaluateBotBillingShutdown, normalizeBillingRecipientUserIds } from "./botBillingService";
-import { resolveMonthlyBillingRecipientIds } from "./monthlyBillingService";
+import {
+  evaluateBotBillingShutdown,
+  nextBotBillingDueDateAfterInvoiceForTest,
+  nextBotBillingDueDateForTest,
+  normalizeBillingRecipientUserIds
+} from "./botBillingService";
+import { computeMonthlyBillingForTest, resolveMonthlyBillingRecipientIds } from "./monthlyBillingService";
 
-const now = new Date("2026-08-04T15:00:00.000Z");
+const now = new Date("2026-08-10T15:00:00.000Z");
 
 function bot(input: Partial<MongoDevBot> = {}): MongoDevBot {
   return {
@@ -38,7 +43,7 @@ function invoice(input: Partial<MongoBotBillingInvoice> = {}): MongoBotBillingIn
     chargeType: "monthly_plan",
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
     currency: "BRL",
-    dueDate: new Date("2026-08-01T23:59:59.999Z"),
+    dueDate: new Date("2026-08-07T23:59:59.999Z"),
     dueMonth: "2026-08",
     idempotencyKey: "bot-invoice:bot-1:2026-08",
     notes: null,
@@ -68,7 +73,7 @@ test("não permite desligar bot com liberação administrativa ativa", () => {
         createdAt: now,
         createdBy: "admin",
         createdByName: "Admin",
-        expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+        expiresAt: new Date("2026-08-11T00:00:00.000Z"),
         forceBotActive: true,
         forceDashboardAccess: false,
         reason: "liberação temporária",
@@ -87,10 +92,10 @@ test("não permite desligar bot com liberação administrativa ativa", () => {
 test("pagamento mais recente não cobre fatura vencida anterior automaticamente", () => {
   const decision = evaluateBotBillingShutdown(
     bot(),
-    invoice({ dueDate: new Date("2026-08-01T23:59:59.999Z") }),
+    invoice({ dueDate: new Date("2026-08-07T23:59:59.999Z") }),
     invoice({
       _id: "invoice-paid",
-      dueDate: new Date("2026-09-01T23:59:59.999Z"),
+      dueDate: new Date("2026-09-07T23:59:59.999Z"),
       dueMonth: "2026-09",
       paidAt: new Date("2026-08-02T12:00:00.000Z"),
       status: "paid"
@@ -112,9 +117,9 @@ test("permite desligar apenas fatura vencida confirmada fora da tolerância", ()
 test("mantém online durante período de tolerância após vencimento", () => {
   const decision = evaluateBotBillingShutdown(
     bot(),
-    invoice({ dueDate: new Date("2026-08-04T08:00:00.000Z") }),
+    invoice({ dueDate: new Date("2026-08-07T23:59:59.999Z") }),
     null,
-    now
+    new Date("2026-08-08T06:00:00.000Z")
   );
 
   assert.equal(decision.allowed, false);
@@ -145,4 +150,79 @@ test("mensalidade mantém cliente como fallback quando bot não tem destinatári
     resolveMonthlyBillingRecipientIds({ billingRecipientUserIds: [] }, { discordUserId: "111111111111111111" }),
     ["111111111111111111"]
   );
+});
+
+test("cobrança do bot usa dia 7 como vencimento padrão", () => {
+  const dueDate = nextBotBillingDueDateForTest(
+    new Date("2026-01-31T12:00:00.000Z"),
+    "monthly",
+    new Date("2026-08-30T12:00:00.000Z")
+  );
+
+  assert.equal(dueDate.getFullYear(), 2026);
+  assert.equal(dueDate.getMonth(), 7);
+  assert.equal(dueDate.getDate(), 7);
+  assert.equal(dueDate.getHours(), 23);
+  assert.equal(dueDate.getMinutes(), 59);
+});
+
+test("próxima cobrança do bot após pagamento continua no dia 7", () => {
+  const dueDate = nextBotBillingDueDateAfterInvoiceForTest(
+    invoice({ dueDate: new Date("2026-08-08T23:59:59.999Z") }),
+    "monthly",
+    new Date("2026-08-30T12:00:00.000Z")
+  );
+
+  assert.equal(dueDate.getFullYear(), 2026);
+  assert.equal(dueDate.getMonth(), 8);
+  assert.equal(dueDate.getDate(), 7);
+  assert.equal(dueDate.getHours(), 23);
+  assert.equal(dueDate.getMinutes(), 59);
+});
+
+test("mensalidade de clientes respeita dia fixo 7", () => {
+  const computed = computeMonthlyBillingForTest(
+    {
+      discountInCents: 0,
+      fineInCents: 0,
+      firstDueDate: new Date("2026-08-20T00:00:00.000Z"),
+      fixedDueDay: 7,
+      initialOverdueMonths: 0,
+      interestInCents: 0,
+      lastChargeStatus: null,
+      monthlyAmountInCents: 1200,
+      paidInstallments: 0,
+      status: "active"
+    },
+    new Date("2026-08-30T12:00:00.000Z")
+  );
+
+  assert.equal(computed.oldestDueDate?.getFullYear(), 2026);
+  assert.equal(computed.oldestDueDate?.getMonth(), 7);
+  assert.equal(computed.oldestDueDate?.getDate(), 7);
+  assert.equal(computed.nextDueDate.getFullYear(), 2026);
+  assert.equal(computed.nextDueDate.getMonth(), 8);
+  assert.equal(computed.nextDueDate.getDate(), 7);
+  assert.equal(computed.overdueMonths >= 1, true);
+});
+
+test("mensalidade antiga com dia salvo diferente também volta para dia 7", () => {
+  const computed = computeMonthlyBillingForTest(
+    {
+      discountInCents: 0,
+      fineInCents: 0,
+      firstDueDate: new Date("2026-08-20T00:00:00.000Z"),
+      fixedDueDay: 20,
+      initialOverdueMonths: 0,
+      interestInCents: 0,
+      lastChargeStatus: null,
+      monthlyAmountInCents: 1200,
+      paidInstallments: 0,
+      status: "active"
+    },
+    new Date("2026-08-30T12:00:00.000Z")
+  );
+
+  assert.equal(computed.oldestDueDate?.getDate(), 7);
+  assert.equal(computed.nextDueDate.getDate(), 7);
 });

@@ -97,6 +97,7 @@ test("expande chaves antigas sem remover modulos ja validos", () => {
       "police-daf-roster",
       "police-courses",
       "police-patrol-reports",
+      "police-recruitment",
       "police-qru",
       "police-promotions",
       "police-rank-up",
