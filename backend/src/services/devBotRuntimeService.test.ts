@@ -3,10 +3,10 @@ import test from "node:test";
 import { resolveDevBotStartBatchPlan, resolveDevBotStartRetryDelayMs, shouldEmitDevBotShutdownSignal } from "./devBotRuntimeService";
 
 test("startup batch plan preserva limites configurados para evitar burst no Discord", () => {
-  const plan = resolveDevBotStartBatchPlan(12, 1, 45_000, true);
+  const plan = resolveDevBotStartBatchPlan(12, 1, 5_000, true);
 
   assert.equal(plan.concurrency, 1);
-  assert.equal(plan.staggerMs, 45_000);
+  assert.equal(plan.staggerMs, 5_000);
 });
 
 test("batch plan normal preserva os valores configurados", () => {

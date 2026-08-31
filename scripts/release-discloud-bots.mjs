@@ -116,7 +116,7 @@ run("node", ["scripts/prepare-discloud-package.mjs"], {
     DEV_BOT_RUNTIME_RECONCILE_ENABLED: "true",
     DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS: process.env.DEV_BOT_RUNTIME_RECONCILE_INTERVAL_MS?.trim() || "120000",
     DEV_BOT_START_CONCURRENCY: process.env.DEV_BOT_START_CONCURRENCY?.trim() || "1",
-    DEV_BOT_START_STAGGER_MS: process.env.DEV_BOT_START_STAGGER_MS?.trim() || "45000",
+    DEV_BOT_START_STAGGER_MS: process.env.DEV_BOT_START_STAGGER_MS?.trim() || "5000",
     DEV_BOT_MAX_RUNNING_PROCESSES: process.env.DEV_BOT_MAX_RUNNING_PROCESSES?.trim() || "64",
     DEV_BOT_NODE_MAX_OLD_SPACE_MB: process.env.DEV_BOT_NODE_MAX_OLD_SPACE_MB?.trim() || "96",
     BOT_EVENT_CONCURRENCY: process.env.BOT_EVENT_CONCURRENCY?.trim() || "12",
