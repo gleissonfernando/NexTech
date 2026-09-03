@@ -1012,20 +1012,42 @@ export type FactionChestSettings = { id: string; botId: string; guildId: string;
 export type FactionChestItem = { id: string; botId: string; guildId: string; bauId?: string | null; name: string; normalizedName: string; aliases?: string[]; normalizedAliases?: string[]; quantity: number; minimumQuantity?: number; category: string; description: string | null; imageUrl: string | null; active?: boolean; createdBy: string | null; updatedBy: string | null; createdAt: string; updatedAt: string };
 export type FactionChestLog = { id: string; botId: string; guildId: string; bauId?: string | null; operationCode?: string | null; action: "add" | "remove" | "create" | "update" | "delete" | "publish" | "config" | "view" | "audit" | "export"; itemId: string | null; itemName: string; quantity: number; previousQuantity: number | null; nextQuantity: number | null; reason: string | null; actorId: string; actorName: string; channelId: string | null; messageId: string | null; createdAt: string };
 export type FactionChestDashboard = { items: FactionChestItem[]; logs: FactionChestLog[]; settings: FactionChestSettings; summary: { itemCount: number; totalQuantity: number } };
-export type DafScaleRole = "pilot" | "shooter";
-export type DafScaleSettings = { id: string; botId: string; guildId: string; enabled: boolean; panelChannelId: string | null; logChannelId: string | null; participantRoleId: string | null; configRoleId: string | null; pilotRoleId: string | null; shooterRoleId: string | null; maxPilots: number; maxShooters: number; panelMessageId: string | null; createdAt: string; updatedAt: string; updatedBy: string | null };
-export type DafScaleEntry = { id: string; botId: string; guildId: string; userId: string; username: string; role: DafScaleRole; joinedAt: string; updatedAt: string };
-export type DafScaleState = { settings: DafScaleSettings; entries: DafScaleEntry[]; pilots: DafScaleEntry[]; shooters: DafScaleEntry[] };
+export type DafScaleRole = "pilot" | "copilot" | "gunner";
+export type DafScaleSettings = {
+  aircraftCapacity: number;
+  id: string;
+  botId: string;
+  guildId: string;
+  enabled: boolean;
+  panelChannelId: string | null;
+  logChannelId: string | null;
+  participantRoleId: string | null;
+  configRoleId: string | null;
+  pilotRoleId: string | null;
+  copilotRoleId: string | null;
+  gunnerRoleId: string | null;
+  shooterRoleId: string | null;
+  maxPilots: number;
+  maxShooters: number;
+  panelMessageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+export type DafScaleEntry = { id: string; botId: string; guildId: string; userId: string; username: string; role: DafScaleRole; sessionId: string | null; aircraftNumber: number; joinedAt: string; updatedAt: string };
+export type DafScaleSession = { id: string; aircraftNumber: number; availableSeats: number; closedAt: string | null; closedBy: string | null; closeReason: string | null; createdAt: string; occupants: DafScaleEntry[]; status: "open" | "closed"; title: string | null; updatedAt: string };
+export type DafScaleHistory = { id: string; aircraftNumber: number; botId: string; closedAt: string; closedBy: string | null; closeReason: string | null; createdAt: string; guildId: string; occupants: Array<{ aircraftNumber: number; joinedAt: string; role: DafScaleRole; userId: string; username: string }>; sessionId: string; title: string | null };
+export type DafScaleState = { aircraftCapacity: number; copilots: DafScaleEntry[]; entries: DafScaleEntry[]; gunners: DafScaleEntry[]; history: DafScaleHistory[]; pilots: DafScaleEntry[]; seats: DafScaleRole[]; sessions: DafScaleSession[]; settings: DafScaleSettings; summary: { activeAircraft: number; availableSeats: number; closedAircraft: number; totalOccupants: number } };
 export type DafScaleActionResult = { action: "join" | "leave" | "switch" | "none"; entry: DafScaleEntry | null; previousRole: DafScaleRole | null; settings: DafScaleSettings; state: DafScaleState };
 export type PolicePatrolSettings = { id: string; botId: string; guildId: string; enabled: boolean; creatorRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; supervisorRoleIds: string[]; logChannelId: string | null; temporaryCategoryId: string | null; deleteDelayMinutes: number; defaultExportFormat: "html" | "pdf" | "json" };
 export type PolicePatrolReport = { id: string; botId: string; guildId: string; officerId: string; officerName: string; authorId: string; authorName: string; patrolType: string | null; initialNotes: string | null; patrolStart: string | null; patrolEnd: string | null; durationMinutes: number | null; channelId: string | null; panelMessageId: string | null; lastAuthorMessageId: string | null; messageCount: number; attachmentCount: number; status: "draft" | "active" | "finished" | "cancelled"; createdAt: string; startedAt: string | null; finishedAt: string | null; deleteAt: string | null };
 export type PolicePatrolMessage = { id: string; discordMessageId: string; authorId: string; content: string; attachments: Array<{ id: string; name: string; url: string; contentType: string | null; size: number }>; embeds: unknown[]; stickers: Array<{ id: string; name: string; format: number }>; emojis: string[]; createdAt: string };
 export type PoliceRecruitmentQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "BOOLEAN";
 export type PoliceRecruitmentResult = "APPROVED" | "REJECTED" | "PENDING";
-export type PoliceRecruitmentSettings = { id: string; botId: string; guildId: string; enabled: boolean; corporationName: string; authorizedRoleIds: string[]; adminRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; editorRoleIds: string[]; supervisorRoleIds: string[]; forumChannelId: string | null; temporaryCategoryId: string | null; logChannelId: string | null; sessionExpirationHours: number; deleteDelaySeconds: number; panelChannelId: string | null; panelMessageId: string | null; panelColor: string; createdAt: string; updatedAt: string; updatedBy: string | null };
+export type PoliceRecruitmentSettings = { id: string; botId: string; guildId: string; enabled: boolean; configured: boolean; corporationName: string; authorizedRoleIds: string[]; adminRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; editorRoleIds: string[]; supervisorRoleIds: string[]; recruiterRoleIds: string[]; createReportRoleIds: string[]; editReportRoleIds: string[]; deleteReportRoleIds: string[]; viewAllReportsRoleIds: string[]; manageQuestionsRoleIds: string[]; manageConfigurationRoleIds: string[]; forumChannelId: string | null; reportsForumChannelId: string | null; temporaryCategoryId: string | null; logChannelId: string | null; sessionExpirationHours: number; sessionExpirationMinutes: number; deleteDelaySeconds: number; panelChannelId: string | null; panelMessageId: string | null; panelColor: string; createdAt: string; updatedAt: string; updatedBy: string | null; enabledAt?: string | null; disabledAt?: string | null };
 export type PoliceRecruitmentQuestion = { id: string; botId: string; guildId: string; order: number; title: string; description: string | null; type: PoliceRecruitmentQuestionType; required: boolean; options: string[]; enabled: boolean; createdAt: string; updatedAt: string; updatedBy: string | null };
 export type PoliceRecruitmentAnswer = { questionId: string; title: string; type: PoliceRecruitmentQuestionType; value: string | string[] | boolean | number | null };
-export type PoliceRecruitmentSession = { id: string; botId: string; guildId: string; channelId: string | null; panelMessageId: string | null; recruiterDiscordId: string; recruiterUsername: string; recruiterDisplayName: string; recruiterAvatar: string | null; recruiterPoliceId: string | null; recruitedDiscordId: string | null; recruitedUsername: string | null; recruitedDisplayName: string | null; recruitedAvatar: string | null; currentQuestion: number; answers: PoliceRecruitmentAnswer[]; status: "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED"; reportId: string | null; createdAt: string; updatedAt: string; expiresAt: string; completedAt: string | null; cancelledAt: string | null };
+export type PoliceRecruitmentSession = { id: string; botId: string; guildId: string; channelId: string | null; panelMessageId: string | null; recruiterDiscordId: string; recruiterUsername: string; recruiterDisplayName: string; recruiterAvatar: string | null; recruiterPoliceId: string | null; recruitedDiscordId: string | null; recruitedUsername: string | null; recruitedDisplayName: string | null; recruitedAvatar: string | null; currentQuestion: number; answers: PoliceRecruitmentAnswer[]; status: "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "SUSPENDED"; reportId: string | null; createdAt: string; updatedAt: string; expiresAt: string; completedAt: string | null; cancelledAt: string | null };
 export type PoliceRecruitmentReport = { id: string; reportCode: string; botId: string; guildId: string; sessionId: string; recruiterDiscordId: string; recruiterName: string; recruiterPoliceId: string | null; recruitedDiscordId: string | null; recruitedName: string | null; recruitedPoliceId: string | null; answers: PoliceRecruitmentAnswer[]; theoreticalScore: number | null; practicalScore: number | null; result: PoliceRecruitmentResult; observations: string | null; forumThreadId: string | null; forumMessageId: string | null; deleted: boolean; deletedAt: string | null; deletedBy: string | null; editedBy: string | null; editedAt: string | null; previousValues: Array<{ at: string; actorId: string; values: Record<string, unknown> }>; createdAt: string; updatedAt: string };
 export type PoliceRecruiter = { id: string; botId: string; guildId: string; discordId: string; username: string; displayName: string; avatar: string | null; policeId: string | null; forumThreadId: string | null; totalRecruitments: number; approved: number; rejected: number; pending: number; approvalRate: number; lastRecruitment: string | null; createdAt: string; updatedAt: string };
 export type VehicleAbandonmentSettings = { id: string; botId: string; guildId: string; enabled: boolean; systemChannelId: string | null; recordChannelId: string | null; logChannelId: string | null; allowedRoleIds: string[]; mentionRoleId: string | null; color: string; emoji: string; systemName: string; embedTitle: string; footerText: string; thumbnailUrl: string | null; defaultImageUrl: string | null; successMessage: string; errorMessage: string; deleteOriginalMessage: boolean; logsEnabled: boolean; allowMultipleAttachments: boolean; maxImages: number; allowRecordEditing: boolean; confirmationBeforeSend: boolean; explanatoryPanelAllowedRoleIds: string[]; explanatoryPanelButtonEnabled: boolean; explanatoryPanelChannelId: string | null; explanatoryPanelColor: string; explanatoryPanelCommandEnabled: boolean; explanatoryPanelCommonErrorsText: string; explanatoryPanelDescription: string; explanatoryPanelEmoji: string; explanatoryPanelExampleText: string; explanatoryPanelFinalText: string; explanatoryPanelHowItWorksText: string; explanatoryPanelImageUrl: string | null; explanatoryPanelModalContent: string; explanatoryPanelModalTitle: string; explanatoryPanelNotesText: string; explanatoryPanelRequiredFieldsText: string; explanatoryPanelThumbnailUrl: string | null; explanatoryPanelTitle: string };
@@ -4863,7 +4885,7 @@ export class ApiClient {
     return data.settings;
   }
 
-  async joinDafScale(guildId: string, input: { actorId?: string | null; actorName?: string | null; role: DafScaleRole; roleIds: string[]; userId: string; username: string }) {
+  async joinDafScale(guildId: string, input: { actorId?: string | null; actorName?: string | null; role?: DafScaleRole | null; roleIds: string[]; userId: string; username: string }) {
     const { data } = await this.http.post<DafScaleActionResult>(`/daf-scale/bot/${guildId}/join`, input);
     return data;
   }
@@ -4873,7 +4895,7 @@ export class ApiClient {
     return data;
   }
 
-  async recordDafScaleAudit(guildId: string, input: { action: "join" | "leave" | "switch" | "refresh" | "publish" | "config"; metadata?: Record<string, unknown> | null; previousRole?: DafScaleRole | null; role?: DafScaleRole | null; userId: string; username: string }) {
+  async recordDafScaleAudit(guildId: string, input: { action: "join" | "leave" | "switch" | "refresh" | "publish" | "config" | "create_session" | "close_session" | "migrate"; metadata?: Record<string, unknown> | null; previousRole?: DafScaleRole | null; role?: DafScaleRole | null; userId: string; username: string }) {
     await this.http.post(`/daf-scale/bot/${guildId}/audit`, input);
   }
 

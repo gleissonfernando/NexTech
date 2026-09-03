@@ -51,6 +51,7 @@ const PANELS: PanelDefinition[] = [
   { id: "police-promotions", label: "Promoções" },
   { id: "police-qru", label: "QRU policial" },
   { id: "police-patrol-reports", label: "Relatórios policiais" },
+  { id: "police_reports", label: "Relatórios policiais - recrutamento" },
   { id: "police-hidden-channel", label: "Canal oculto policial" },
   { id: "vehicle-abandonment", label: "Veículo abandonado" },
   { id: "police-open-duty", label: "Aviso de serviço aberto" },

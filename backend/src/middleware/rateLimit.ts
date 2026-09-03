@@ -57,6 +57,18 @@ const devPolicy: RateLimitPolicy = {
   windowMs: 60_000
 };
 
+/**
+ * Teto do balde âncora (user/IP) em relação ao limite da política.
+ *
+ * A identidade do rate limit inclui `botId`/slug, que vêm de query string e
+ * headers — valores que o cliente controla. Sem um teto ancorado apenas em
+ * usuário/IP, bastaria variar `?botId=<aleatório>` a cada requisição para criar
+ * um balde novo toda vez e nunca atingir o limite. O multiplicador mantém o
+ * escopo por bot (quem opera vários bots continua com folga) e ao mesmo tempo
+ * impede amplificação ilimitada.
+ */
+const IDENTITY_ANCHOR_MULTIPLIER = 3;
+
 export async function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
   if (shouldSkipRateLimit(req)) {
     return next();
@@ -64,15 +76,31 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
   const policy = policyForRequest(req);
   const identity = rateLimitIdentity(req);
-  const result = await consumeRateLimit(`${policy.keyPrefix}:${identity}`, policy);
+  const anchor = rateLimitAnchorIdentity(req);
+  const anchorPolicy: RateLimitPolicy = {
+    keyPrefix: policy.keyPrefix,
+    limit: policy.limit * IDENTITY_ANCHOR_MULTIPLIER,
+    windowMs: policy.windowMs
+  };
+  // Quando a identidade já é só o âncora, não há segundo balde a consumir.
+  const anchorKey = identity === anchor ? null : `${policy.keyPrefix}:${anchor}`;
+  const [result, anchorResult] = await consumeRateLimits(
+    { key: `${policy.keyPrefix}:${identity}`, policy },
+    anchorKey ? { key: anchorKey, policy: anchorPolicy } : null
+  );
 
   res.setHeader("X-RateLimit-Limit", String(policy.limit));
   res.setHeader("X-RateLimit-Remaining", String(Math.max(0, policy.limit - result.count)));
   res.setHeader("X-RateLimit-Reset", String(Math.ceil(result.resetAt / 1000)));
 
-  if (result.count > policy.limit) {
+  const overScoped = result.count > policy.limit;
+  const overAnchor = Boolean(anchorResult && anchorResult.count > anchorPolicy.limit);
+
+  if (overScoped || overAnchor) {
+    const blocked = overScoped ? policy : anchorPolicy;
+    const blockedCount = overScoped ? result.count : anchorResult!.count;
     console.warn(
-      `[rate-limit] bloqueado policy=${policy.keyPrefix} method=${req.method} path=${req.path} identity=${identity} count=${result.count}/${policy.limit}`
+      `[rate-limit] bloqueado policy=${policy.keyPrefix}${overScoped ? "" : ":anchor"} method=${req.method} path=${req.path} identity=${overScoped ? identity : anchor} count=${blockedCount}/${blocked.limit}`
     );
 
     return res.status(429).json({
@@ -158,16 +186,28 @@ function isModuleBotRuntimePath(path: string) {
 }
 
 function rateLimitIdentity(req: Request) {
-  const user = req.session?.user?.discordId;
   const queryBotId = typeof req.query.botId === "string" ? req.query.botId.trim() : "";
   const headerBotId = req.header("x-dashboard-bot-id")?.trim() ?? req.header("x-discord-bot-client-id")?.trim() ?? "";
   const botId = queryBotId || headerBotId;
   const dashboardSlug = dashboardSlugFromPath(req.path);
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
 
-  return [user ? `user:${user}` : `ip:${ip}`, botId ? `bot:${botId}` : "", dashboardSlug ? `dash:${dashboardSlug}` : ""]
+  return [rateLimitAnchorIdentity(req), botId ? `bot:${botId}` : "", dashboardSlug ? `dash:${dashboardSlug}` : ""]
     .filter(Boolean)
     .join(":");
+}
+
+/**
+ * Parte da identidade que o cliente NÃO consegue trocar à vontade.
+ * É o que impede que variar `botId` gere baldes infinitos.
+ */
+function rateLimitAnchorIdentity(req: Request) {
+  const user = req.session?.user?.discordId;
+
+  if (user) {
+    return `user:${user}`;
+  }
+
+  return `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
 }
 
 function dashboardSlugFromPath(path: string) {
@@ -177,30 +217,66 @@ function dashboardSlugFromPath(path: string) {
   return match?.[1] ?? "";
 }
 
-async function consumeRateLimit(key: string, policy: RateLimitPolicy) {
+type RateLimitTarget = { key: string; policy: RateLimitPolicy };
+type RateLimitOutcome = { count: number; resetAt: number };
+
+/**
+ * Consome um ou dois baldes numa única ida ao Redis.
+ *
+ * A versão anterior fazia `incr`, `pexpire` e `pttl` em chamadas separadas — até
+ * 3 round-trips por requisição. Com pipeline, o caso normal é 1 round-trip mesmo
+ * consumindo os dois baldes (escopo + âncora).
+ */
+async function consumeRateLimits(
+  scoped: RateLimitTarget,
+  anchor: RateLimitTarget | null
+): Promise<[RateLimitOutcome, RateLimitOutcome | null]> {
+  const targets = anchor ? [scoped, anchor] : [scoped];
   const redis = getRedisClient();
   const now = Date.now();
 
   if (redis?.status === "ready") {
     try {
-      const redisKey = `rate:${key}`;
-      const count = await redis.incr(redisKey);
-
-      if (count === 1) {
-        await redis.pexpire(redisKey, policy.windowMs);
+      const pipeline = redis.pipeline();
+      for (const target of targets) {
+        pipeline.incr(`rate:${target.key}`);
+        pipeline.pttl(`rate:${target.key}`);
       }
 
-      const ttl = await redis.pttl(redisKey);
-      return {
-        count,
-        resetAt: now + Math.max(ttl, 0)
-      };
+      const replies = await pipeline.exec();
+      if (!replies) throw new Error("pipeline sem resposta");
+
+      const outcomes: RateLimitOutcome[] = [];
+      for (let index = 0; index < targets.length; index += 1) {
+        const target = targets[index]!;
+        const countReply = replies[index * 2];
+        const ttlReply = replies[index * 2 + 1];
+        if (countReply?.[0] || ttlReply?.[0]) throw countReply?.[0] ?? ttlReply?.[0];
+
+        const count = Number(countReply?.[1] ?? 0);
+        let ttl = Number(ttlReply?.[1] ?? -1);
+
+        // ttl < 0 significa chave sem expiração (primeira requisição da janela,
+        // ou um pexpire que falhou antes). Sem este reparo a chave nunca expira
+        // e a identidade fica bloqueada para sempre.
+        if (count === 1 || ttl < 0) {
+          await redis.pexpire(`rate:${target.key}`, target.policy.windowMs);
+          ttl = target.policy.windowMs;
+        }
+
+        outcomes.push({ count, resetAt: now + Math.max(ttl, 0) });
+      }
+
+      return [outcomes[0]!, outcomes[1] ?? null];
     } catch (error) {
       console.warn("[rate-limit] Redis indisponível, usando memória:", error instanceof Error ? error.message : error);
     }
   }
 
-  return consumeMemoryRateLimit(key, policy, now);
+  return [
+    consumeMemoryRateLimit(scoped.key, scoped.policy, now),
+    anchor ? consumeMemoryRateLimit(anchor.key, anchor.policy, now) : null
+  ];
 }
 
 function consumeMemoryRateLimit(key: string, policy: RateLimitPolicy, now: number) {

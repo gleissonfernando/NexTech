@@ -52,7 +52,13 @@ test("monta checkout PagBank com Pix e cartão habilitados", () => {
 test("valida token de webhook PagBank quando configurado", () => {
   assert.equal(validatePagBankWebhookToken({ expectedToken: "secret", receivedToken: "secret" }), true);
   assert.equal(validatePagBankWebhookToken({ expectedToken: "secret", receivedToken: "wrong" }), false);
-  assert.equal(validatePagBankWebhookToken({ expectedToken: "", receivedToken: null }), true);
+  // Sem token configurado o webhook precisa falhar FECHADO: o corpo dele aprova
+  // pedidos e ativa assinaturas, então aceitá-lo sem verificação permitia ativar
+  // assinatura paga com um POST forjado.
+  assert.equal(validatePagBankWebhookToken({ expectedToken: "", receivedToken: null }), false);
+  assert.equal(validatePagBankWebhookToken({ expectedToken: "", receivedToken: "qualquer" }), false);
+  // Tamanhos diferentes não podem estourar o timingSafeEqual.
+  assert.equal(validatePagBankWebhookToken({ expectedToken: "secret", receivedToken: "s" }), false);
 });
 
 test("mapeia status PagBank para estados internos", () => {

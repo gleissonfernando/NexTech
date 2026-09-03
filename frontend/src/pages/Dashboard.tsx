@@ -90,6 +90,7 @@ import { OpenDutyNotificationsPanel } from "../components/police/OpenDutyNotific
 import { PolicePromotionsPanel } from "../components/police/PolicePromotionsPanel";
 import { PoliceQruPanel } from "../components/police/PoliceQruPanel";
 import { PoliceRankUpPanel } from "../components/police/PoliceRankUpPanel";
+import { PoliceReportsPanel } from "../components/police/PoliceReportsPanel";
 import { VehicleAbandonmentPanel } from "../components/police/VehicleAbandonmentPanel";
 import { PriceTablesPanel } from "../components/price-tables/PriceTablesPanel";
 import { RhAdminPanel } from "../components/rh-admin/RhAdminPanel";
@@ -634,6 +635,13 @@ const moduleCatalog: ModuleDefinition[] = [
     view: "police-patrol-reports"
   },
   {
+    id: "police_reports",
+    title: "Relatórios Policiais",
+    description: "Recrutamento policial com perguntas configuráveis, fórum por responsável e histórico auditável.",
+    icon: ShieldCheck,
+    view: "police-reports"
+  },
+  {
     id: "police-qru",
     title: "Registro de QRU",
     description: "Ocorrências com oficiais envolvidos, evidências e ranking automático.",
@@ -705,7 +713,7 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "police-daf-roster",
-    title: "Escala DAF",
+    title: "Escala Aerea",
     description: "Sistema de escala DAF por bot, com painel e cargos operados no Discord.",
     icon: CalendarClock,
     view: "police-daf-roster"
@@ -861,6 +869,7 @@ const viewModuleIds: Partial<Record<ViewId, string>> = {
   "police-absence": "police-absences",
   "police-actions": "police-actions",
   "police-patrol-reports": "police-patrol-reports",
+  "police-reports": "police_reports",
   "police-qru": "police-qru",
   "police-promotions": "police-promotions",
   "police-rank-up": "police-rank-up",
@@ -939,6 +948,8 @@ const policeTranscriptViews = new Set<ViewId>([
 function moduleReleaseIds(moduleId: string) {
   if (moduleId === "courses") return ["courses", "police-courses"];
   if (moduleId === "police-courses") return ["police-courses", "courses"];
+  if (moduleId === "police_reports") return ["police_reports", "police-recruitment"];
+  if (moduleId === "police-recruitment") return ["police-recruitment", "police_reports"];
   return [moduleId];
 }
 
@@ -1891,6 +1902,13 @@ export function Dashboard({ auth, initialBotSlug = null, onLogout }: DashboardPr
           <PolicePatrolReportsPanel
             botId={activeBotId}
             canManage={canManageModule(selectedBot, "police-patrol-reports", canManageDashboard)}
+            guild={selectedGuild}
+          />
+        ) : null}
+        {activeView === "police-reports" ? (
+          <PoliceReportsPanel
+            botId={activeBotId}
+            canManage={canManageModule(selectedBot, "police_reports", canManageDashboard)}
             guild={selectedGuild}
           />
         ) : null}
@@ -5586,8 +5604,8 @@ function DafRosterPanel({
   serverReleased: boolean;
 }) {
   const commandItems = [
-    { command: "/daf config", description: "Configurar cargos, canal e permissões da escala." },
-    { command: "/daf painel", description: "Publicar ou atualizar o painel DAF no Discord." }
+    { command: "/daf config", description: "Configurar canais, cargos e permissões da escala." },
+    { command: "/daf painel", description: "Publicar ou atualizar o painel da escala no Discord." }
   ];
 
   return (
@@ -5597,19 +5615,21 @@ function DafRosterPanel({
           <div>
             <div className="flex items-center gap-2 text-[#FFEA70]">
               <CalendarClock className="h-5 w-5" />
-              <CardTitle>Escala DAF</CardTitle>
+              <CardTitle>Escala Aerea</CardTitle>
             </div>
             <CardDescription className="mt-2">
               {serverReleased
-                ? "Sistema liberado para este bot e servidor. A configuração e publicação do painel continuam pelo Discord."
+                ? "Sistema liberado para este bot e servidor. A configuracao e publicacao do painel continuam pelo Discord."
                 : "Sistema liberado para o bot, mas ainda bloqueado neste servidor."}
             </CardDescription>
           </div>
           <Badge variant={serverReleased ? "success" : "warning"}>{serverReleased ? "Liberado" : "Bloqueado no servidor"}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-3">
+      <CardContent className="space-y-4">
+        <PanelImageSettings botId={bot?.id ?? null} canManage={canRelease} guildId={guild?.id ?? null} panelId="police-daf-roster" panelLabel="Escala Aerea" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-3">
           {commandItems.map((item) => (
             <div key={item.command} className="rounded-lg border border-zinc-800 bg-black/30 p-4">
               <code className="rounded-md border border-[#FFD500]/25 bg-[#FFD500]/10 px-2 py-1 text-sm font-semibold text-[#FFEA70]">
@@ -5618,27 +5638,28 @@ function DafRosterPanel({
               <p className="mt-3 text-sm text-zinc-300">{item.description}</p>
             </div>
           ))}
-        </div>
+          </div>
 
-        <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Bot</p>
-            <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{bot?.name ?? "Bot selecionado"}</p>
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-black/25 p-4">
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Bot</p>
+              <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{bot?.name ?? "Bot selecionado"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Servidor</p>
+              <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{guild?.name ?? bot?.mainGuildName ?? "Servidor configurado"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
+              <p className="mt-1 font-mono text-sm text-zinc-300">police-daf-roster</p>
+            </div>
+            {!serverReleased ? (
+              <Button disabled={!canRelease || releasing} onClick={onRelease} type="button">
+                {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Liberar neste servidor
+              </Button>
+            ) : null}
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Servidor</p>
-            <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{guild?.name ?? bot?.mainGuildName ?? "Servidor configurado"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-zinc-500">Módulo</p>
-            <p className="mt-1 font-mono text-sm text-zinc-300">police-daf-roster</p>
-          </div>
-          {!serverReleased ? (
-            <Button disabled={!canRelease || releasing} onClick={onRelease} type="button">
-              {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Liberar neste servidor
-            </Button>
-          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -12174,6 +12195,7 @@ function visualPanelIdForView(view: ViewId) {
     "fivem-captcha": "fivem-captcha",
     "fivem-commands": "fivem-commands",
     "fivem-washing": "fivem-washing",
+    "police-reports": "police_reports",
     "manual-registration": "manual-registration",
     "server-cloner": "server-cloner"
   };
@@ -12204,6 +12226,10 @@ function dashboardViewFromPath(path: string): ViewId {
     return "police-time-clock";
   }
 
+  if (path === "/dashboard/relatorios-policiais" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/relatorios-policiais(?:\/|$)/i.test(path)) {
+    return "police-reports";
+  }
+
   if (path === "/dashboard/hierarquia" || /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/dashboard\/hierarquia(?:\/|$)/i.test(path)) {
     return "fivem-hierarchy";
   }
@@ -12231,6 +12257,7 @@ function dashboardPathForView(slug: string, view: ViewId) {
   const base = `/${encodeURIComponent(slug)}/dashboard`;
   if (view === "auto-activity-clock") return `${base}/ponto-automatico`;
   if (view === "police-time-clock") return `${base}/relogio-de-ponto`;
+  if (view === "police-reports") return `${base}/relatorios-policiais`;
   if (view === "fivem-hierarchy") return `${base}/hierarquia`;
   if (view === "ztk-webhook") return `${base}/ztk-webhook`;
   if (view === "fivem-captcha") return `${base}/fivem-captcha`;
@@ -12287,6 +12314,7 @@ const fallbackDashboardViewOrder: ViewId[] = [
   "police-iab",
   "police-subpoenas",
   "police-patrol-reports",
+  "police-reports",
   "police-qru",
   "police-promotions",
   "police-rank-up",

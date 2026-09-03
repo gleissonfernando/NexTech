@@ -3,11 +3,14 @@ import { z } from "zod";
 import { requireAuth, requireBot } from "../middleware/auth";
 import { canReadDevBotModule, canUseDevBotModule, getBotApiPermissions } from "../services/devBotService";
 import {
+  createPoliceRecruitmentQuestion,
   cancelPoliceRecruitmentSession,
   createPoliceRecruitmentSession,
+  deletePoliceRecruitmentQuestion,
   finishPoliceRecruitmentSession,
   getPoliceRecruitmentRecruiter,
   getPoliceRecruitmentReport,
+  getPoliceReportsDashboard,
   getPoliceRecruitmentSession,
   getPoliceRecruitmentSessionByChannel,
   getPoliceRecruitmentSettings,
@@ -16,10 +19,13 @@ import {
   listPoliceRecruitmentReports,
   movePoliceRecruitmentQuestion,
   POLICE_RECRUITMENT_MODULE_ID,
+  requestPoliceRecruitmentPanelPublish,
+  reorderPoliceRecruitmentQuestion,
   savePoliceRecruitmentAnswer,
   savePoliceRecruitmentSettings,
   selectPoliceRecruitmentUser,
   setPoliceRecruitmentSessionChannel,
+  updatePoliceRecruitmentQuestion,
   updatePoliceRecruitmentReportPublication
 } from "../services/policeRecruitmentService";
 import { resolveRequestBotId } from "../services/requestBotScopeService";
@@ -40,10 +46,28 @@ const settingsSchema = z.object({
   panelChannelId: snowflake.nullable().optional(),
   panelColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   panelMessageId: snowflake.nullable().optional(),
+  configured: z.boolean().optional(),
+  createReportRoleIds: roleIds.optional(),
+  deleteReportRoleIds: roleIds.optional(),
+  editReportRoleIds: roleIds.optional(),
+  manageConfigurationRoleIds: roleIds.optional(),
+  manageQuestionsRoleIds: roleIds.optional(),
+  recruiterRoleIds: roleIds.optional(),
+  reportsForumChannelId: snowflake.nullable().optional(),
   sessionExpirationHours: z.coerce.number().min(1).max(168).optional(),
+  sessionExpirationMinutes: z.coerce.number().min(1).max(10080).optional(),
   supervisorRoleIds: roleIds.optional(),
   temporaryCategoryId: snowflake.nullable().optional(),
-  viewerRoleIds: roleIds.optional()
+  viewerRoleIds: roleIds.optional(),
+  viewAllReportsRoleIds: roleIds.optional()
+});
+const questionSchema = z.object({
+  description: z.string().trim().max(600).nullable().optional().or(z.literal("")),
+  enabled: z.boolean().optional(),
+  options: z.array(z.string().trim().min(1).max(200)).max(25).optional(),
+  required: z.boolean().optional(),
+  title: z.string().trim().min(1).max(120).optional(),
+  type: z.enum(["TEXT", "LONG_TEXT", "NUMBER", "USER_SELECT", "ROLE_SELECT", "SELECT", "BOOLEAN"]).optional()
 });
 const actorSchema = z.object({ actorId: snowflake });
 const userSnapshotSchema = z.object({ avatar: z.string().max(2048).nullable(), discordId: snowflake, displayName: z.string().max(100), username: z.string().max(100) });
@@ -55,11 +79,7 @@ policeRecruitmentRouter.get("/:guildId", requireAuth, async (req, res, next) => 
     const guildId = snowflake.parse(req.params.guildId);
     const botId = await botIdFor(req);
     await authorize(res.locals.dashboardAuth.user, botId, guildId, false);
-    res.json({
-      questions: await listPoliceRecruitmentQuestions(botId, guildId),
-      reports: await listPoliceRecruitmentReports(botId, guildId),
-      settings: await getPoliceRecruitmentSettings(botId, guildId)
-    });
+    res.json(await getPoliceReportsDashboard(botId, guildId));
   } catch (error) { next(error); }
 });
 
@@ -81,6 +101,54 @@ policeRecruitmentRouter.get("/:guildId/reports/:reportId", requireAuth, async (r
   } catch (error) { next(error); }
 });
 
+policeRecruitmentRouter.post("/:guildId/panel", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json(await requestPoliceRecruitmentPanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId));
+  } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.post("/:guildId/questions", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    const input = questionSchema.parse(req.body ?? {});
+    res.status(201).json({ question: await createPoliceRecruitmentQuestion(botId, guildId, sanitizeQuestionInput(input), res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.patch("/:guildId/questions/:questionId", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    const input = questionSchema.parse(req.body ?? {});
+    res.json({ question: await updatePoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), sanitizeQuestionInput(input), res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.delete("/:guildId/questions/:questionId", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json({ question: await deletePoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.post("/:guildId/questions/:questionId/move", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    const direction = z.object({ direction: z.enum(["up", "down"]) }).parse(req.body ?? {});
+    res.json({ questions: await reorderPoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), direction.direction, res.locals.dashboardAuth.user.discordId) });
+  } catch (error) { next(error); }
+});
+
 policeRecruitmentRouter.get("/bot/:guildId/settings", requireBot, async (req, res, next) => {
   try { const botId = await botIdFor(req); await licensed(botId); res.json({ settings: await getPoliceRecruitmentSettings(botId, snowflake.parse(req.params.guildId)) }); } catch (error) { next(error); }
 });
@@ -91,6 +159,26 @@ policeRecruitmentRouter.patch("/bot/:guildId/settings", requireBot, async (req, 
 
 policeRecruitmentRouter.get("/bot/:guildId/questions", requireBot, async (req, res, next) => {
   try { const botId = await botIdFor(req); await licensed(botId); res.json({ questions: await listPoliceRecruitmentQuestions(botId, snowflake.parse(req.params.guildId)) }); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.post("/bot/:guildId/questions", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const guildId = snowflake.parse(req.params.guildId); const input = questionSchema.parse(req.body ?? {}); res.status(201).json({ question: await createPoliceRecruitmentQuestion(botId, guildId, sanitizeQuestionInput(input), req.header("x-actor-id") ?? null) }); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.post("/bot/:guildId/panel", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const guildId = snowflake.parse(req.params.guildId); res.json(await requestPoliceRecruitmentPanelPublish(botId, guildId, req.header("x-actor-id") ?? null)); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.patch("/bot/:guildId/questions/:questionId", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const guildId = snowflake.parse(req.params.guildId); const input = questionSchema.parse(req.body ?? {}); res.json({ question: await updatePoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), sanitizeQuestionInput(input), req.header("x-actor-id") ?? null) }); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.post("/bot/:guildId/questions/:questionId/move", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const guildId = snowflake.parse(req.params.guildId); const direction = z.object({ direction: z.enum(["up", "down"]) }).parse(req.body ?? {}); res.json({ questions: await reorderPoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), direction.direction, req.header("x-actor-id") ?? null) }); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.delete("/bot/:guildId/questions/:questionId", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const guildId = snowflake.parse(req.params.guildId); res.json({ question: await deletePoliceRecruitmentQuestion(botId, guildId, id.parse(req.params.questionId), req.header("x-actor-id") ?? null) }); } catch (error) { next(error); }
 });
 
 policeRecruitmentRouter.post("/bot/sessions", requireBot, async (req, res, next) => {
@@ -162,4 +250,11 @@ policeRecruitmentRouter.patch("/bot/reports/:reportId/publication", requireBot, 
 async function botIdFor(req: any) { const value = await resolveRequestBotId(req); if (!value) throw routeError("Bot não identificado.", 400); return value; }
 async function licensed(botId: string) { const permissions = await getBotApiPermissions(botId); if (!permissions) throw routeError("Bot não encontrado.", 404); if (!permissions.enabledModules.includes(POLICE_RECRUITMENT_MODULE_ID)) throw routeError("Recrutamento policial não liberado.", 403); }
 async function authorize(user: any, botId: string, guildId: string, manage: boolean) { await licensed(botId); const allowed = manage ? await canUseDevBotModule(user, botId, guildId, POLICE_RECRUITMENT_MODULE_ID) : await canReadDevBotModule(user, botId, guildId, POLICE_RECRUITMENT_MODULE_ID); if (!allowed) throw routeError("Sem permissão para recrutamento policial.", 403); }
+function sanitizeQuestionInput(input: z.infer<typeof questionSchema>) {
+  return {
+    ...input,
+    description: input.description === "" ? null : input.description,
+    options: input.options ?? []
+  };
+}
 function routeError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }

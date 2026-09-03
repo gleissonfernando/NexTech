@@ -339,7 +339,11 @@ const envSchema = z
     PLAN_TOKEN_ENCRYPTION_KEY: z.string().optional().default(""),
     PLAN_TOKEN_FINGERPRINT_KEY: z.string().optional().default(""),
     PLAN_TOKEN_KEY_VERSION: z.string().optional().default("v1"),
-    MASTER_TRANSCRIPT_PASSWORD: z.string().default("NPD Lua Bennett"),
+    // Sem valor padrão de propósito: o antigo default estava versionado no
+    // .env.example (e portanto no histórico do git), funcionando como senha
+    // mestra pública capaz de abrir o transcript de QUALQUER cliente.
+    // Configure MASTER_TRANSCRIPT_PASSWORD_HASH (preferível) ou esta variável.
+    MASTER_TRANSCRIPT_PASSWORD: z.string().default(""),
     MASTER_TRANSCRIPT_PASSWORD_HASH: z.string().optional().default(""),
     APP_BASE_URL: envOptionalUrl("APP_BASE_URL"),
     TRANSCRIPT_BASE_URL: envOptionalUrl("TRANSCRIPT_BASE_URL"),

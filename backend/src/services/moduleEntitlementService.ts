@@ -24,6 +24,7 @@ const PLAN_ENTITLEMENT_MODULES: Record<string, readonly string[]> = {
     "police-daf-roster",
     "police-courses",
     "police-patrol-reports",
+    "police_reports",
     "police-recruitment",
     "police-qru",
     "police-promotions",

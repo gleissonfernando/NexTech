@@ -32,7 +32,7 @@ import { resetSelectMenuMessage, showModalAndResetSelect } from "../utils/select
 import { replaceSystemEmojis, systemComponentEmoji, systemEmojiText, systemStatusEmoji } from "./systemEmojiService";
 import type { TicketRecord } from "./apiClient";
 import { releaseDeletionLogReservation, reserveDeletedMessageLog } from "./deletedMessageLogService";
-import { getFreshGuildSettings } from "./guildSettingsCache";
+import { getCachedGuildSettings, getFreshGuildSettings } from "./guildSettingsCache";
 import { buildV2Container, renderComponentsV2Panel, resolvePanelImageUrl } from "./panelVisualRenderer";
 import { buildTranscriptLuaCommand, resolveTranscriptTemporaryPassword, resolveTranscriptUrl } from "./transcriptUrlService";
 
@@ -207,7 +207,12 @@ export async function handleReportSystemMessage(message: Message, context: BotCo
     return false;
   }
 
-  const settings = await getFreshGuildSettings(context, message.guild.id, message.client.user?.id).catch(() => null);
+  // Este handler roda em TODA mensagem de texto não-bot. `getFreshGuildSettings`
+  // ignora o cache de propósito, o que gerava uma ida ao backend (e uma leitura
+  // no Mongo) por mensagem recebida, por bot. O cache tem TTL de 30s e ainda é
+  // atualizado por push pelo evento de socket `settings:updated`, então continua
+  // refletindo mudanças de configuração quase imediatamente.
+  const settings = await getCachedGuildSettings(context, message.guild.id, message.client.user?.id).catch(() => null);
   if (!settings) return false;
 
   const topic = await resolveReportTopic(message.channel as TextChannel, context, settings);

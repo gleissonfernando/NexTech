@@ -748,7 +748,11 @@ async function registerAccess(transcript: MongoTranscript, accessType: MongoTran
 }
 
 export function generateTemporaryPassword() {
-  return randomInt(0, 10_000).toString().padStart(4, "0");
+  // 8 dígitos (10^8) em vez de 4 (10^4). Com 4 dígitos o espaço inteiro de
+  // senhas era percorrível em minutos contra o endpoint público de transcripts.
+  // Continua numérico para não mudar a experiência de digitar o código, e as
+  // senhas já emitidas seguem válidas (a comparação é por hash, não por formato).
+  return randomInt(0, 100_000_000).toString().padStart(8, "0");
 }
 
 async function generateUniqueTemporaryPassword(collection: { findOne(query: Record<string, unknown>): Promise<unknown> }) {
@@ -789,6 +793,13 @@ function isMasterPasswordValid(password: string) {
   if (env.MASTER_TRANSCRIPT_PASSWORD_HASH) {
     return verifySecret(password, env.MASTER_TRANSCRIPT_PASSWORD_HASH);
   }
+
+  // Falha fechado quando nada foi configurado: a senha mestra abre o transcript
+  // de qualquer bot/guild, então não pode existir por padrão.
+  if (!env.MASTER_TRANSCRIPT_PASSWORD) {
+    return false;
+  }
+
   const expected = Buffer.from(env.MASTER_TRANSCRIPT_PASSWORD);
   const actual = Buffer.from(password);
   return actual.length === expected.length && timingSafeEqual(actual, expected);

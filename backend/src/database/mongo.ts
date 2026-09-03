@@ -3068,7 +3068,7 @@ export type MongoFactionChestLog = {
   createdAt: Date;
 };
 
-export type MongoDafScaleRole = "pilot" | "shooter";
+export type MongoDafScaleRole = "pilot" | "copilot" | "gunner";
 
 export type MongoDafScaleSettings = {
   _id: string;
@@ -3080,6 +3080,8 @@ export type MongoDafScaleSettings = {
   participantRoleId: string | null;
   configRoleId: string | null;
   pilotRoleId: string | null;
+  copilotRoleId: string | null;
+  gunnerRoleId: string | null;
   shooterRoleId: string | null;
   maxPilots: number;
   maxShooters: number;
@@ -3096,7 +3098,51 @@ export type MongoDafScaleEntry = {
   userId: string;
   username: string;
   role: MongoDafScaleRole;
+  sessionId: string | null;
+  aircraftNumber: number;
   joinedAt: Date;
+  updatedAt: Date;
+};
+
+export type MongoDafScaleSession = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  aircraftNumber: number;
+  title: string | null;
+  status: "open" | "closed";
+  createdAt: Date;
+  updatedAt: Date;
+  closedAt: Date | null;
+  closedBy: string | null;
+  closeReason: string | null;
+};
+
+export type MongoDafScaleHistory = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  sessionId: string;
+  aircraftNumber: number;
+  title: string | null;
+  occupants: Array<{
+    aircraftNumber: number;
+    joinedAt: Date;
+    role: MongoDafScaleRole;
+    userId: string;
+    username: string;
+  }>;
+  closedAt: Date;
+  closedBy: string | null;
+  closeReason: string | null;
+  createdAt: Date;
+};
+
+export type MongoDafScaleCounter = {
+  _id: string;
+  botId: string;
+  guildId: string;
+  nextAircraftNumber: number;
   updatedAt: Date;
 };
 
@@ -3106,7 +3152,7 @@ export type MongoDafScaleAudit = {
   guildId: string;
   userId: string;
   username: string;
-  action: "join" | "leave" | "switch" | "refresh" | "publish" | "config";
+  action: "join" | "leave" | "switch" | "refresh" | "publish" | "config" | "create_session" | "close_session" | "migrate";
   role: MongoDafScaleRole | null;
   previousRole: MongoDafScaleRole | null;
   createdAt: Date;
@@ -3143,12 +3189,15 @@ export type MongoPolicePatrolFile = { _id: string; reportId: string; botId: stri
 
 export type MongoPoliceRecruitmentQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "BOOLEAN";
 export type MongoPoliceRecruitmentResult = "APPROVED" | "REJECTED" | "PENDING";
-export type MongoPoliceRecruitmentSessionStatus = "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED";
+export type MongoPoliceRecruitmentSessionStatus = "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "SUSPENDED";
 
 export type MongoPoliceRecruitmentSettings = {
   _id: string; botId: string; guildId: string; enabled: boolean; corporationName: string;
+  configured?: boolean; projectId?: string | null; enabledBy?: string | null; enabledAt?: Date | null; disabledBy?: string | null; disabledAt?: Date | null;
   authorizedRoleIds: string[]; adminRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; editorRoleIds: string[]; supervisorRoleIds: string[];
+  recruiterRoleIds?: string[]; createReportRoleIds?: string[]; editReportRoleIds?: string[]; deleteReportRoleIds?: string[]; viewAllReportsRoleIds?: string[]; manageQuestionsRoleIds?: string[]; manageConfigurationRoleIds?: string[];
   forumChannelId: string | null; temporaryCategoryId: string | null; logChannelId: string | null; sessionExpirationHours: number; deleteDelaySeconds: number;
+  reportsForumChannelId?: string | null; sessionExpirationMinutes?: number;
   panelChannelId: string | null; panelMessageId: string | null; panelColor: string; createdAt: Date; updatedAt: Date; updatedBy: string | null;
 };
 
@@ -3159,7 +3208,7 @@ export type MongoPoliceRecruitmentQuestion = {
 
 export type MongoPoliceRecruiter = {
   _id: string; botId: string; guildId: string; discordId: string; username: string; displayName: string; avatar: string | null; policeId: string | null;
-  forumThreadId: string | null; totalRecruitments: number; approved: number; rejected: number; pending: number; approvalRate: number;
+  roleName?: string | null; active?: boolean; forumThreadId: string | null; totalRecruitments: number; approved: number; rejected: number; pending: number; approvalRate: number;
   lastRecruitment: Date | null; createdAt: Date; updatedAt: Date;
 };
 
@@ -6510,6 +6559,9 @@ export async function getMongoCollections() {
     factionChestLogs: db.collection<MongoFactionChestLog>("faction_chest_logs"),
     dafScaleSettings: db.collection<MongoDafScaleSettings>("daf_scale_settings"),
     dafScaleEntries: db.collection<MongoDafScaleEntry>("daf_scale_entries"),
+    dafScaleSessions: db.collection<MongoDafScaleSession>("daf_scale_sessions"),
+    dafScaleHistory: db.collection<MongoDafScaleHistory>("daf_scale_history"),
+    dafScaleCounters: db.collection<MongoDafScaleCounter>("daf_scale_counters"),
     dafScaleAudits: db.collection<MongoDafScaleAudit>("daf_scale_audits"),
     policePatrolSettings: db.collection<MongoPolicePatrolSettings>("police_patrol_settings"),
     policePatrolReports: db.collection<MongoPolicePatrolReport>("police_patrol_reports"),
@@ -6666,7 +6718,12 @@ export async function ensureGuild(guildId: string) {
 async function ensureMongoIndexes(db: Db) {
   if (!globalForMongo.mongoIndexes) {
     globalForMongo.mongoIndexes = createMongoIndexes(db).catch((error) => {
-      console.warn("[mongo] não foi possível criar indices:", error instanceof Error ? error.message : error);
+      // Antes o erro era engolido e a promise memoizada resolvia mesmo assim:
+      // uma indisponibilidade momentânea do Mongo no primeiro acesso deixava o
+      // processo inteiro rodando SEM índices até o próximo restart. Limpar a
+      // memoização permite que a próxima chamada tente de novo.
+      console.error("[mongo] não foi possível criar indices:", error instanceof Error ? error.message : error);
+      globalForMongo.mongoIndexes = undefined;
     });
   }
 
@@ -6693,7 +6750,10 @@ async function createMongoIndexes(db: Db) {
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, status: 1, createdAt: -1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, openerId: 1, categoryId: 1, status: 1, createdAt: -1 }),
-    db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, channelId: 1 }),
+    // `getTicketByChannel` tem um fallback que consulta só por { channelId },
+    // sem prefixo botId/guildId — sem este índice era varredura de coleção a
+    // cada evento em canal que não é ticket.
+    db.collection<MongoTicket>("Ticket").createIndex({ channelId: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, _id: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex({ botId: 1, guildId: 1, panelId: 1, moduleType: 1 }),
     db.collection<MongoTicket>("Ticket").createIndex(
@@ -7063,6 +7123,9 @@ async function createMongoIndexes(db: Db) {
     ),
     ensureDevBotIndexes(db),
     db.collection<MongoBotGuildConfig>("BotGuildConfig").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
+    // Várias consultas buscam por guildId isolado (descoberta de qual bot atende
+    // a guild), que não aproveita o prefixo botId do índice único acima.
+    db.collection<MongoBotGuildConfig>("BotGuildConfig").createIndex({ guildId: 1 }),
     db.collection<MongoDevPermission>("DevPermission").createIndex({ userId: 1 }, { unique: true }),
     ensureSystemEmojiIndexes(db),
     ensureDashboardAuditLogIndexes(db)
@@ -7100,6 +7163,11 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoPlanSubscription>("plan_subscriptions").createIndex({ "metadata.paymentOrderId": 1 }, { sparse: true, unique: true }),
     db.collection<MongoPlanWorkspace>("plan_workspaces").createIndex({ ownerDiscordId: 1, status: 1, updatedAt: -1 }),
     db.collection<MongoPlanWorkspace>("plan_workspaces").createIndex({ slug: 1 }, { unique: true }),
+    // `resolveEffectiveEnabledModules` filtra com $or em botIds/ownerDiscordId/ownerUserId.
+    // O Mongo só usa plano de união de índices quando TODOS os ramos do $or são
+    // indexados; sem estes dois, a consulta varria a coleção uma vez por bot.
+    db.collection<MongoPlanWorkspace>("plan_workspaces").createIndex({ botIds: 1 }),
+    db.collection<MongoPlanWorkspace>("plan_workspaces").createIndex({ ownerUserId: 1, status: 1 }),
     db.collection<MongoWorkspaceMember>("workspace_members").createIndex({ workspaceId: 1, discordId: 1 }, { unique: true }),
     db.collection<MongoWorkspaceMember>("workspace_members").createIndex({ discordId: 1, workspaceId: 1 }),
     db.collection<MongoBotCredential>("bot_credentials").createIndex({ workspaceId: 1, createdAt: -1 }),
@@ -7140,6 +7208,9 @@ async function ensurePlanIndexes(db: Db) {
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ userId: 1, status: 1, dueDate: 1 }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ paymentProvider: 1, providerPaymentId: 1 }, { sparse: true }),
     db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ status: 1, dueDate: 1 }),
+    // Serve o findOne({ contractId }, { sort: { dueDate: -1 } }) que roda dentro
+    // do laço de até 500 contratos em listDeveloperMonthlyContracts.
+    db.collection<MongoBotBillingInvoice>("bot_billing_invoices").createIndex({ contractId: 1, dueDate: -1 }),
     db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ tenantId: 1, botId: 1, discordUserId: 1, deletedAt: 1 }),
     db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ botId: 1, status: 1, fixedDueDay: 1 }),
     db.collection<MongoMonthlyBillingCustomer>("monthly_billing_customers").createIndex({ billingType: 1, status: 1, deletedAt: 1 }),
@@ -7260,6 +7331,11 @@ async function ensureGuildSettingsIndexes(db: Db) {
     collection.dropIndex("GuildSettings_guildId_key").catch(() => undefined)
   ]);
   await collection.createIndex({ botId: 1, guildId: 1 }, { unique: true });
+  // `getGlobalDashboardUserPermissions` consulta por { guildId, verificationEnabled }
+  // sem o prefixo `botId`, então o índice composto acima não serve e a consulta
+  // varria a coleção inteira — em todo request autenticado, uma vez por bot.
+  // Não-único de propósito (o antigo `guildId_1` único é dropado acima).
+  await collection.createIndex({ guildId: 1, verificationEnabled: 1 });
   await db.collection<MongoSafeBotMessageState>("safe_bot_message_states").createIndex(
     { botId: 1, guildId: 1 },
     { unique: true }
@@ -7486,7 +7562,11 @@ async function ensureFivemModuleIndexes(db: Db) {
     db.collection<MongoFactionChestLog>("faction_chest_logs").createIndex({ botId: 1, guildId: 1, itemId: 1, createdAt: -1 }),
     db.collection<MongoDafScaleSettings>("daf_scale_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDafScaleEntry>("daf_scale_entries").createIndex({ botId: 1, guildId: 1, userId: 1 }, { unique: true }),
-    db.collection<MongoDafScaleEntry>("daf_scale_entries").createIndex({ botId: 1, guildId: 1, role: 1, joinedAt: 1 }),
+    db.collection<MongoDafScaleEntry>("daf_scale_entries").createIndex({ botId: 1, guildId: 1, sessionId: 1, role: 1 }, { unique: true, partialFilterExpression: { sessionId: { $type: "string" } } }),
+    db.collection<MongoDafScaleSession>("daf_scale_sessions").createIndex({ botId: 1, guildId: 1, aircraftNumber: 1 }, { unique: true }),
+    db.collection<MongoDafScaleSession>("daf_scale_sessions").createIndex({ botId: 1, guildId: 1, status: 1, aircraftNumber: 1 }),
+    db.collection<MongoDafScaleHistory>("daf_scale_history").createIndex({ botId: 1, guildId: 1, closedAt: -1 }),
+    db.collection<MongoDafScaleCounter>("daf_scale_counters").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoDafScaleAudit>("daf_scale_audits").createIndex({ botId: 1, guildId: 1, createdAt: -1 }),
     db.collection<MongoPolicePatrolSettings>("police_patrol_settings").createIndex({ botId: 1, guildId: 1 }, { unique: true }),
     db.collection<MongoPolicePatrolReport>("police_patrol_reports").createIndex({ botId: 1, guildId: 1, officerId: 1, createdAt: -1 }),

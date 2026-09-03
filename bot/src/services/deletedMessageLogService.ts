@@ -84,7 +84,7 @@ export type RegisterDeletedMessageInput = {
 
 const SNAPSHOT_TTL_MS = configuredSnapshotTtlMs();
 const LOG_IDEMPOTENCY_TTL_MS = 5 * 60 * 1_000;
-const MAX_SNAPSHOTS = 20_000;
+const MAX_SNAPSHOTS = configuredMaxSnapshots();
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>()\]]+/gi;
 const SNAPSHOT_STORE_DIR = path.join(process.env.DELETED_MESSAGE_SNAPSHOT_DIR?.trim() || tmpdir(), "nextech-deleted-message-snapshots");
 
@@ -241,9 +241,13 @@ function rememberSnapshot(snapshot: DeletedMessageSnapshot) {
 async function snapshotFromMessage(message: Message | PartialMessage): Promise<DeletedMessageSnapshot | null> {
   if (!message.guild || !message.channelId) return null;
   const author = message.author ?? null;
-  const member = author?.id
-    ? message.guild.members.cache.get(author.id) ?? await message.guild.members.fetch(author.id).catch(() => null)
-    : null;
+  // `message.member` vem no próprio payload do gateway, sem custo de REST.
+  // Antes havia um `members.fetch()` aqui: como o cache de membros é limitado a
+  // BOT_CACHE_MEMBERS_MAX (10), ele falhava em praticamente toda mensagem e
+  // gerava uma chamada `GET /guilds/{id}/members/{id}` por mensagem recebida.
+  // `member` só alimenta displayName/displayColor, que já têm fallback.
+  const member = message.member
+    ?? (author?.id ? message.guild.members.cache.get(author.id) ?? null : null);
   const content = message.content ?? "";
   const channelName = "name" in message.channel && typeof message.channel.name === "string"
     ? message.channel.name
@@ -535,6 +539,23 @@ function snapshotPath(guildId: string, messageId: string) {
 
 function safeFilePart(value: string) {
   return value.replace(/[^0-9a-z_-]/gi, "_");
+}
+
+/**
+ * Teto da camada em memória de snapshots.
+ *
+ * Cada processo de bot roda com `--max-old-space-size=64`. Um snapshot completo
+ * (conteúdo, anexos, embeds, stickers, menções) custa ~1-2 KB, então o antigo
+ * teto de 20.000 reservava ~24 MB — mais de um terço do heap — só para este
+ * cache. Nada é perdido ao reduzir: quando o snapshot não está em memória,
+ * `loadPersistedSnapshot` o recupera do armazenamento em disco.
+ */
+function configuredMaxSnapshots() {
+  const configured = Number(process.env.DELETED_MESSAGE_SNAPSHOT_MAX);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.min(Math.max(Math.trunc(configured), 100), 20_000);
+  }
+  return 2_000;
 }
 
 function configuredSnapshotTtlMs() {

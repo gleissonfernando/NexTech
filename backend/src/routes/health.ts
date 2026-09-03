@@ -7,7 +7,7 @@ import { metricsSnapshot } from "../services/monitoringService";
 import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
 import { bootController } from "../services/bootController";
-import { listDevBots, type DevBotDto } from "../services/devBotService";
+import { listDevBotSummaries, type DevBotDto } from "../services/devBotService";
 import { memoryMonitorSnapshot } from "../services/memoryMonitor";
 import { getTranscriptHealthStatus } from "../services/transcriptService";
 
@@ -30,7 +30,7 @@ async function healthSnapshotHandler(_req: Request, res: Response) {
     traceAsync(trace, "database:health", databaseHealth),
     traceAsync(trace, "redis:health", redisHealth),
     traceAsync(trace, "queue:background-jobs", () => backgroundJobHealth().catch((error) => ({ status: "error", lastError: error instanceof Error ? error.message : String(error) }))),
-    traceAsync(trace, "database:list-dev-bots", () => listDevBots().catch(() => [] as DevBotDto[]))
+    traceAsync(trace, "database:list-dev-bots", () => listDevBotSummaries().catch(() => [] as DevBotDto[]))
   ]);
   const bot = getBotStatus();
   const boot = bootController.snapshot();
@@ -105,7 +105,7 @@ healthRouter.get("/bots", (_req, res) => {
 
 healthRouter.get("/bots/:botId", async (req, res, next) => {
   try {
-    const bots = await listDevBots();
+    const bots = await listDevBotSummaries();
     const bot = bots.find((item) => item.id === req.params.botId || item.clientId === req.params.botId);
 
     if (!bot) {
@@ -146,7 +146,7 @@ healthRouter.get("/payments", (_req, res) => {
 
 healthRouter.get("/servers", async (_req, res, next) => {
   try {
-    const bots = await listDevBots();
+    const bots = await listDevBotSummaries();
     const servers = buildServerHealth(bots, getBotStatus());
     return res.json({ servers });
   } catch (error) {

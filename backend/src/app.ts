@@ -26,7 +26,11 @@ export const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
 const frontendIndexPath = path.join(frontendDistPath, "index.html");
 const uploadsPath = path.resolve(__dirname, "../uploads");
-const corsOrigin = env.FRONTEND_URL || true;
+// Em produção nunca caia para `true`: com `credentials: true` isso refletiria
+// qualquer Origin e permitiria que qualquer site fizesse requisições
+// autenticadas com o cookie de sessão do usuário. `FRONTEND_URL` sempre tem
+// fallback em env.ts, então este ramo é apenas defesa em profundidade.
+const corsOrigin = env.FRONTEND_URL || (env.NODE_ENV === "production" ? false : true);
 
 ensureFrontendBuild();
 

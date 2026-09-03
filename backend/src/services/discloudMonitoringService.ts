@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { getMongoDb } from "../database/mongo";
-import { listDevBots, type DevBotDto } from "./devBotService";
+import { getDevBot, listDevBots, type DevBotDto } from "./devBotService";
 import { createLog } from "./logService";
 
 type DiscloudAction = "start" | "stop" | "restart" | "redeploy";
@@ -93,7 +93,7 @@ export async function getDiscloudMonitoring(force = false): Promise<DiscloudMoni
 
 export async function getDiscloudLogsForBot(botId: string) {
   ensureDiscloudToken();
-  const bot = (await listDevBots()).find((item) => item.id === botId);
+  const bot = await getDevBot(botId);
   const appId = resolveAppId(bot, botId);
 
   if (!appId) {
@@ -113,7 +113,7 @@ export async function getDiscloudLogsForBot(botId: string) {
 
 export async function runDiscloudBotAction(botId: string, action: DiscloudAction) {
   ensureDiscloudToken();
-  const bot = (await listDevBots()).find((item) => item.id === botId);
+  const bot = await getDevBot(botId);
   const appId = resolveAppId(bot, botId);
 
   if (!bot || !appId) {

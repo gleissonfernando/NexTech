@@ -220,9 +220,10 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-actions", label: "Polícia - Ações" },
   { id: "police-iab", label: "Polícia - Corregedoria" },
   { id: "police-hr", label: "Polícia - RH Policial" },
-  { id: "police-daf-roster", label: "Polícia - Escalacao DAF" },
+  { id: "police-daf-roster", label: "Polícia - Escala Aerea" },
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
+  { id: "police_reports", label: "Polícia - Relatórios Policiais" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
   { id: "police-promotions", label: "Polícia - Promoções de Patente" },
   { id: "police-rank-up", label: "Polícia - Solicitação de UP" },
@@ -345,6 +346,7 @@ const POLICE_RELEASE_MODULE_IDS = [
   "police-daf-roster",
   "police-courses",
   "police-patrol-reports",
+  "police_reports",
   "police-qru",
   "police-promotions",
   "police-rank-up",
@@ -356,7 +358,7 @@ const POLICE_RELEASE_MODULE_IDS = [
 ] as const;
 const POLICE_SERVER_RELEASE_MODULES = [
   {
-    description: "Mostra e autoriza a Escalacao DAF somente neste servidor.",
+    description: "Mostra e autoriza a Escala Aerea somente neste servidor.",
     id: "police-daf-roster",
     moduleIds: ["police-daf-roster"],
     label: "DAF"
@@ -785,7 +787,7 @@ const botMenuItems: BotMenuItem[] = [
       {
         group: "policia",
         id: "police-daf-roster",
-        label: "Escalacao DAF",
+        label: "Escala Aerea",
         description: "Escalas, plantões e equipes DAF",
         icon: CalendarDays,
         moduleIds: ["police-daf-roster"]

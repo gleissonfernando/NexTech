@@ -414,10 +414,22 @@ function ensureEmojiCapacity(context: { emojis: Array<{ animated?: boolean }>; e
   if (used >= context.emojiLimit) throw httpError(`O servidor não possui espaço para novos emojis ${animated ? "animados" : "estáticos"}.`, 400);
 }
 
-async function discordRequest<T>(endpoint: string, token: string, init: RequestInit = {}) {
+/**
+ * Um 429 global da Discord vem com `retry_after` alto. Sem teto de tentativas e
+ * sem limite de espera, o retry vira um laço infinito que só acumula respostas
+ * inválidas (contam para o bloqueio por IP da Cloudflare).
+ */
+const DISCORD_MAX_RETRY_ATTEMPTS = 3;
+const DISCORD_MAX_RETRY_DELAY_MS = 30_000;
+
+async function discordRequest<T>(endpoint: string, token: string, init: RequestInit = {}, attempt = 0): Promise<T> {
   const response = await fetch(`https://discord.com/api/v10${endpoint}`, { ...init, headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json", ...init.headers } });
   const payload = response.status === 204 ? null : await response.json().catch(() => null) as { message?: string; retry_after?: number } | null;
-  if (response.status === 429 && payload?.retry_after) { await new Promise((resolve) => setTimeout(resolve, Math.ceil(payload.retry_after! * 1000))); return discordRequest<T>(endpoint, token, init); }
+  if (response.status === 429 && payload?.retry_after && attempt < DISCORD_MAX_RETRY_ATTEMPTS) {
+    const retryAfterMs = Math.min(Math.ceil(payload.retry_after * 1000), DISCORD_MAX_RETRY_DELAY_MS);
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    return discordRequest<T>(endpoint, token, init, attempt + 1);
+  }
   if (!response.ok) throw httpError(payload?.message || `Discord respondeu ${response.status}.`, response.status);
   return payload as T;
 }

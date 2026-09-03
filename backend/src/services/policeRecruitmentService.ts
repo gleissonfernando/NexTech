@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { getMongoCollections, type MongoPoliceRecruitmentQuestion, type MongoPoliceRecruitmentSettings, type MongoPoliceRecruitmentSession, type MongoPoliceRecruitmentAnswer, type MongoPoliceRecruitmentResult } from "../database/mongo";
+import { getMongoCollections, type MongoPoliceRecruitmentQuestion, type MongoPoliceRecruitmentQuestionType, type MongoPoliceRecruitmentSettings, type MongoPoliceRecruitmentSession, type MongoPoliceRecruitmentAnswer, type MongoPoliceRecruitmentResult } from "../database/mongo";
+import { devBotRealtimeRoom, emitRealtimeToRoomWithAck } from "../realtime/events";
 
-export const POLICE_RECRUITMENT_MODULE_ID = "police-recruitment";
+export const POLICE_REPORTS_MODULE_ID = "police_reports";
+export const POLICE_RECRUITMENT_MODULE_ID = POLICE_REPORTS_MODULE_ID;
+export const POLICE_RECRUITMENT_LEGACY_MODULE_ID = "police-recruitment";
 
-type SettingsInput = Partial<Pick<MongoPoliceRecruitmentSettings, "enabled" | "corporationName" | "authorizedRoleIds" | "adminRoleIds" | "viewerRoleIds" | "deleteRoleIds" | "editorRoleIds" | "supervisorRoleIds" | "forumChannelId" | "temporaryCategoryId" | "logChannelId" | "sessionExpirationHours" | "deleteDelaySeconds" | "panelChannelId" | "panelMessageId" | "panelColor">>;
+type SettingsInput = Partial<Pick<MongoPoliceRecruitmentSettings, "enabled" | "configured" | "corporationName" | "authorizedRoleIds" | "adminRoleIds" | "viewerRoleIds" | "deleteRoleIds" | "editorRoleIds" | "supervisorRoleIds" | "recruiterRoleIds" | "createReportRoleIds" | "editReportRoleIds" | "deleteReportRoleIds" | "viewAllReportsRoleIds" | "manageQuestionsRoleIds" | "manageConfigurationRoleIds" | "forumChannelId" | "reportsForumChannelId" | "temporaryCategoryId" | "logChannelId" | "sessionExpirationHours" | "sessionExpirationMinutes" | "deleteDelaySeconds" | "panelChannelId" | "panelMessageId" | "panelColor">>;
 type RecruiterInput = { avatar: string | null; displayName: string; discordId: string; policeId?: string | null; username: string };
 type RecruitedInput = { avatar: string | null; discordId: string; displayName: string; username: string };
+type QuestionInput = Partial<Pick<MongoPoliceRecruitmentQuestion, "description" | "enabled" | "options" | "required" | "title" | "type">>;
 
 export async function getPoliceRecruitmentSettings(botId: string, guildId: string) {
   const { policeRecruitmentSettings } = await getMongoCollections();
@@ -14,9 +18,10 @@ export async function getPoliceRecruitmentSettings(botId: string, guildId: strin
   const now = new Date();
   const settings: MongoPoliceRecruitmentSettings = {
     _id: randomUUID(), adminRoleIds: [], authorizedRoleIds: [], botId, corporationName: "Corporação Policial", createdAt: now,
-    deleteDelaySeconds: 8, deleteRoleIds: [], editorRoleIds: [], enabled: false, forumChannelId: null, guildId, logChannelId: null,
+    configured: false, deleteDelaySeconds: 8, deleteRoleIds: [], editorRoleIds: [], enabled: false, forumChannelId: null, guildId, logChannelId: null,
+    recruiterRoleIds: [], createReportRoleIds: [], editReportRoleIds: [], deleteReportRoleIds: [], viewAllReportsRoleIds: [], manageQuestionsRoleIds: [], manageConfigurationRoleIds: [],
     panelChannelId: null, panelColor: "#22c55e", panelMessageId: null, sessionExpirationHours: 12, supervisorRoleIds: [],
-    temporaryCategoryId: null, updatedAt: now, updatedBy: null, viewerRoleIds: []
+    reportsForumChannelId: null, sessionExpirationMinutes: 720, temporaryCategoryId: null, updatedAt: now, updatedBy: null, viewerRoleIds: []
   };
   await policeRecruitmentSettings.updateOne({ botId, guildId }, { $setOnInsert: settings }, { upsert: true });
   await ensureDefaultQuestions(botId, guildId);
@@ -24,20 +29,166 @@ export async function getPoliceRecruitmentSettings(botId: string, guildId: strin
 }
 
 export async function savePoliceRecruitmentSettings(botId: string, guildId: string, input: SettingsInput, actorId: string | null) {
-  await getPoliceRecruitmentSettings(botId, guildId);
+  const before = await getPoliceRecruitmentSettings(botId, guildId);
   const { policeRecruitmentSettings } = await getMongoCollections();
-  await policeRecruitmentSettings.updateOne({ botId, guildId }, { $set: { ...input, updatedAt: new Date(), updatedBy: actorId } });
+  const normalizedInput = normalizeSettingsInput(input);
+  const now = new Date();
+  const lifecycle = typeof normalizedInput.enabled === "boolean" && normalizedInput.enabled !== before.enabled
+    ? normalizedInput.enabled
+      ? { enabledAt: now, enabledBy: actorId, disabledAt: null, disabledBy: null }
+      : { disabledAt: now, disabledBy: actorId }
+    : {};
+  await policeRecruitmentSettings.updateOne({ botId, guildId }, { $set: { ...normalizedInput, ...lifecycle, updatedAt: now, updatedBy: actorId } });
+  if (normalizedInput.enabled === false) {
+    const { policeRecruitmentSessions } = await getMongoCollections();
+    await policeRecruitmentSessions.updateMany({ botId, guildId, status: "IN_PROGRESS" }, { $set: { status: "SUSPENDED", updatedAt: now }, $unset: { openKey: "" } });
+  }
+  await audit(botId, guildId, null, null, actorId, "configuration_changed", diffSettings(before, normalizedInput));
   return settingsDto((await policeRecruitmentSettings.findOne({ botId, guildId }))!);
 }
 
-export async function listPoliceRecruitmentQuestions(botId: string, guildId: string) {
-  await ensureDefaultQuestions(botId, guildId);
+export async function requestPoliceRecruitmentPanelPublish(botId: string, guildId: string, actorId: string | null) {
+  const settings = await getPoliceRecruitmentSettings(botId, guildId);
+  if (!settings.enabled) throw serviceError("O módulo ainda não foi liberado.", 400);
+  if (!settings.configured) throw serviceError("O módulo ainda não foi configurado.", 400);
+  if (!settings.panelChannelId) throw serviceError("Canal do painel não configurado.", 400);
+  const responses = await emitRealtimeToRoomWithAck<{ botId: string; guildId: string }, { error?: string; messageId?: string | null; ok: boolean }>(
+    devBotRealtimeRoom(botId),
+    "police-recruitment:panel_publish",
+    { botId, guildId },
+    20_000
+  );
+  const response = responses.find((item) => item?.ok);
+  const messageId = response?.messageId ?? null;
+  if (!response?.ok) {
+    throw serviceError(response?.error ?? "Não foi possível publicar o painel.", 409);
+  }
+  await audit(botId, guildId, null, null, actorId, "panel_published", { messageId });
+  return { messageId, settings };
+}
+
+export async function listPoliceRecruitmentQuestions(botId: string, guildId: string, includeDisabled = false) {
+  if (!includeDisabled) await ensureDefaultQuestions(botId, guildId);
   const { policeRecruitmentQuestions } = await getMongoCollections();
-  return (await policeRecruitmentQuestions.find({ botId, guildId, enabled: true }).sort({ order: 1 }).toArray()).map(questionDto);
+  return (await policeRecruitmentQuestions.find({ botId, guildId, ...(includeDisabled ? {} : { enabled: true }) }).sort({ order: 1 }).toArray()).map(questionDto);
+}
+
+export async function createPoliceRecruitmentQuestion(botId: string, guildId: string, input: QuestionInput, actorId: string | null) {
+  const { policeRecruitmentQuestions } = await getMongoCollections();
+  const now = new Date();
+  const last = await policeRecruitmentQuestions.find({ botId, guildId }).sort({ order: -1 }).limit(1).next();
+  const question: MongoPoliceRecruitmentQuestion = {
+    _id: randomUUID(),
+    botId,
+    description: cleanString(input.description, 600),
+    enabled: input.enabled !== false,
+    guildId,
+    options: sanitizeOptions(input.options),
+    order: (last?.order ?? 0) + 1,
+    required: input.required !== false,
+    title: cleanString(input.title, 120) || "Nova pergunta",
+    type: normalizeQuestionType(input.type),
+    createdAt: now,
+    updatedAt: now,
+    updatedBy: actorId
+  };
+  await policeRecruitmentQuestions.insertOne(question);
+  await audit(botId, guildId, null, null, actorId, "question_created", { questionId: question._id, title: question.title });
+  return questionDto(question);
+}
+
+export async function updatePoliceRecruitmentQuestion(botId: string, guildId: string, questionId: string, input: QuestionInput, actorId: string | null) {
+  const patch: Partial<MongoPoliceRecruitmentQuestion> = {};
+  if ("description" in input) patch.description = cleanString(input.description, 600);
+  if ("enabled" in input) patch.enabled = input.enabled !== false;
+  if ("options" in input) patch.options = sanitizeOptions(input.options);
+  if ("required" in input) patch.required = input.required !== false;
+  if ("title" in input) patch.title = cleanString(input.title, 120) || "Pergunta";
+  if ("type" in input) patch.type = normalizeQuestionType(input.type);
+  const { policeRecruitmentQuestions } = await getMongoCollections();
+  const before = await policeRecruitmentQuestions.findOne({ _id: questionId, botId, guildId });
+  if (!before) throw serviceError("Pergunta não encontrada.", 404);
+  await policeRecruitmentQuestions.updateOne({ _id: questionId, botId, guildId }, { $set: { ...patch, updatedAt: new Date(), updatedBy: actorId } });
+  await audit(botId, guildId, null, null, actorId, "question_updated", { questionId, previousValue: questionDto(before), newValue: patch });
+  return questionDto((await policeRecruitmentQuestions.findOne({ _id: questionId, botId, guildId }))!);
+}
+
+export async function deletePoliceRecruitmentQuestion(botId: string, guildId: string, questionId: string, actorId: string | null) {
+  const { policeRecruitmentQuestions } = await getMongoCollections();
+  const before = await policeRecruitmentQuestions.findOne({ _id: questionId, botId, guildId });
+  if (!before) return null;
+  await policeRecruitmentQuestions.updateOne({ _id: questionId, botId, guildId }, { $set: { enabled: false, updatedAt: new Date(), updatedBy: actorId } });
+  await audit(botId, guildId, null, null, actorId, "question_removed", { questionId, previousValue: questionDto(before) });
+  return questionDto((await policeRecruitmentQuestions.findOne({ _id: questionId, botId, guildId }))!);
+}
+
+export async function reorderPoliceRecruitmentQuestion(botId: string, guildId: string, questionId: string, direction: "up" | "down", actorId: string | null) {
+  const { policeRecruitmentQuestions } = await getMongoCollections();
+  const questions = await policeRecruitmentQuestions.find({ botId, guildId }).sort({ order: 1 }).toArray();
+  const index = questions.findIndex((item) => item._id === questionId);
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || swapIndex < 0 || swapIndex >= questions.length) throw serviceError("Não foi possível mover esta pergunta.", 400);
+  const current = questions[index]!;
+  const other = questions[swapIndex]!;
+  await Promise.all([
+    policeRecruitmentQuestions.updateOne({ _id: current._id, botId, guildId }, { $set: { order: other.order, updatedAt: new Date(), updatedBy: actorId } }),
+    policeRecruitmentQuestions.updateOne({ _id: other._id, botId, guildId }, { $set: { order: current.order, updatedAt: new Date(), updatedBy: actorId } })
+  ]);
+  await audit(botId, guildId, null, null, actorId, "question_reordered", { questionId, direction });
+  return listPoliceRecruitmentQuestions(botId, guildId, true);
+}
+
+export async function getPoliceReportsDashboard(botId: string, guildId: string) {
+  const [settings, questions, reports] = await Promise.all([
+    getPoliceRecruitmentSettings(botId, guildId),
+    listPoliceRecruitmentQuestions(botId, guildId, true),
+    listPoliceRecruitmentReports(botId, guildId)
+  ]);
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7);
+  const { policeRecruiters, policeRecruitmentSessions, policeRecruitmentAudits } = await getMongoCollections();
+  const [responsibles, inProgress, logs] = await Promise.all([
+    policeRecruiters.find({ botId, guildId }).sort({ updatedAt: -1 }).limit(200).toArray(),
+    policeRecruitmentSessions.countDocuments({ botId, guildId, status: { $in: ["IN_PROGRESS", "PROCESSING", "SUSPENDED"] } }),
+    policeRecruitmentAudits.find({ botId, guildId }).sort({ createdAt: -1 }).limit(100).toArray()
+  ]);
+  const validation = validatePoliceReportsConfiguration(settings, questions);
+  return {
+    logs: logs.map(auditDto),
+    questions,
+    reports,
+    responsibles: responsibles.map(recruiterDto),
+    settings: { ...settings, systemReady: validation.ready, status: policeReportsStatus(settings, validation.ready) },
+    stats: {
+      inProgress,
+      reports: reports.length,
+      responsibles: responsibles.length,
+      thisMonth: reports.filter((item) => item.createdAt.startsWith(month)).length
+    },
+    validation
+  };
+}
+
+export function validatePoliceReportsConfiguration(settings: any, questions: Array<{ enabled: boolean }>) {
+  const checks = [
+    check("enabled", "Módulo liberado", settings.enabled === true),
+    check("temporaryCategoryId", "Categoria temporária", Boolean(settings.temporaryCategoryId)),
+    check("panelChannelId", "Canal do painel", Boolean(settings.panelChannelId)),
+    check("reportsForumChannelId", "Fórum dos relatórios", Boolean(settings.reportsForumChannelId ?? settings.forumChannelId)),
+    check("logChannelId", "Canal de logs", Boolean(settings.logChannelId)),
+    check("recruiterRoleIds", "Cargo de recrutador", roleList(settings.recruiterRoleIds, settings.authorizedRoleIds, settings.createReportRoleIds).length > 0),
+    check("supervisorRoleIds", "Cargo supervisor", roleList(settings.supervisorRoleIds).length > 0),
+    check("questions", "Perguntas configuradas", questions.some((item) => item.enabled !== false))
+  ];
+  return { checks, ready: checks.every((item) => item.ok) };
 }
 
 export async function createPoliceRecruitmentSession(input: { botId: string; guildId: string; recruiter: RecruiterInput; channelId?: string | null; panelMessageId?: string | null }) {
   const settings = await getPoliceRecruitmentSettings(input.botId, input.guildId);
+  const questions = await listPoliceRecruitmentQuestions(input.botId, input.guildId);
+  const validation = validatePoliceReportsConfiguration(settings, questions);
+  if (!settings.enabled) throw serviceError("Relatórios Policiais não está liberado.", 403);
+  if (!validation.ready) throw serviceError("O módulo ainda não foi configurado.", 409);
   const { policeRecruitmentSessions } = await getMongoCollections();
   const openKey = `${input.botId}:${input.guildId}:${input.recruiter.discordId}`;
   const existing = await policeRecruitmentSessions.findOne({ openKey });
@@ -45,7 +196,7 @@ export async function createPoliceRecruitmentSession(input: { botId: string; gui
   const now = new Date();
   const session: MongoPoliceRecruitmentSession = {
     _id: randomUUID(), answers: [], botId: input.botId, cancelledAt: null, channelId: input.channelId ?? null, completedAt: null,
-    createdAt: now, currentQuestion: 0, expiresAt: new Date(now.getTime() + settings.sessionExpirationHours * 3_600_000), guildId: input.guildId,
+    createdAt: now, currentQuestion: 0, expiresAt: new Date(now.getTime() + sessionExpirationMinutes(settings) * 60_000), guildId: input.guildId,
     openKey, panelMessageId: input.panelMessageId ?? null, recruitedAvatar: null, recruitedDiscordId: null, recruitedDisplayName: null,
     recruitedUsername: null, recruiterAvatar: input.recruiter.avatar, recruiterDiscordId: input.recruiter.discordId, recruiterDisplayName: input.recruiter.displayName,
     recruiterPoliceId: input.recruiter.policeId ?? null, recruiterUsername: input.recruiter.username, reportId: null, status: "IN_PROGRESS", updatedAt: now
@@ -109,6 +260,8 @@ export async function finishPoliceRecruitmentSession(botId: string, sessionId: s
   const { policeRecruitmentReports, policeRecruitmentSessions, policeRecruiters } = await getMongoCollections();
   const session = await rawSession(botId, sessionId);
   if (session.recruiterDiscordId !== actorId) throw serviceError("Somente o recrutador pode finalizar este relatório.", 403);
+  const settings = await getPoliceRecruitmentSettings(botId, session.guildId);
+  if (!settings.enabled) throw serviceError("Relatórios Policiais não está liberado.", 403);
   if (session.status === "COMPLETED" && session.reportId) return getPoliceRecruitmentReport(botId, session.reportId);
   const claimed = await policeRecruitmentSessions.findOneAndUpdate({ _id: sessionId, botId, status: "IN_PROGRESS" }, { $set: { status: "PROCESSING", updatedAt: new Date() } }, { returnDocument: "after" });
   if (!claimed) throw serviceError("Este relatório já está sendo processado ou foi encerrado.", 409);
@@ -130,8 +283,8 @@ export async function finishPoliceRecruitmentSession(botId: string, sessionId: s
   const statPatch = statIncrement(result);
   const recruiterKey = { botId, guildId: session.guildId, discordId: session.recruiterDiscordId };
   await policeRecruiters.updateOne(recruiterKey, {
-    $set: { avatar: session.recruiterAvatar, displayName: session.recruiterDisplayName, forumThreadId: publish?.forumThreadId ?? null, lastRecruitment: now, policeId: session.recruiterPoliceId, updatedAt: now, username: session.recruiterUsername },
-    $setOnInsert: { _id: randomUUID(), approvalRate: 0, botId, createdAt: now, discordId: session.recruiterDiscordId, guildId: session.guildId, totalRecruitments: 0, approved: 0, rejected: 0, pending: 0 },
+    $set: { active: true, avatar: session.recruiterAvatar, displayName: session.recruiterDisplayName, forumThreadId: publish?.forumThreadId ?? null, lastRecruitment: now, policeId: session.recruiterPoliceId, updatedAt: now, username: session.recruiterUsername },
+    $setOnInsert: { _id: randomUUID(), approvalRate: 0, botId, createdAt: now, discordId: session.recruiterDiscordId, guildId: session.guildId, roleName: null, totalRecruitments: 0, approved: 0, rejected: 0, pending: 0 },
     $inc: { totalRecruitments: 1, ...statPatch }
   }, { upsert: true });
   await refreshRecruiterApprovalRate(botId, session.guildId, session.recruiterDiscordId);
@@ -287,10 +440,58 @@ function statIncrement(result: MongoPoliceRecruitmentResult) {
   return result === "APPROVED" ? { approved: 1 } : result === "REJECTED" ? { rejected: 1 } : { pending: 1 };
 }
 
-function settingsDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString() }; }
+function normalizeSettingsInput(input: SettingsInput) {
+  const next: any = { ...input };
+  if ("reportsForumChannelId" in next) next.forumChannelId = next.reportsForumChannelId;
+  if ("forumChannelId" in next) next.reportsForumChannelId = next.forumChannelId;
+  if ("sessionExpirationMinutes" in next) next.sessionExpirationHours = Math.max(1, Math.ceil(Number(next.sessionExpirationMinutes) / 60));
+  if ("sessionExpirationHours" in next) next.sessionExpirationMinutes = Math.max(1, Number(next.sessionExpirationHours) * 60);
+  if ("recruiterRoleIds" in next) next.authorizedRoleIds = next.recruiterRoleIds;
+  if ("authorizedRoleIds" in next) next.recruiterRoleIds = next.authorizedRoleIds;
+  if ("createReportRoleIds" in next) next.authorizedRoleIds = next.createReportRoleIds;
+  if ("viewerRoleIds" in next) next.viewAllReportsRoleIds = next.viewerRoleIds;
+  if ("viewAllReportsRoleIds" in next) next.viewerRoleIds = next.viewAllReportsRoleIds;
+  if ("editorRoleIds" in next) next.editReportRoleIds = next.editorRoleIds;
+  if ("editReportRoleIds" in next) next.editorRoleIds = next.editReportRoleIds;
+  if ("deleteRoleIds" in next) next.deleteReportRoleIds = next.deleteRoleIds;
+  if ("deleteReportRoleIds" in next) next.deleteRoleIds = next.deleteReportRoleIds;
+  return next;
+}
+function sessionExpirationMinutes(settings: any) { return Number(settings.sessionExpirationMinutes ?? ((settings.sessionExpirationHours ?? 12) * 60)); }
+function roleList(...lists: Array<unknown>) { return [...new Set(lists.flatMap((list) => Array.isArray(list) ? list : []).filter((id): id is string => typeof id === "string" && /^\d{5,32}$/.test(id)))]; }
+function policeReportsStatus(settings: any, ready: boolean) { if (!settings.enabled) return "not_released"; if (!settings.configured || !ready) return "configuration_required"; return "operational"; }
+function check(id: string, label: string, ok: boolean) { return { id, label, ok }; }
+function cleanString(value: unknown, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
+function sanitizeOptions(values: unknown) { return Array.isArray(values) ? [...new Set(values.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 25))] : []; }
+function normalizeQuestionType(value: unknown): MongoPoliceRecruitmentQuestionType { return ["TEXT", "LONG_TEXT", "NUMBER", "USER_SELECT", "ROLE_SELECT", "SELECT", "BOOLEAN"].includes(String(value)) ? value as MongoPoliceRecruitmentQuestionType : "TEXT"; }
+function diffSettings(before: any, patch: Record<string, unknown>) { return { changedKeys: Object.keys(patch), previousValue: Object.fromEntries(Object.keys(patch).map((key) => [key, before[key]])), newValue: patch }; }
+function settingsDto(value: any) {
+  const reportsForumChannelId = value.reportsForumChannelId ?? value.forumChannelId ?? null;
+  const sessionExpirationMinutesValue = value.sessionExpirationMinutes ?? (value.sessionExpirationHours ?? 12) * 60;
+  return {
+    ...value,
+    id: value._id,
+    configured: value.configured === true,
+    createReportRoleIds: roleList(value.createReportRoleIds, value.recruiterRoleIds, value.authorizedRoleIds),
+    editReportRoleIds: roleList(value.editReportRoleIds, value.editorRoleIds),
+    deleteReportRoleIds: roleList(value.deleteReportRoleIds, value.deleteRoleIds),
+    forumChannelId: reportsForumChannelId,
+    manageConfigurationRoleIds: roleList(value.manageConfigurationRoleIds, value.adminRoleIds),
+    manageQuestionsRoleIds: roleList(value.manageQuestionsRoleIds, value.adminRoleIds),
+    recruiterRoleIds: roleList(value.recruiterRoleIds, value.authorizedRoleIds, value.createReportRoleIds),
+    reportsForumChannelId,
+    sessionExpirationMinutes: sessionExpirationMinutesValue,
+    viewAllReportsRoleIds: roleList(value.viewAllReportsRoleIds, value.viewerRoleIds),
+    createdAt: value.createdAt.toISOString(),
+    updatedAt: value.updatedAt.toISOString(),
+    enabledAt: value.enabledAt?.toISOString?.() ?? null,
+    disabledAt: value.disabledAt?.toISOString?.() ?? null
+  };
+}
 function questionDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString() }; }
 function sessionDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), expiresAt: value.expiresAt.toISOString(), completedAt: value.completedAt?.toISOString() ?? null, cancelledAt: value.cancelledAt?.toISOString() ?? null }; }
 function reportDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), deletedAt: value.deletedAt?.toISOString() ?? null, editedAt: value.editedAt?.toISOString() ?? null }; }
 function recruiterDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString(), updatedAt: value.updatedAt.toISOString(), lastRecruitment: value.lastRecruitment?.toISOString() ?? null }; }
+function auditDto(value: any) { return { ...value, id: value._id, createdAt: value.createdAt.toISOString() }; }
 function serviceError(message: string, statusCode: number) { return Object.assign(new Error(message), { statusCode }); }
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

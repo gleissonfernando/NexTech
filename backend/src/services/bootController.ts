@@ -1,4 +1,4 @@
-import { getMongoDb } from "../database/mongo";
+import { getMongoCollections, getMongoDb } from "../database/mongo";
 import { getRedisClient } from "../database/redis";
 
 export type BootState =
@@ -90,6 +90,15 @@ export class BootController {
         await db.command({ ping: 1 });
       }
     }, { maxAttempts: 4, timeoutMs: 20_000, baseDelayMs: 750 });
+
+    // A criação de índices só acontece dentro de getMongoCollections(), que o
+    // ping acima não chama — então a PRIMEIRA requisição pagava por centenas de
+    // createIndex e pelas migrações de coleção, e todas as requisições
+    // concorrentes ficavam bloqueadas nela. Aquecer aqui, sem bloquear o boot:
+    // a promise é memoizada, então quem chegar antes do fim apenas a aguarda.
+    void getMongoCollections().catch((error) => {
+      console.warn("[mongo] aquecimento de indices falhou; será refeito sob demanda:", error instanceof Error ? error.message : error);
+    });
   }
 
   async startRedis() {

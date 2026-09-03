@@ -271,7 +271,7 @@ async function dispatchInteractionCreate(interaction: Interaction, context: BotC
 function commandLabel(moduleId: string) {
   if (moduleId === "courses") return "Sistema de cursos";
   if (moduleId === "message-control") return "Controle de Mensagem";
-  if (moduleId === "police-daf-roster") return "Escala DAF";
+  if (moduleId === "police-daf-roster") return "Escala Aerea";
   if (moduleId === "faction-chest") return "Sistema de Baú";
   return "Este sistema";
 }

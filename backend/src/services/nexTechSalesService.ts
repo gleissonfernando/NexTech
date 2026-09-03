@@ -2155,8 +2155,11 @@ function validateWebhookSignature(
     signature: string | null;
   }
 ) {
+  // Falha FECHADO: sem segredo configurado não há como distinguir um evento
+  // real da gateway de um forjado, e este webhook entrega produto/cargo pago.
   if (!provider.webhookSecretEncrypted) {
-    return true;
+    console.warn(`[nex-tech-sales] webhook recusado: gateway ${provider.provider} sem webhookSecret configurado.`);
+    return false;
   }
 
   if (!input.signature) {

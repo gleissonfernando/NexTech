@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { isDashboardDevUserId } from "../config/devOwner";
@@ -39,7 +40,18 @@ type AuthFailureCode =
 
 export function isBotRequest(req: Request) {
   const token = req.header("bot-token") ?? req.header("x-bot-token");
-  return Boolean(env.BOT_API_TOKEN && token && token === env.BOT_API_TOKEN);
+
+  if (!env.BOT_API_TOKEN || !token) {
+    return false;
+  }
+
+  // Comparação em tempo constante: este token é global e destrava todas as
+  // rotas `/bot/...` de todos os tenants, então não deve vazar informação por
+  // tempo de resposta. Mantém os dois headers aceitos (x-bot-token e o legado
+  // bot-token), conforme o contrato com o bot.
+  const expected = Buffer.from(env.BOT_API_TOKEN);
+  const actual = Buffer.from(token);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 export async function requireAuthenticated(req: Request, res: Response, next: NextFunction) {

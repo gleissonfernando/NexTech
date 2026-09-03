@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 export type PagBankRuntimeConfig = {
   baseUrl: string;
   publicKey: string | null;
@@ -107,8 +109,21 @@ export async function getPagBankPayment(config: PagBankRuntimeConfig, paymentId:
 
 export function validatePagBankWebhookToken(input: { expectedToken?: string | null; receivedToken?: string | null }) {
   const expected = input.expectedToken?.trim();
-  if (!expected) return true;
-  return input.receivedToken?.trim() === expected;
+
+  // Falha FECHADO, igual a validateAsaasWebhookToken. O corpo deste webhook
+  // aprova pedidos e ativa assinaturas: aceitá-lo sem token configurado deixava
+  // qualquer um ativar assinatura paga enviando {"charges":[{"status":"PAID"}]}.
+  if (!expected) {
+    console.warn("[pagbank] webhook recusado: PAGBANK_WEBHOOK_TOKEN não configurado.");
+    return false;
+  }
+
+  const received = input.receivedToken?.trim();
+  if (!received) return false;
+
+  const expectedBuffer = Buffer.from(expected);
+  const receivedBuffer = Buffer.from(received);
+  return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
 export function pagBankStatusToInternal(status: string) {

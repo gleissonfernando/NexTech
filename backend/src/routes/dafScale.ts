@@ -13,10 +13,12 @@ import {
 import { resolveRequestBotId } from "../services/requestBotScopeService";
 
 const snowflake = z.string().regex(/^\d{5,32}$/);
-const roleSchema = z.enum(["pilot", "shooter"]);
+const roleSchema = z.enum(["pilot", "copilot", "gunner"]).nullable().optional();
 const settingsSchema = z.object({
   configRoleId: snowflake.nullable().optional(),
   enabled: z.boolean().optional(),
+  copilotRoleId: snowflake.nullable().optional(),
+  gunnerRoleId: snowflake.nullable().optional(),
   logChannelId: snowflake.nullable().optional(),
   maxPilots: z.coerce.number().int().min(1).max(50).optional(),
   maxShooters: z.coerce.number().int().min(1).max(50).optional(),
@@ -71,7 +73,7 @@ dafScaleRouter.post("/bot/:guildId/join", requireBot, async (req, res, next) => 
   try {
     const input = memberSchema.extend({ role: roleSchema }).parse(req.body);
     const guildId = snowflake.parse(req.params.guildId);
-    res.json(await joinDafScale(await botId(req, guildId), guildId, input.role, input));
+    res.json(await joinDafScale(await botId(req, guildId), guildId, input.role ?? null, input));
   } catch (error) {
     next(error);
   }
@@ -91,10 +93,10 @@ dafScaleRouter.post("/bot/:guildId/audit", requireBot, async (req, res, next) =>
   try {
     const guildId = snowflake.parse(req.params.guildId);
     const input = z.object({
-      action: z.enum(["join", "leave", "switch", "refresh", "publish", "config"]),
+      action: z.enum(["join", "leave", "switch", "refresh", "publish", "config", "create_session", "close_session", "migrate"]),
       metadata: z.record(z.unknown()).nullable().optional(),
-      previousRole: roleSchema.nullable().optional(),
-      role: roleSchema.nullable().optional(),
+      previousRole: z.enum(["pilot", "copilot", "gunner"]).nullable().optional(),
+      role: z.enum(["pilot", "copilot", "gunner"]).nullable().optional(),
       userId: z.string().min(1).max(32),
       username: z.string().min(1).max(100)
     }).parse(req.body);

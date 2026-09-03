@@ -719,18 +719,43 @@ function isRankingPanelMessage(message: Message) {
   return raw.includes("Ranking de QRUs") && raw.includes("Painel oficial");
 }
 
+/**
+ * Concorrência máxima ao varrer guilds. A recuperação de painel pode fazer uma
+ * chamada REST por canal de texto da guild; disparar todas as guilds em paralelo
+ * satura o limite global de 50 req/s da Discord logo no boot e, com vários bots
+ * subindo no mesmo IP, acumula respostas inválidas.
+ */
+const RANKING_REFRESH_CONCURRENCY = 2;
+
 async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
   const stats = { checked: 0, resetMarkers: 0, skippedPanels: 0, updatedPanels: 0 };
-  await Promise.allSettled(client.guilds.cache.map(async (guild) => {
-    const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
-    if (!settings) return;
-    stats.checked += 1;
-    if (!await updateOfficialRankingPanel(context, guild.id, settings)) {
-      stats.skippedPanels += 1;
-      return;
+  const guilds = [...client.guilds.cache.values()];
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < guilds.length) {
+      const guild = guilds[cursor];
+      cursor += 1;
+      if (!guild) continue;
+
+      try {
+        const settings = await context.api.getPoliceQruSettings(guild.id).catch(() => null);
+        if (!settings) continue;
+        stats.checked += 1;
+        if (!await updateOfficialRankingPanel(context, guild.id, settings)) {
+          stats.skippedPanels += 1;
+          continue;
+        }
+        stats.updatedPanels += 1;
+      } catch (error) {
+        console.warn(`[police-qru] failed to refresh ranking panel for guild ${guild.id}:`, error);
+      }
     }
-    stats.updatedPanels += 1;
-  }));
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(RANKING_REFRESH_CONCURRENCY, guilds.length) }, () => worker())
+  );
   console.log(`[police-qru] ranking panels refreshed: ${reason}`, stats);
 }
 

@@ -110,9 +110,10 @@ export const DEV_MODULES = [
   { id: "police-actions", label: "Polícia - Ações" },
   { id: "police-iab", label: "Polícia - Corregedoria" },
   { id: "police-hr", label: "Polícia - RH Policial" },
-  { id: "police-daf-roster", label: "Polícia - Escalacao DAF" },
+  { id: "police-daf-roster", label: "Polícia - Escala Aerea" },
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
+  { id: "police_reports", label: "Polícia - Relatórios Policiais" },
   { id: "police-recruitment", label: "Polícia - Recrutamento" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
   { id: "police-promotions", label: "Polícia - Promoções de Patente" },
@@ -133,7 +134,8 @@ export const DEV_MODULES = [
 const DEV_MODULE_IDS = new Set(DEV_MODULES.map((module) => module.id));
 const LEGACY_MODULE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
   "image-anti-spam": "safe-bot",
-  "link-anti-spam": "safe-bot"
+  "link-anti-spam": "safe-bot",
+  "police-recruitment": "police_reports"
 };
 const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number]["id"]> = {
   "anti-flood": "safe-bot",
@@ -142,11 +144,14 @@ const RUNTIME_MODULE_RELEASE_ALIASES: Record<string, (typeof DEV_MODULES)[number
   "anti-links": "safe-bot",
   "anti-spam": "safe-bot",
   "image-anti-spam": "safe-bot",
-  "link-anti-spam": "safe-bot"
+  "link-anti-spam": "safe-bot",
+  "police-recruitment": "police_reports"
 };
 const DEV_MODULE_RELEASE_ALIASES: Record<string, string[]> = {
   "courses": ["police-courses"],
-  "police-courses": ["courses"]
+  "police-courses": ["courses"],
+  "police_reports": ["police-recruitment"],
+  "police-recruitment": ["police_reports"]
 };
 const SERVER_RELEASE_REQUIRED_MODULE_IDS = new Set(["police-daf-roster", "message-control", "visible-message", "police-rank-up"]);
 const RUNTIME_INACTIVE_BOT_STATUSES = new Set<MongoDevBotStatus>(["error", "invalid_token"]);
@@ -554,6 +559,27 @@ export async function listDevBots() {
   const guildIdsByBot = groupGuildIdsByBot(configs);
 
   return Promise.all(bots.map((bot) => toEffectiveDevBotDto(bot, allBotGuildIds(bot, guildIdsByBot.get(bot._id)))));
+}
+
+/**
+ * Igual a `listDevBots`, porém sem resolver os módulos efetivos por plano.
+ *
+ * `toEffectiveDevBotDto` executa até 3 consultas sequenciais (planWorkspaces →
+ * planSubscriptions → plans) para CADA bot, o que transforma uma listagem em um
+ * N+1 caro. Consumidores que só precisam de status/guilds (health checks e
+ * monitoramento) devem usar esta versão: o formato do DTO é o mesmo, apenas
+ * `enabledModules` reflete o valor persistido no bot em vez do valor derivado do
+ * plano. Nunca use esta função para decisões de autorização/licenciamento.
+ */
+export async function listDevBotSummaries() {
+  const { botGuildConfigs, devBots } = await getMongoCollections();
+  const [bots, configs] = await Promise.all([
+    devBots.find().sort({ createdAt: -1 }).toArray(),
+    botGuildConfigs.find().toArray()
+  ]);
+  const guildIdsByBot = groupGuildIdsByBot(configs);
+
+  return bots.map((bot) => toDevBotDto(bot, allBotGuildIds(bot, guildIdsByBot.get(bot._id))));
 }
 
 export async function listAccessibleDevBots(user: AuthSessionUser, options: AccessibleDevBotsOptions = {}) {

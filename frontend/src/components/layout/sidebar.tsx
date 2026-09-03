@@ -101,6 +101,7 @@ export type ViewId =
   | "police-iab"
   | "police-subpoenas"
   | "police-patrol-reports"
+  | "police-reports"
   | "police-qru"
   | "police-promotions"
   | "police-rank-up"
@@ -203,6 +204,7 @@ const navItems: NavItem[] = [
   { id: "police-iab", label: "Corregedoria", icon: ShieldAlert, moduleId: "police-iab" },
   { id: "police-subpoenas", label: "Intimação", icon: ScrollText, moduleId: "police-subpoenas" },
   { id: "police-patrol-reports", label: "Relatórios Políciais", icon: ShieldCheck, moduleId: "police-patrol-reports" },
+  { id: "police-reports", label: "Relatórios Policiais", icon: ScrollText, moduleIds: ["police_reports", "police-recruitment"] },
   { id: "police-qru", label: "Registro de QRU", icon: ShieldCheck, moduleId: "police-qru" },
   { id: "police-promotions", label: "Promoções", icon: BadgeCheck, moduleId: "police-promotions" },
   { id: "police-rank-up", label: "Sistema de UP", icon: BadgeCheck, moduleId: "police-rank-up" },
@@ -213,7 +215,7 @@ const navItems: NavItem[] = [
   { id: "police-dm", label: "Avisos Administrativos", icon: UserPlus, moduleId: "police-dm" },
   { id: "police-open-duty", label: "Notificar / Ponto", icon: Bell, moduleId: "police-open-duty" },
   { id: "police-time-clock", label: "Relógio de Ponto", icon: CalendarClock, moduleId: "police-time-clock" },
-  { id: "police-daf-roster", label: "Escala DAF", icon: CalendarClock, moduleId: "police-daf-roster" },
+  { id: "police-daf-roster", label: "Escala Aerea", icon: CalendarClock, moduleId: "police-daf-roster" },
   { id: "auto-activity-clock", label: "Ponto Automático", icon: Activity, moduleId: "auto-activity-clock" },
   { id: "fivem-washing", label: "Sistema de Lavagem", icon: CircleDollarSign, moduleId: "fivem-washing" },
   { id: "fivem-drug", label: "Sistema de Drogas", icon: Archive, moduleId: "fivem-drugs" },
@@ -242,6 +244,7 @@ const policeViewIds = new Set<ViewId>([
   "police-iab",
   "police-subpoenas",
   "police-patrol-reports",
+  "police-reports",
   "police-qru",
   "police-promotions",
   "police-rank-up",
@@ -262,6 +265,8 @@ const policeModuleIds = new Set([
   "police-iab",
   "police-subpoenas",
   "police-patrol-reports",
+  "police_reports",
+  "police-recruitment",
   "police-qru",
   "police-promotions",
   "police-rank-up",

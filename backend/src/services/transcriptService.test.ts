@@ -71,8 +71,16 @@ describe("renderTranscriptHtml", () => {
 });
 
 describe("generateTemporaryPassword", () => {
-  it("gera uma senha numérica de 4 dígitos", () => {
-    assert.match(generateTemporaryPassword(), /^\d{4}$/);
+  // 4 dígitos eram só 10.000 combinações, percorríveis em minutos contra o
+  // endpoint público de transcripts. 8 dígitos mantêm a senha numérica (mesma
+  // experiência de digitação) com 10^8 combinações.
+  it("gera uma senha numérica de 8 dígitos", () => {
+    assert.match(generateTemporaryPassword(), /^\d{8}$/);
+  });
+
+  it("não repete a mesma senha em sequência", () => {
+    const generated = new Set(Array.from({ length: 50 }, () => generateTemporaryPassword()));
+    assert.ok(generated.size > 40, `esperava senhas variadas, obteve ${generated.size} distintas`);
   });
 });
 

@@ -1,10 +1,11 @@
 import {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags, ModalBuilder, PermissionFlagsBits,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags, ModalBuilder,
+  PermissionFlagsBits,
   RoleSelectMenuBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, UserSelectMenuBuilder,
   type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type Interaction,
   type ModalSubmitInteraction, type RoleSelectMenuInteraction, type StringSelectMenuInteraction, type TextBasedChannel, type TextChannel, type UserSelectMenuInteraction
 } from "discord.js";
-import { isBotModuleEnabled } from "../config/env";
+import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { PoliceRecruitmentQuestion, PoliceRecruitmentReport, PoliceRecruitmentSession, PoliceRecruitmentSettings } from "./apiClient";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
@@ -12,7 +13,8 @@ import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 const PREFIX = "police_recruitment";
 
 export function startPoliceRecruitmentService(client: Client, context: BotContext) {
-  if (!isBotModuleEnabled("police-recruitment")) return;
+  if (!isBotModuleEnabled("police-recruitment") && !isBotModuleEnabled("police_reports")) return;
+  registerPoliceRecruitmentRealtimeHandlers(client, context);
   void expireSessions(client, context);
   const interval = setInterval(() => void expireSessions(client, context), 60_000);
   interval.unref();
@@ -24,7 +26,7 @@ export async function publishPoliceRecruitmentPanel(interaction: ChatInputComman
     return;
   }
   const current = await context.api.getPoliceRecruitmentSettings(interaction.guild.id);
-  if (!hasRoleOrAdmin(interaction.member as GuildMember, current.adminRoleIds)) {
+  if (!hasPoliceConfigAccess(interaction.member as GuildMember, current)) {
     await interaction.reply({ content: "Apenas administradores ou cargos configurados podem publicar este painel.", ephemeral: true });
     return;
   }
@@ -36,11 +38,14 @@ export async function publishPoliceRecruitmentPanel(interaction: ChatInputComman
   const supervisorRole = interaction.options.getRole("cargo-supervisor");
   const corporationName = interaction.options.getString("corporacao")?.trim();
   const settings = await context.api.savePoliceRecruitmentSettings(interaction.guild.id, {
-    authorizedRoleIds: authorizedRole ? unique([...current.authorizedRoleIds, authorizedRole.id]) : current.authorizedRoleIds,
+    createReportRoleIds: authorizedRole ? unique([...current.createReportRoleIds, authorizedRole.id]) : current.createReportRoleIds,
     corporationName: corporationName || current.corporationName,
+    configured: true,
     enabled: true,
     forumChannelId: forum?.id ?? current.forumChannelId,
     logChannelId: logChannel?.id ?? current.logChannelId,
+    reportsForumChannelId: forum?.id ?? current.reportsForumChannelId ?? current.forumChannelId,
+    recruiterRoleIds: authorizedRole ? unique([...current.recruiterRoleIds, authorizedRole.id]) : current.recruiterRoleIds,
     supervisorRoleIds: supervisorRole ? unique([...current.supervisorRoleIds, supervisorRole.id]) : current.supervisorRoleIds,
     temporaryCategoryId: temporaryCategory?.id ?? current.temporaryCategoryId
   }, interaction.user.id);
@@ -75,12 +80,27 @@ export async function handlePoliceRecruitmentInteraction(interaction: Interactio
   return true;
 }
 
+export function registerPoliceRecruitmentRealtimeHandlers(client: Client, context: BotContext) {
+  if (!context.socket || !isBotModuleEnabled("police-recruitment") && !isBotModuleEnabled("police_reports")) return;
+  context.socket.onPoliceRecruitmentPanelPublish((payload, ack) => {
+    const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+    if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) return;
+    void publishConfiguredPanel(client, context, payload.guildId)
+      .then((messageId) => ack?.({ ok: true, messageId }))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        ack?.({ ok: false, error: message });
+      });
+  });
+}
+
 async function startSession(interaction: ButtonInteraction, context: BotContext) {
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getPoliceRecruitmentSettings(interaction.guildId!);
-  if (!settings.enabled) return interaction.editReply("O sistema de recrutamento está desativado.");
+  if (!settings.enabled) return interaction.editReply("O módulo ainda não foi liberado.");
+  if (!settings.configured) return interaction.editReply("O módulo ainda não foi configurado.");
   const member = interaction.member as GuildMember;
-  if (!hasRoleOrAdmin(member, settings.authorizedRoleIds)) return interaction.editReply("❌ Você não possui permissão para iniciar um recrutamento.");
+  if (!hasPoliceRecruitmentAccess(member, settings)) return interaction.editReply("❌ Você não possui autorização para registrar recrutamentos.");
   const session = await context.api.createPoliceRecruitmentSession({
     guildId: interaction.guildId!,
     recruiter: { avatar: interaction.user.displayAvatarURL(), discordId: interaction.user.id, displayName: member.displayName, policeId: extractPoliceId(member.displayName), username: interaction.user.username }
@@ -181,7 +201,7 @@ async function editAnswers(interaction: ButtonInteraction, context: BotContext, 
 async function finishSession(interaction: ButtonInteraction, context: BotContext, sessionId: string) {
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getPoliceRecruitmentSettings(interaction.guildId!);
-  if (!settings.forumChannelId) return interaction.editReply("Configure o fórum de relatórios antes de finalizar.");
+  if (!(settings.reportsForumChannelId ?? settings.forumChannelId)) return interaction.editReply("Configure o fórum de relatórios antes de finalizar.");
   const report = await context.api.finishPoliceRecruitmentSession(sessionId, interaction.user.id);
   if (report.forumThreadId && report.forumMessageId) {
     await interaction.editReply(`✅ Relatório ${report.reportCode} já estava publicado em <#${report.forumThreadId}>.`);
@@ -214,7 +234,8 @@ async function refreshSessionMessage(interaction: ButtonInteraction, context: Bo
 }
 
 async function publishReport(guild: Guild, context: BotContext, settings: PoliceRecruitmentSettings, report: PoliceRecruitmentReport) {
-  const forum = await guild.channels.fetch(settings.forumChannelId!).catch(() => null);
+  const forumChannelId = settings.reportsForumChannelId ?? settings.forumChannelId;
+  const forum = await guild.channels.fetch(forumChannelId!).catch(() => null);
   if (!forum || forum.type !== ChannelType.GuildForum) throw new Error("Fórum de recrutamento inválido.");
   const recruiter = await context.api.getPoliceRecruitmentRecruiter(guild.id, report.recruiterDiscordId);
   let thread = recruiter?.forumThreadId ? await guild.channels.fetch(recruiter.forumThreadId).catch(() => null) : null;
@@ -270,6 +291,20 @@ async function questionPayload(context: BotContext, guild: Guild, session: Polic
 function questionText(session: PoliceRecruitmentSession, question: PoliceRecruitmentQuestion, total: number, guild: Guild) {
   const previous = answerValue(session, question.id);
   return `# ${systemEmojiText("prancheta", guild)} Relatório de Recrutamento\n**Recrutador:** <@${session.recruiterDiscordId}>\n**Recrutado:** ${session.recruitedDiscordId ? `<@${session.recruitedDiscordId}>` : "-"}\n\n## Pergunta ${session.currentQuestion + 1}/${total}\n**${question.title}**\n${question.description ?? ""}\n\n**Resposta atual:** ${formatAnswer(previous)}`;
+}
+
+async function publishConfiguredPanel(client: Client, context: BotContext, guildId: string) {
+  const guild = await client.guilds.fetch(guildId);
+  const settings = await context.api.getPoliceRecruitmentSettings(guild.id);
+  if (!settings.enabled) throw new Error("O módulo ainda não foi liberado.");
+  if (!settings.configured) throw new Error("O módulo ainda não foi configurado.");
+  if (!settings.panelChannelId) throw new Error("Canal do painel não configurado.");
+  const panelChannel = await guild.channels.fetch(settings.panelChannelId).catch(() => null);
+  if (!panelChannel?.isTextBased() || panelChannel.isDMBased()) throw new Error("Canal do painel inválido.");
+  const payload = await panelPayload(context, guild, settings);
+  const message = await panelChannel.send(payload);
+  await context.api.savePoliceRecruitmentSettings(guild.id, { panelMessageId: message.id }, null).catch(() => null);
+  return message.id;
 }
 
 function reviewPayload(session: PoliceRecruitmentSession, guild: Guild) {
@@ -364,7 +399,24 @@ function formatAnswer(value: unknown) {
 }
 
 function hasRoleOrAdmin(member: GuildMember, roleIds: string[]) {
-  return member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(PermissionFlagsBits.ManageGuild) || roleIds.some((roleId) => member.roles.cache.has(roleId));
+  return roleIds.some((roleId) => member.roles.cache.has(roleId));
+}
+
+function hasPoliceConfigAccess(member: GuildMember, settings: PoliceRecruitmentSettings) {
+  return hasRoleOrAdmin(member, [
+    ...settings.manageConfigurationRoleIds,
+    ...settings.adminRoleIds,
+    ...settings.authorizedRoleIds,
+    ...settings.createReportRoleIds
+  ]);
+}
+
+function hasPoliceRecruitmentAccess(member: GuildMember, settings: PoliceRecruitmentSettings) {
+  return hasRoleOrAdmin(member, [
+    ...settings.recruiterRoleIds,
+    ...settings.createReportRoleIds,
+    ...settings.authorizedRoleIds
+  ]);
 }
 
 function parseColor(value: string) {

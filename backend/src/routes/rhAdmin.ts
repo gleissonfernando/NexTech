@@ -111,6 +111,15 @@ const logSchema = z.object({
   userId: snowflake.nullable().optional()
 });
 
+// ATENÇÃO: esta rota precisa continuar ANTES de `requireAuthOrBot` e pública.
+// O bot injeta esta URL em embeds do Discord (bot/src/services/rhAdminService.ts,
+// `renderableAdornmentImageUrl`), e quem a busca é o proxy de imagens do próprio
+// Discord — um terceiro que não tem como enviar sessão nem bot-token. Colocá-la
+// atrás de autenticação quebra as imagens de todos os embeds já publicados.
+// A proteção contra SSRF fica por conta de `assertSafePublicUrl` + `safeDnsLookup`
+// (resolve DNS, bloqueia faixas privadas e revalida no connect, cobrindo rebinding).
+// Melhoria futura sem quebrar embeds antigos: assinar a URL com HMAC no bot e
+// validar aqui, aceitando URLs não assinadas durante um período de migração.
 rhAdminRouter.get("/image-proxy", async (req, res, next) => {
   try {
     const rawUrl = z.string().min(8).max(4096).parse(req.query.url);

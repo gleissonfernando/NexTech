@@ -388,6 +388,12 @@ export type PolicePromotionPanelPublishEvent = {
   settings?: unknown;
 };
 export type PolicePromotionPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
+export type PoliceRecruitmentPanelPublishEvent = {
+  botId?: string | null;
+  guildId: string;
+  settings?: unknown;
+};
+export type PoliceRecruitmentPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
 export type PoliceRankUpSettingsEvent = {
   botId?: string | null;
   guildId: string;
@@ -570,6 +576,7 @@ export class BotSocketClient {
   private policeQruSettingsHandler: ((payload: PoliceQruSettingsEvent) => void) | null = null;
   private policePromotionSettingsHandler: ((payload: PolicePromotionSettingsEvent) => void) | null = null;
   private policePromotionPanelPublishHandler: ((payload: PolicePromotionPanelPublishEvent, ack?: PolicePromotionPanelPublishAck) => void) | null = null;
+  private policeRecruitmentPanelPublishHandler: ((payload: PoliceRecruitmentPanelPublishEvent, ack?: PoliceRecruitmentPanelPublishAck) => void) | null = null;
   private policeRankUpSettingsHandler: ((payload: PoliceRankUpSettingsEvent) => void) | null = null;
   private policeRankUpPanelPublishHandler: ((payload: PoliceRankUpPanelPublishEvent, ack?: PoliceRankUpPanelPublishAck) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
@@ -742,6 +749,9 @@ export class BotSocketClient {
     }
     if (this.policePromotionPanelPublishHandler) {
       this.socket.on("police-promotions:panel_publish", this.policePromotionPanelPublishHandler);
+    }
+    if (this.policeRecruitmentPanelPublishHandler) {
+      this.socket.on("police-recruitment:panel_publish", this.policeRecruitmentPanelPublishHandler);
     }
     if (this.policeRankUpSettingsHandler) {
       this.socket.on("police-rank-up:settings_updated", this.policeRankUpSettingsHandler);
@@ -1125,6 +1135,12 @@ export class BotSocketClient {
     this.policePromotionPanelPublishHandler = handler;
     this.socket?.off("police-promotions:panel_publish");
     this.socket?.on("police-promotions:panel_publish", handler);
+  }
+
+  onPoliceRecruitmentPanelPublish(handler: (payload: PoliceRecruitmentPanelPublishEvent, ack?: PoliceRecruitmentPanelPublishAck) => void) {
+    this.policeRecruitmentPanelPublishHandler = handler;
+    this.socket?.off("police-recruitment:panel_publish");
+    this.socket?.on("police-recruitment:panel_publish", handler);
   }
 
   onPoliceRankUpSettingsUpdated(handler: (payload: PoliceRankUpSettingsEvent) => void) {
