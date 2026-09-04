@@ -154,7 +154,26 @@ export async function ensurePoliceRecruitmentForum(botId: string, guildId: strin
 export async function requestPoliceRecruitmentPanelPublish(botId: string, guildId: string, actorId: string | null) {
   const settings = await getPoliceRecruitmentSettings(botId, guildId);
   if (!settings.enabled) throw serviceError("O módulo ainda não foi liberado.", 400);
-  if (!settings.configured) throw serviceError("O módulo ainda não foi configurado.", 400);
+
+  // `configured` só era marcado pelo comando /recrutamento no Discord, então
+  // quem configurava tudo pela dashboard nunca conseguia publicar. Aqui a
+  // própria validação decide: com todos os itens obrigatórios prontos, o módulo
+  // passa a contar como configurado.
+  if (!settings.configured) {
+    const questions = await listPoliceRecruitmentQuestions(botId, guildId, true);
+    const validation = validatePoliceReportsConfiguration(settings, questions);
+
+    if (!validation.ready) {
+      const missing = validation.checks.filter((item) => !item.ok).map((item) => item.label).join(", ");
+      throw serviceError(`Configure o módulo antes de publicar. Pendente: ${missing}.`, 400);
+    }
+
+    const { policeRecruitmentSettings } = await getMongoCollections();
+    await policeRecruitmentSettings.updateOne({ botId, guildId }, { $set: { configured: true, updatedAt: new Date(), updatedBy: actorId } });
+    settings.configured = true;
+    await audit(botId, guildId, null, null, actorId, "configuration_completed", { source: "dashboard_publish" });
+  }
+
   if (!settings.panelChannelId) throw serviceError("Canal do painel não configurado.", 400);
   const responses = await emitRealtimeToRoomWithAck<{ botId: string; guildId: string }, { error?: string; messageId?: string | null; ok: boolean }>(
     devBotRealtimeRoom(botId),
@@ -598,7 +617,9 @@ function policeReportsStatus(settings: any, ready: boolean) { if (!settings.enab
 function check(id: string, label: string, ok: boolean) { return { id, label, ok }; }
 function cleanString(value: unknown, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
 function sanitizeOptions(values: unknown) { return Array.isArray(values) ? [...new Set(values.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 25))] : []; }
-function normalizeQuestionType(value: unknown): MongoPoliceRecruitmentQuestionType { return ["TEXT", "LONG_TEXT", "NUMBER", "USER_SELECT", "ROLE_SELECT", "SELECT", "BOOLEAN"].includes(String(value)) ? value as MongoPoliceRecruitmentQuestionType : "TEXT"; }
+const QUESTION_TYPES: MongoPoliceRecruitmentQuestionType[] = ["TEXT", "LONG_TEXT", "NUMBER", "DATE", "TIME", "USER_SELECT", "ROLE_SELECT", "SELECT", "MULTI_SELECT", "BOOLEAN"];
+/** Tipo desconhecido vira TEXT; a lista precisa incluir os tipos novos, senão DATE/TIME/MULTI_SELECT eram salvos como texto. */
+export function normalizeQuestionType(value: unknown): MongoPoliceRecruitmentQuestionType { return QUESTION_TYPES.includes(String(value) as MongoPoliceRecruitmentQuestionType) ? value as MongoPoliceRecruitmentQuestionType : "TEXT"; }
 function diffSettings(before: any, patch: Record<string, unknown>) { return { changedKeys: Object.keys(patch), previousValue: Object.fromEntries(Object.keys(patch).map((key) => [key, before[key]])), newValue: patch }; }
 function settingsDto(value: any) {
   const reportsForumChannelId = value.reportsForumChannelId ?? value.forumChannelId ?? null;

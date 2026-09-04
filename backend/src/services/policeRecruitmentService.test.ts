@@ -4,7 +4,9 @@ import {
   normalizeAnswer,
   normalizeDateAnswer,
   normalizeTimeAnswer,
-  POLICE_RECRUITMENT_DEFAULT_QUESTIONS
+  normalizeQuestionType,
+  POLICE_RECRUITMENT_DEFAULT_QUESTIONS,
+  validatePoliceReportsConfiguration
 } from "./policeRecruitmentService";
 
 test("data aceita os formatos que o recrutador digita e guarda em dd/mm/aaaa", () => {
@@ -84,4 +86,40 @@ test("formulario padrao reproduz o relatorio F.T.O.", () => {
   for (const question of questions) {
     assert.ok(question.options.length <= 25, `${question.title} excede 25 opcoes`);
   }
+});
+
+test("validacao aponta exatamente o que falta para publicar o painel", () => {
+  const questions = [{ enabled: true }];
+  const completo = {
+    enabled: true,
+    temporaryCategoryId: "1",
+    panelChannelId: "2",
+    reportsForumChannelId: "3",
+    logChannelId: "4",
+    recruiterRoleIds: ["1348411317194850445"],
+    supervisorRoleIds: ["1348411317194850446"]
+  };
+
+  assert.equal(validatePoliceReportsConfiguration(completo, questions).ready, true);
+
+  const semForum = validatePoliceReportsConfiguration({ ...completo, reportsForumChannelId: null, forumChannelId: null }, questions);
+  assert.equal(semForum.ready, false);
+  assert.deepEqual(semForum.checks.filter((item) => !item.ok).map((item) => item.label), ["Fórum dos relatórios"]);
+
+  // Sem nenhuma pergunta ativa o modulo tambem nao pode publicar.
+  const semPerguntas = validatePoliceReportsConfiguration(completo, [{ enabled: false }]);
+  assert.equal(semPerguntas.ready, false);
+  assert.deepEqual(semPerguntas.checks.filter((item) => !item.ok).map((item) => item.label), ["Perguntas configuradas"]);
+
+  // O forum legado (forumChannelId) continua valendo para servidores antigos.
+  const forumLegado = validatePoliceReportsConfiguration({ ...completo, reportsForumChannelId: null, forumChannelId: "9" }, questions);
+  assert.equal(forumLegado.ready, true);
+});
+
+test("tipos novos de pergunta sao preservados ao salvar", () => {
+  for (const type of ["DATE", "TIME", "MULTI_SELECT", "SELECT", "BOOLEAN", "NUMBER", "LONG_TEXT", "USER_SELECT", "ROLE_SELECT", "TEXT"]) {
+    assert.equal(normalizeQuestionType(type), type, type + ' nao deveria virar TEXT');
+  }
+  assert.equal(normalizeQuestionType("INEXISTENTE"), "TEXT");
+  assert.equal(normalizeQuestionType(undefined), "TEXT");
 });

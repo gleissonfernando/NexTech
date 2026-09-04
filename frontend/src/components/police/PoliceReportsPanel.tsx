@@ -259,13 +259,15 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={currentDashboard.settings.enabled ? "success" : "muted"}>{currentDashboard.settings.enabled ? "Liberado" : "Bloqueado"}</Badge>
-              <Badge variant={currentDashboard.settings.configured ? "success" : "warning"}>{currentDashboard.settings.configured ? "Configurado" : "Pendente"}</Badge>
+              <Badge variant={ready ? "success" : "warning"}>{ready ? "Configurado" : "Configuração pendente"}</Badge>
               <Badge variant={ready ? "success" : "danger"}>{ready ? "Pronto" : "Incompleto"}</Badge>
               <Button disabled={disabled} onClick={() => void saveSettings()} size="sm" type="button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar
               </Button>
-              <Button disabled={disabled || !currentDashboard.settings.panelChannelId || !currentDashboard.settings.enabled || !currentDashboard.settings.configured} onClick={() => void publishPanel()} size="sm" type="button" variant="outline">
+              {/* Habilita pela validação, não por `configured`: quem configura tudo
+                  pela dashboard nunca rodou o comando que marcava essa flag. */}
+              <Button disabled={disabled || !currentDashboard.settings.enabled || !ready} onClick={() => void publishPanel()} size="sm" title={ready ? "Publicar o painel no canal configurado" : "Complete a validação abaixo para publicar"} type="button" variant="outline">
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Publicar painel
               </Button>
