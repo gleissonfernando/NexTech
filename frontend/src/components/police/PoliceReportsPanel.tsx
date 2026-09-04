@@ -237,6 +237,7 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
   }
 
   const ready = currentDashboard.validation.ready;
+  const pendingChecks = currentDashboard.validation.checks.filter((item) => !item.ok);
 
   function patchSettings(next: Partial<PoliceReportsSettings>) {
     const settings = { ...(settingsRef.current ?? currentDashboard.settings), ...next };
@@ -259,20 +260,26 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={currentDashboard.settings.enabled ? "success" : "muted"}>{currentDashboard.settings.enabled ? "Liberado" : "Bloqueado"}</Badge>
-              <Badge variant={ready ? "success" : "warning"}>{ready ? "Configurado" : "Configuração pendente"}</Badge>
-              <Badge variant={ready ? "success" : "danger"}>{ready ? "Pronto" : "Incompleto"}</Badge>
+              <Badge variant={ready ? "success" : "warning"}>{ready ? "Pronto para publicar" : `Falta configurar: ${pendingChecks.length}`}</Badge>
               <Button disabled={disabled} onClick={() => void saveSettings()} size="sm" type="button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar
               </Button>
-              {/* Habilita pela validação, não por `configured`: quem configura tudo
-                  pela dashboard nunca rodou o comando que marcava essa flag. */}
-              <Button disabled={disabled || !currentDashboard.settings.enabled || !ready} onClick={() => void publishPanel()} size="sm" title={ready ? "Publicar o painel no canal configurado" : "Complete a validação abaixo para publicar"} type="button" variant="outline">
+              {/* Só o módulo bloqueado desabilita o botão. Faltando configuração,
+                  ele continua clicável e o backend responde dizendo o que falta —
+                  botão desabilitado sem explicação parece quebrado. */}
+              <Button disabled={disabled || !currentDashboard.settings.enabled} onClick={() => void publishPanel()} size="sm" type="button" variant="outline">
                 {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Publicar painel
               </Button>
             </div>
           </div>
+          {pendingChecks.length ? (
+            <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+              <strong className="font-semibold">Para publicar o painel, falta: </strong>
+              {pendingChecks.map((item) => item.label).join(", ")}.
+            </p>
+          ) : null}
         </CardHeader>
       </Card>
 

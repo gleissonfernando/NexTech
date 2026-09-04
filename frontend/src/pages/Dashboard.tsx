@@ -4422,6 +4422,24 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
     }
   }
 
+  async function publishPanel() {
+    if (!guild || !settings) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      // Salva antes de publicar para o painel sair com a configuração da tela.
+      const saved = await saveFivemGoalSettings(guild.id, settings, botId);
+      setSettings(saved);
+      setSettings(await publishFivemGoalPanel(guild.id, botId));
+      setMessage("Painel de metas publicado no Discord.");
+    } catch (error) {
+      setError(readResponseMessage(error) ?? "Não foi possível publicar o painel de metas.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function createDraft() {
     if (!guild) return;
     setActiveGoalTab("goals");
@@ -4539,6 +4557,8 @@ function FivemGoalsPanel({ botId, canManage, guild }: { botId?: string | null; c
             <Button disabled={!canManage || !settings || saving || loading} onClick={createDraft} size="sm" type="button"><Plus className="mr-2 h-4 w-4" />Nova meta</Button>
             <Button disabled={!settings || loading} onClick={() => { setActiveGoalTab("channels"); setDraft(null); setShowChannelConfig(true); }} size="sm" type="button" variant="outline"><Settings className="mr-2 h-4 w-4" />Configurações gerais</Button>
             <Button disabled={!canManage || !settings || saving || loading} onClick={() => void save()} size="sm" type="button" variant="outline">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button>
+            {/* O endpoint e o handler do bot já existiam; faltava o botão aqui. */}
+            <Button disabled={!canManage || !settings || saving || loading} onClick={() => void publishPanel()} size="sm" type="button" variant="outline"><Send className="mr-2 h-4 w-4" />Publicar painel</Button>
           </div>
         </div>
       </CardHeader>
