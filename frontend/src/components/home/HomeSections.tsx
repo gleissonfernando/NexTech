@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Plan } from "../../types";
 import { bentoFeatures, benefitItems, faqItems, integrationNodes, MONITORING_STATUS_URL, securityItems, SUPPORT_URL, workflowSteps } from "./data";
 import { DashboardMockup } from "./DashboardMockup";
-import { FaqItem, GlowCard, HomeButton, Metric, Reveal, Section, SectionHeader, StaggerGroup, StaggerItem } from "./HomeUi";
+import { FaqItem, GlowCard, HomeButton, InkRule, Metric, Reveal, Section, SectionHeader, StaggerGroup, StaggerItem } from "./HomeUi";
 import type { PublicConnectedServer, PublicMarketingFeature, ServerState } from "./types";
 import { cycleSuffix, ensureThreeFeatures, formatPrice, formatStatNumber, iconForFeature, readablePlanFeature } from "./utils";
 
@@ -28,21 +28,21 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
   return (
     <motion.header
       animate={{ y: 0, opacity: 1 }}
-      className="sticky top-0 z-50 w-full border-b border-white/[.07] bg-black/72 backdrop-blur-xl"
+      className="core-theme sticky top-0 z-50 w-full border-b border-[var(--rule)] bg-black/70 backdrop-blur-xl"
       initial={{ y: -24, opacity: 0 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="mx-auto flex h-[76px] w-full max-w-[1480px] items-center justify-between gap-4 px-5 sm:px-6 lg:px-10 xl:px-12">
-        <button className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD400]/30" onClick={() => onNavigate("inicio")} type="button">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FFD400] text-black">
+      <div className="mx-auto flex h-[76px] w-full max-w-[1560px] items-center justify-between gap-4 px-[var(--core-margin)]">
+        <button className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD400]/40" onClick={() => onNavigate("inicio")} type="button">
+          <span className="core-chamfer-sm flex h-10 w-10 items-center justify-center bg-[#FFD400] text-black">
             <Bot className="h-5 w-5" />
           </span>
-          <span className="text-lg font-black uppercase text-white">NexTech</span>
+          <span className="core-voice-poster text-lg text-white">NexTech</span>
         </button>
 
-        <nav className="hidden items-center gap-7 lg:flex" aria-label="Navegacao principal">
+        <nav className="hidden items-center gap-8 lg:flex" aria-label="Navegacao principal">
           {links.map(([label, id]) => (
-            <button className="text-sm font-bold text-[#D4D4D4] transition hover:text-[#FFD400]" key={id} onClick={() => onNavigate(id)} type="button">
+            <button className="core-voice-caption text-[#9b9b9b] transition-colors hover:text-[#FFD400]" key={id} onClick={() => onNavigate(id)} type="button">
               {label}
             </button>
           ))}
@@ -56,7 +56,7 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
         <button
           aria-expanded={open}
           aria-label="Abrir menu"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-[#111111] text-white lg:hidden"
+          className="core-chamfer-outline is-tab core-press inline-flex h-11 w-11 items-center justify-center text-white lg:hidden"
           onClick={() => setOpen((current) => !current)}
           type="button"
         >
@@ -65,15 +65,15 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
       </div>
 
       {open ? (
-        <div className="border-t border-white/[.07] bg-[#080808] px-5 py-4 lg:hidden">
-          <nav className="grid gap-2" aria-label="Navegacao mobile">
+        <div className="border-t border-[var(--rule-soft)] bg-[var(--stock-2)] px-[var(--core-margin)] py-4 lg:hidden">
+          <nav className="grid" aria-label="Navegacao mobile">
             {links.map(([label, id]) => (
-              <button className="min-h-11 rounded-lg px-3 text-left text-sm font-bold text-[#D4D4D4] hover:bg-white/[.04]" key={id} onClick={() => { setOpen(false); onNavigate(id); }} type="button">
+              <button className="core-voice-caption min-h-12 border-b border-[var(--rule-soft)] px-1 text-left text-[#9b9b9b] transition-colors last:border-b-0 hover:text-[#FFD400]" key={id} onClick={() => { setOpen(false); onNavigate(id); }} type="button">
                 {label}
               </button>
             ))}
           </nav>
-          <div className="mt-4 grid gap-3">
+          <div className="mt-5 grid gap-3">
             <HomeButton onClick={onStart} variant="secondary">Entrar</HomeButton>
             <HomeButton onClick={onStart}>{startLabel}</HomeButton>
           </div>
@@ -85,21 +85,23 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
 
 export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying }: ActionProps & { error?: string | null; stats: Array<{ displayOverride?: string; label: string; prefix?: string; suffix?: string; value: number }> }) {
   return (
-    <Section className="relative min-h-[calc(100dvh-76px)] overflow-hidden" id="inicio">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(rgba(255,212,0,.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,212,0,.035)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_92%)]" />
+    <Section className="relative min-h-[calc(100dvh-76px)]" id="inicio">
       <div className="grid min-h-[calc(100dvh-76px)] items-center gap-12 py-12 lg:grid-cols-[1.08fr_.92fr]">
         <StaggerGroup className="min-w-0">
-          <StaggerItem className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#FFD400]/20 bg-[#FFD400]/10 px-3 py-2 text-xs font-black uppercase text-[#FFD400]">
-            <Sparkles className="h-4 w-4" />
+          <StaggerItem className="core-chamfer-outline is-tab core-voice-rail inline-flex max-w-full items-center gap-2 px-3 py-2.5 text-[#FFD400]">
+            <Sparkles className="h-3.5 w-3.5" />
             Plataforma NexTech
           </StaggerItem>
-          <StaggerItem className="mt-7 max-w-[760px] text-balance text-[clamp(3rem,6vw,5.5rem)] font-black leading-[.98] text-white">
+          <StaggerItem className="core-voice-poster mt-7 max-w-[820px] text-balance text-[clamp(3rem,6.2vw,5.75rem)] text-white">
             <h1>Gerencie tudo. Em um unico lugar.</h1>
           </StaggerItem>
-          <StaggerItem className="mt-6 max-w-[680px] text-pretty text-lg leading-8 text-[#D4D4D4] sm:text-xl">
+          <StaggerItem className="mt-5 max-w-[420px]">
+            <InkRule />
+          </StaggerItem>
+          <StaggerItem className="core-voice-body mt-6 max-w-[660px] text-pretty text-lg text-[#9b9b9b] sm:text-xl">
             <p>Uma plataforma criada para simplificar gerenciamento, automacao e operacoes conectadas ao Discord.</p>
           </StaggerItem>
-          <StaggerItem className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <StaggerItem className="mt-9 flex flex-col gap-3 sm:flex-row">
             <HomeButton className="sm:min-w-48" onClick={onStart}>
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
               {startLabel}
@@ -109,16 +111,17 @@ export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying 
               <ArrowRight className="h-4 w-4" />
             </HomeButton>
           </StaggerItem>
-          <StaggerItem className="mt-8 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#A3A3A3]">
-            <span className="inline-flex items-center gap-2 text-[#D4D4D4]"><motion.span animate={{ opacity: [1, .3, 1] }} className="h-2.5 w-2.5 rounded-full bg-[#FFD400]" transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />Online</span>
+          <StaggerItem className="core-voice-rail mt-9 flex flex-wrap items-center gap-x-4 gap-y-3 text-[#8a8a8a]">
+            <span className="inline-flex items-center gap-2 text-white"><motion.span animate={{ opacity: [1, .3, 1] }} className="h-2 w-2 rounded-full bg-[#FFD400]" transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />Online</span>
+            <span className="text-[#FFD400]/40">/</span>
             <span>Configuracao rapida</span>
-            <span className="text-[#FFD400]/50">•</span>
+            <span className="text-[#FFD400]/40">/</span>
             <span>Gestao centralizada</span>
           </StaggerItem>
           {error ? (
-            <StaggerItem className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
-              <p className="whitespace-pre-line">{error}</p>
-              <HomeButton className="mt-3" href={SUPPORT_URL} variant="secondary"><Headphones className="h-4 w-4" />Suporte</HomeButton>
+            <StaggerItem className="core-chamfer-outline mt-8 p-5 [--cbo:rgba(239,68,68,.45)]">
+              <p className="core-voice-body whitespace-pre-line text-sm text-red-100">{error}</p>
+              <HomeButton className="mt-4" href={SUPPORT_URL} variant="secondary"><Headphones className="h-4 w-4" />Suporte</HomeButton>
             </StaggerItem>
           ) : null}
         </StaggerGroup>
@@ -133,7 +136,7 @@ export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying 
 
 export function MetricsStrip({ stats }: { stats: Array<{ displayOverride?: string; label: string; prefix?: string; suffix?: string; value: number }> }) {
   return (
-    <StaggerGroup className="grid gap-y-6 border-y border-white/[.07] bg-[#080808]/80 py-6 sm:grid-cols-2 lg:grid-cols-4">
+    <StaggerGroup className="grid gap-y-8 border-y border-[var(--rule)] py-8 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => {
         const decimals = stat.value % 1 === 0 ? 0 : 1;
         return (
@@ -174,26 +177,29 @@ export function FeatureBento({ features, loading }: { features: PublicMarketingF
         <SectionHeader eyebrow="Funcionalidades" subtitle="Cards com pesos diferentes para destacar o que realmente organiza a operacao." title="Recursos para operar com controle." />
       </Reveal>
       <StaggerGroup className="mt-12 grid auto-rows-fr gap-4 lg:grid-cols-12">
-        {bentoFeatures.map((feature) => (
+        {bentoFeatures.map((feature, index) => (
           <StaggerItem className={feature.className} key={feature.title}>
-            <GlowCard className="min-h-56 p-6">
-              <feature.icon className="h-7 w-7 text-[#FFD400]" />
-              <h3 className="mt-6 text-2xl font-black text-white">{feature.title}</h3>
-              <p className="mt-3 max-w-xl text-sm leading-7 text-[#A3A3A3]">{feature.description}</p>
+            <GlowCard className="min-h-56 p-7">
+              <div className="flex items-start justify-between gap-4">
+                <feature.icon className="h-7 w-7 text-[#FFD400]" />
+                <span className="core-mono core-voice-rail text-[#5f5f5f]">{String(index + 1).padStart(2, "0")}</span>
+              </div>
+              <h3 className="core-voice-poster mt-7 text-2xl text-white">{feature.title}</h3>
+              <p className="core-voice-body mt-3 max-w-xl text-sm text-[#9b9b9b]">{feature.description}</p>
             </GlowCard>
           </StaggerItem>
         ))}
       </StaggerGroup>
-      <StaggerGroup className="mt-5 grid gap-4 md:grid-cols-3">
+      <StaggerGroup className="mt-4 grid gap-4 md:grid-cols-3">
         {marketing.map((feature) => {
           const Icon = iconForFeature(feature.icon);
           return (
             <StaggerItem key={feature.id}>
-              <GlowCard className="p-5">
+              <GlowCard className="p-6">
                 <Icon className="h-6 w-6 text-[#FFD400]" />
-                <p className="mt-4 text-xs font-black uppercase text-[#FFD400]">{feature.category}</p>
-                <h3 className="mt-2 text-lg font-black text-white">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#A3A3A3]">{feature.shortDescription}</p>
+                <p className="core-voice-rail mt-5 text-[#FFD400]">{feature.category}</p>
+                <h3 className="core-voice-poster mt-3 text-lg text-white">{feature.title}</h3>
+                <p className="core-voice-body mt-2 text-sm text-[#9b9b9b]">{feature.shortDescription}</p>
               </GlowCard>
             </StaggerItem>
           );
@@ -211,12 +217,12 @@ export function HowItWorks() {
       </Reveal>
       <StaggerGroup className="mt-14 grid gap-6 lg:grid-cols-3 lg:gap-0">
         {workflowSteps.map((step, index) => (
-          <StaggerItem className="relative min-w-0 lg:px-4" key={step.title}>
-            {index < workflowSteps.length - 1 ? <div className="absolute left-[calc(50%+3rem)] right-[-3rem] top-8 hidden h-px bg-gradient-to-r from-[#FFD400]/60 to-white/10 lg:block" /> : null}
-            <GlowCard className="relative p-6">
-              <span className="text-5xl font-black text-[#FFD400]">0{index + 1}</span>
-              <h3 className="mt-8 text-2xl font-black text-white">{step.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-[#A3A3A3]">{step.description}</p>
+          <StaggerItem className="relative min-w-0 lg:px-3" key={step.title}>
+            {index < workflowSteps.length - 1 ? <div className="absolute left-[calc(50%+3rem)] right-[-3rem] top-8 hidden h-px bg-gradient-to-r from-[var(--rule-ink)] to-transparent lg:block" /> : null}
+            <GlowCard className="relative p-7">
+              <span className="core-mono text-5xl font-bold text-[#FFD400]">0{index + 1}</span>
+              <h3 className="core-voice-poster mt-8 text-2xl text-white">{step.title}</h3>
+              <p className="core-voice-body mt-3 text-sm text-[#9b9b9b]">{step.description}</p>
             </GlowCard>
           </StaggerItem>
         ))}
@@ -235,9 +241,9 @@ export function Benefits() {
         <StaggerGroup className="grid gap-3 sm:grid-cols-2">
           {benefitItems.map((item) => (
             <StaggerItem key={item}>
-              <GlowCard className="flex h-full items-start gap-3 p-4">
+              <GlowCard className="flex h-full items-start gap-3 p-5">
                 <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD400]" />
-                <p className="text-sm leading-6 text-[#D4D4D4]">{item}</p>
+                <p className="core-voice-body text-sm text-[#b5b5b5]">{item}</p>
               </GlowCard>
             </StaggerItem>
           ))}
@@ -255,15 +261,15 @@ export function ProductDemo() {
           <SectionHeader align="left" eyebrow="Controle total" subtitle="Monitoramento de servicos, atividade, usuarios e operacoes em uma interface desenhada para leitura rapida." title="Veja tudo acontecendo em tempo real." />
         </Reveal>
         <Reveal delay={0.1}>
-          <GlowCard className="p-5">
-            <StaggerGroup className="grid gap-3">
+          <GlowCard className="p-6">
+            <StaggerGroup className="grid">
               {["Servico conectado", "Nova atividade registrada", "Usuario autenticado", "Sincronizacao concluida"].map((item) => (
-                <StaggerItem className="flex items-center justify-between gap-3 rounded-md border border-white/[.07] bg-black/25 p-4" key={item}>
-                  <span className="flex min-w-0 items-center gap-3 text-sm font-bold text-white">
-                    <motion.span animate={{ opacity: [1, .35, 1] }} className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#FFD400]" transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
+                <StaggerItem className="flex items-center justify-between gap-3 border-b border-[var(--rule-soft)] py-4 last:border-b-0" key={item}>
+                  <span className="flex min-w-0 items-center gap-3 text-sm font-semibold text-white">
+                    <motion.span animate={{ opacity: [1, .35, 1] }} className="h-2 w-2 shrink-0 rounded-full bg-[#FFD400]" transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
                     <span className="truncate">{item}</span>
                   </span>
-                  <span className="text-xs font-semibold text-[#777777]">agora</span>
+                  <span className="core-voice-rail text-[#6f6f6f]">agora</span>
                 </StaggerItem>
               ))}
             </StaggerGroup>
@@ -286,8 +292,8 @@ export function Integrations() {
         </div>
         <StaggerItem>
           <motion.div
-            animate={{ boxShadow: ["0 0 0 rgba(255,212,0,.35)", "0 0 32px rgba(255,212,0,.35)", "0 0 0 rgba(255,212,0,.35)"] }}
-            className="flex h-28 w-full items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#FFD400] px-8 text-center text-xl font-black text-black md:h-40 md:w-44"
+            animate={{ opacity: [1, 0.76, 1] }}
+            className="core-chamfer-outline is-brand core-voice-poster flex h-28 w-full items-center justify-center px-8 text-center text-xl text-black md:h-40 md:w-44"
             transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
           >
             NEXTECH
@@ -309,16 +315,16 @@ export function Security() {
           <SectionHeader align="left" eyebrow="Seguranca" subtitle="Permissoes, logs e isolamento por servidor continuam no backend e no banco, sem depender apenas da interface." title="Sua operacao. Sob controle." />
         </Reveal>
         <Reveal delay={0.1}>
-          <GlowCard className="p-6">
-            <div className="mx-auto flex aspect-square max-w-64 flex-col items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#0D0D0D] text-center">
+          <GlowCard className="p-7">
+            <div className="core-chamfer-outline core-screen mx-auto flex aspect-square max-w-64 flex-col items-center justify-center text-center [--cbf:var(--stock-3)] [--cbo:rgba(255,212,0,.3)]">
               <ShieldCheck className="h-16 w-16 text-[#FFD400]" />
-              <p className="mt-5 text-xs font-black uppercase text-[#777777]">Escudo</p>
-              <p className="text-2xl font-black text-white">Protegido</p>
+              <p className="core-voice-rail mt-5 text-[#7a7a7a]">Escudo</p>
+              <p className="core-voice-poster mt-2 text-2xl text-white">Protegido</p>
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
               {securityItems.map((item) => (
-                <p className="flex items-center gap-3 text-sm font-semibold text-[#D4D4D4]" key={item}>
-                  <Check className="h-4 w-4 text-[#FFD400]" />
+                <p className="core-voice-body flex items-center gap-3 text-sm text-[#b5b5b5]" key={item}>
+                  <Check className="h-4 w-4 shrink-0 text-[#FFD400]" />
                   {item}
                 </p>
               ))}
@@ -338,17 +344,17 @@ export function Pricing({ plans }: { onNavigate: (id: string) => void; plans: Pl
         <SectionHeader eyebrow="Planos" subtitle="Os valores abaixo vêm dos planos públicos cadastrados no sistema." title="Escolha o plano correto para sua operacao." />
       </Reveal>
       {visiblePlans.length ? (
-        <StaggerGroup className="mt-12 grid gap-5 lg:grid-cols-3">
+        <StaggerGroup className="mt-12 grid gap-4 lg:grid-cols-3">
           {visiblePlans.map((plan) => <StaggerItem key={plan.id}><PlanCard plan={plan} /></StaggerItem>)}
         </StaggerGroup>
       ) : (
         <Reveal>
-          <GlowCard className="mx-auto mt-12 max-w-2xl p-6 text-center">
-            <p className="text-sm leading-7 text-[#A3A3A3]">Nenhum plano publico ativo foi encontrado agora. A pagina de planos continua disponivel para consulta.</p>
+          <GlowCard className="mx-auto mt-12 max-w-2xl p-7 text-center">
+            <p className="core-voice-body text-sm text-[#9b9b9b]">Nenhum plano publico ativo foi encontrado agora. A pagina de planos continua disponivel para consulta.</p>
           </GlowCard>
         </Reveal>
       )}
-      <div className="mt-8 text-center">
+      <div className="mt-10 text-center">
         <HomeButton href="/planos">Ver todos os planos <ArrowRight className="h-4 w-4" /></HomeButton>
       </div>
     </Section>
@@ -361,7 +367,7 @@ export function Faq() {
       <Reveal>
         <SectionHeader eyebrow="FAQ" subtitle="Respostas curtas sobre acesso, suporte e funcionamento geral." title="Perguntas frequentes." />
       </Reveal>
-      <Reveal className="mx-auto mt-10 max-w-3xl rounded-lg border border-white/[.07] bg-[#101010] px-5 sm:px-7" delay={0.1}>
+      <Reveal className="core-chamfer-outline mx-auto mt-10 max-w-3xl px-6 sm:px-8" delay={0.1}>
         {faqItems.map((item) => <FaqItem key={item.question} {...item} />)}
       </Reveal>
     </Section>
@@ -372,10 +378,10 @@ export function FinalCta({ onStart, startLabel, verifying }: Pick<ActionProps, "
   return (
     <Section className="py-20 sm:py-24">
       <Reveal>
-        <div className="rounded-lg border border-[#FFD400]/20 bg-[radial-gradient(circle_at_50%_0%,rgba(255,212,0,.20),transparent_42%),#0A0A0A] px-6 py-14 text-center sm:px-10">
-          <p className="text-xs font-black uppercase text-[#FFD400]">Pronto para comecar?</p>
-          <h2 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-black leading-tight text-white sm:text-5xl">Centralize sua operacao com a NexTech.</h2>
-          <div className="mt-8">
+        <div className="core-chamfer-outline core-screen px-6 py-16 text-center [--cbo:rgba(255,212,0,.34)] [--chamfer-cut:22px] sm:px-10">
+          <p className="core-voice-rail text-[#FFD400]">Pronto para comecar?</p>
+          <h2 className="core-voice-poster mx-auto mt-5 max-w-3xl text-balance text-4xl text-white sm:text-5xl">Centralize sua operacao com a NexTech.</h2>
+          <div className="mt-9">
             <HomeButton onClick={onStart}>{verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}{startLabel}</HomeButton>
           </div>
         </div>
@@ -386,19 +392,19 @@ export function FinalCta({ onStart, startLabel, verifying }: Pick<ActionProps, "
 
 export function Footer({ currentYear, onNavigate }: { currentYear: number; onNavigate: (id: string) => void }) {
   return (
-    <footer className="w-full border-t border-white/[.07] bg-[#050505] py-12">
-      <div className="mx-auto grid w-full max-w-[1480px] gap-8 px-5 sm:px-6 md:grid-cols-2 lg:grid-cols-5 lg:px-10 xl:px-12">
+    <footer className="core-theme w-full border-t border-[var(--rule)] bg-[var(--stock)] py-14">
+      <div className="mx-auto grid w-full max-w-[1560px] gap-8 px-[var(--core-margin)] md:grid-cols-2 lg:grid-cols-5">
         <div className="lg:col-span-2">
-          <button className="text-left text-2xl font-black uppercase text-white" onClick={() => onNavigate("inicio")} type="button">NexTech</button>
-          <p className="mt-4 max-w-sm text-sm leading-7 text-[#999999]">Uma plataforma para simplificar sua operacao.</p>
+          <button className="core-voice-poster text-left text-2xl text-white" onClick={() => onNavigate("inicio")} type="button">NexTech</button>
+          <p className="core-voice-body mt-4 max-w-sm text-sm text-[#8a8a8a]">Uma plataforma para simplificar sua operacao.</p>
         </div>
         <FooterColumn links={[["Plataforma", "produto"], ["Recursos", "recursos"], ["Precos", "planos"]]} onNavigate={onNavigate} title="Produto" />
         <FooterColumn links={[["Sobre", "inicio"], ["Contato", "suporte"]]} onNavigate={onNavigate} title="Empresa" />
         <FooterColumn links={[["Documentacao", "docs"], ["Suporte", "suporte"], ["Status", "status"]]} onNavigate={onNavigate} title="Recursos" />
       </div>
-      <div className="mx-auto mt-10 flex w-full max-w-[1480px] flex-col gap-3 border-t border-white/[.07] px-5 pt-6 text-sm text-[#777777] sm:px-6 md:flex-row md:items-center md:justify-between lg:px-10 xl:px-12">
+      <div className="core-voice-rail mx-auto mt-12 flex w-full max-w-[1560px] flex-col gap-3 border-t border-[var(--rule-soft)] px-[var(--core-margin)] pt-7 text-[#6f6f6f] md:flex-row md:items-center md:justify-between">
         <span>© {currentYear} NexTech. Todos os direitos reservados.</span>
-        <button className="w-fit text-[#999999] transition hover:text-[#FFD400]" onClick={() => onNavigate("termos")} type="button">Termos e privacidade</button>
+        <button className="w-fit text-left text-[#8a8a8a] transition-colors hover:text-[#FFD400]" onClick={() => onNavigate("termos")} type="button">Termos e privacidade</button>
       </div>
     </footer>
   );
@@ -407,13 +413,13 @@ export function Footer({ currentYear, onNavigate }: { currentYear: number; onNav
 export function ConnectedServers({ state }: { state: ServerState }) {
   const data = state.value;
   if (state.loading) {
-    return <Section className="border-y border-white/[.07] bg-[#080808] py-10"><p className="text-center text-sm font-semibold text-[#999999]">Carregando servidores conectados...</p></Section>;
+    return <Section className="border-y border-[var(--rule)] py-10"><p className="core-voice-rail text-center text-[#7a7a7a]">Carregando servidores conectados...</p></Section>;
   }
   if (state.error || !data?.servers.length) {
-    return <Section className="border-y border-white/[.07] bg-[#080808] py-10"><p className="text-center text-sm font-semibold text-[#999999]">Servidores conectados serao exibidos quando houver dados publicos disponiveis.</p></Section>;
+    return <Section className="border-y border-[var(--rule)] py-10"><p className="core-voice-rail text-center text-[#7a7a7a]">Servidores conectados serao exibidos quando houver dados publicos disponiveis.</p></Section>;
   }
   return (
-    <Section className="border-y border-white/[.07] bg-[#080808] py-10">
+    <Section className="border-y border-[var(--rule)] py-10">
       <StaggerGroup className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
         {data.servers.slice(0, 8).map((server) => <StaggerItem key={server.guildId}><ServerCard server={server} /></StaggerItem>)}
       </StaggerGroup>
@@ -423,9 +429,9 @@ export function ConnectedServers({ state }: { state: ServerState }) {
 
 function IntegrationNode({ icon: Icon, label }: { icon: typeof Bot; label: string }) {
   return (
-    <GlowCard className="flex min-h-24 items-center gap-3 p-4">
+    <GlowCard className="flex min-h-24 items-center gap-3 p-5">
       <Icon className="h-5 w-5 shrink-0 text-[#FFD400]" />
-      <span className="min-w-0 truncate text-sm font-bold text-white">{label}</span>
+      <span className="core-voice-caption min-w-0 truncate text-white">{label}</span>
     </GlowCard>
   );
 }
@@ -434,20 +440,20 @@ function PlanCard({ plan }: { plan: Plan }) {
   const price = plan.promotionalPriceInCents ?? plan.priceInCents;
   const features = plan.entitlements.filter((item) => item.enabled).slice(0, 4);
   return (
-    <GlowCard className={`flex min-h-full flex-col p-6 ${plan.isRecommended ? "border-[#FFD400]/55" : ""}`}>
+    <GlowCard className={`flex min-h-full flex-col p-7 ${plan.isRecommended ? "[--cbo:rgba(255,212,0,.55)]" : ""}`}>
       <div className="flex min-h-8 items-start justify-between gap-3">
-        <p className="text-sm font-black uppercase text-[#FFD400]">{plan.badge || "Plano"}</p>
-        {plan.isRecommended ? <span className="rounded-md bg-[#FFD400] px-2.5 py-1 text-xs font-black text-black">Recomendado</span> : null}
+        <p className="core-voice-rail text-[#FFD400]">{plan.badge || "Plano"}</p>
+        {plan.isRecommended ? <span className="core-chamfer-sm core-voice-rail bg-[#FFD400] px-2.5 py-1.5 text-black">Recomendado</span> : null}
       </div>
-      <h3 className="mt-4 text-2xl font-black text-white">{plan.name}</h3>
-      <p className="mt-3 min-h-14 text-sm leading-7 text-[#A3A3A3]">{plan.shortDescription || plan.description}</p>
-      <div className="mt-6 border-y border-white/[.07] py-5">
-        <span className="text-4xl font-black text-white">{formatPrice(price, plan.currency)}</span>
-        <span className="text-sm font-semibold text-[#777777]"> {cycleSuffix(plan.billingCycle)}</span>
+      <h3 className="core-voice-poster mt-5 text-2xl text-white">{plan.name}</h3>
+      <p className="core-voice-body mt-3 min-h-14 text-sm text-[#9b9b9b]">{plan.shortDescription || plan.description}</p>
+      <div className="mt-6 border-y border-[var(--rule-soft)] py-5">
+        <span className="core-mono text-4xl font-bold text-white">{formatPrice(price, plan.currency)}</span>
+        <span className="core-voice-rail ml-2 text-[#7a7a7a]">{cycleSuffix(plan.billingCycle)}</span>
       </div>
       <ul className="mt-6 grid flex-1 gap-3">
         {features.map((feature) => (
-          <li className="flex gap-3 text-sm leading-6 text-[#D4D4D4]" key={feature.key}>
+          <li className="core-voice-body flex gap-3 text-sm text-[#b5b5b5]" key={feature.key}>
             <Check className="mt-1 h-4 w-4 shrink-0 text-[#FFD400]" />
             {readablePlanFeature(feature.key)}
           </li>
@@ -460,13 +466,13 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 function ServerCard({ server }: { server: PublicConnectedServer }) {
   return (
-    <GlowCard className="flex min-w-0 items-center gap-4 p-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-[#080808]">
+    <GlowCard className="flex min-w-0 items-center gap-4 p-5">
+      <div className="core-chamfer-sm flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden bg-[var(--stock-3)]">
         {server.iconUrl ? <img alt="" className="h-full w-full object-cover" loading="lazy" src={server.iconUrl} /> : <Server className="h-5 w-5 text-[#FFD400]" />}
       </div>
       <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-white">{server.name}</p>
-        <p className="truncate text-xs text-[#999999]">{server.memberCount.toLocaleString("pt-BR")} membros</p>
+        <p className="truncate text-sm font-semibold text-white">{server.name}</p>
+        <p className="core-mono core-voice-rail mt-1.5 truncate text-[#7a7a7a]">{server.memberCount.toLocaleString("pt-BR")} membros</p>
       </div>
     </GlowCard>
   );
@@ -475,10 +481,10 @@ function ServerCard({ server }: { server: PublicConnectedServer }) {
 function FooterColumn({ links, onNavigate, title }: { links: Array<[string, string]>; onNavigate: (id: string) => void; title: string }) {
   return (
     <div>
-      <h3 className="text-sm font-black uppercase text-white">{title}</h3>
-      <div className="mt-4 grid gap-3">
+      <h3 className="core-voice-rail text-white">{title}</h3>
+      <div className="mt-5 grid gap-3">
         {links.map(([label, id]) => (
-          <button className="w-fit text-left text-sm text-[#999999] transition hover:text-[#FFD400]" key={`${title}-${label}`} onClick={() => onNavigate(id)} type="button">
+          <button className="w-fit text-left text-sm text-[#8a8a8a] transition-colors hover:text-[#FFD400]" key={`${title}-${label}`} onClick={() => onNavigate(id)} type="button">
             {label === "Status" ? <span className="inline-flex items-center gap-1">{label}<ExternalLink className="h-3 w-3" /></span> : label}
           </button>
         ))}

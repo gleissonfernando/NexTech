@@ -1,11 +1,12 @@
-import { AnimatePresence, motion, useInView, useMotionValue, useReducedMotion, useSpring, useTransform, type Variants } from "framer-motion";
+import { AnimatePresence, motion, useInView, useMotionValue, useReducedMotion, useSpring, type Variants } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import "./core-theme.css";
 
 export function HomeShell({ children }: { children: ReactNode }) {
   return (
-    <main className="nextech-home relative min-h-screen w-full overflow-x-clip bg-[#050505] text-white">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_72%_8%,rgba(255,212,0,.10),transparent_32%),radial-gradient(circle_at_16%_46%,rgba(255,212,0,.05),transparent_30%),#050505]" />
+    <main className="core-theme relative min-h-screen w-full overflow-x-clip bg-[#060606] text-white">
+      <div aria-hidden className="core-mesh" />
       {children}
     </main>
   );
@@ -22,7 +23,7 @@ export function Section({
 }) {
   return (
     <section className={`w-full ${className}`} id={id}>
-      <div className="mx-auto w-full max-w-[1480px] px-5 sm:px-6 lg:px-10 xl:px-12">
+      <div className="mx-auto w-full max-w-[1560px] px-[var(--core-margin)]">
         {children}
       </div>
     </section>
@@ -42,10 +43,30 @@ export function SectionHeader({
 }) {
   return (
     <div className={align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}>
-      {eyebrow ? <p className="mb-4 text-xs font-black uppercase text-[#FFD400]">{eyebrow}</p> : null}
-      <h2 className="text-balance text-3xl font-black leading-tight text-white sm:text-4xl lg:text-5xl">{title}</h2>
-      <p className="mt-4 text-pretty text-base leading-7 text-[#A3A3A3] sm:text-lg">{subtitle}</p>
+      {eyebrow ? (
+        <div className={`mb-5 flex items-center gap-3 ${align === "center" ? "justify-center" : ""}`}>
+          <span className="core-voice-rail text-[#FFD400]">{eyebrow}</span>
+          <InkRule className={align === "center" ? "hidden" : "w-16"} />
+        </div>
+      ) : null}
+      <h2 className="core-voice-poster text-balance text-3xl text-white sm:text-4xl lg:text-[3.25rem]">{title}</h2>
+      <p className="core-voice-body mt-5 text-pretty text-base text-[#9b9b9b] sm:text-lg">{subtitle}</p>
     </div>
+  );
+}
+
+/** Fio de 1px que se "desenha" da esquerda para a direita ao entrar na tela. */
+export function InkRule({ className = "" }: { className?: string }) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.span
+      className={`block h-px bg-[var(--rule-ink)] ${className}`}
+      initial={reduceMotion ? undefined : { clipPath: "inset(0 100% 0 0)" }}
+      transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
+      viewport={{ once: true, margin: "-60px" }}
+      whileInView={reduceMotion ? undefined : { clipPath: "inset(0 0% 0 0)" }}
+    />
   );
 }
 
@@ -62,26 +83,31 @@ export function HomeButton({
   onClick?: () => void;
   variant?: "primary" | "secondary";
 }) {
-  const classes = variant === "primary"
-    ? "border-[#FFD400] bg-[#FFD400] text-black hover:bg-[#FFE36A] focus-visible:ring-[#FFD400]/50"
-    : "border-white/10 bg-[#111111] text-white hover:border-[#FFD400]/35 hover:bg-[#171717] focus-visible:ring-white/25";
-  const shared = `inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-black transition duration-200 focus-visible:outline-none focus-visible:ring-4 ${classes} ${className}`;
+  const brand = variant === "primary";
+  const shared = [
+    "core-voice-caption core-chamfer-outline core-press",
+    brand ? "is-brand text-black" : "text-white hover:text-white",
+    "inline-flex min-h-12 items-center justify-center gap-2 px-6 transition-colors duration-200",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD400]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060606]",
+    className
+  ].join(" ");
 
   if (href) {
     return (
-      <motion.a className={shared} href={href} whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+      <motion.a className={shared} href={href} whileTap={{ y: 1 }}>
         {children}
       </motion.a>
     );
   }
 
   return (
-    <motion.button className={shared} onClick={onClick} type="button" whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+    <motion.button className={shared} onClick={onClick} type="button" whileTap={{ y: 1 }}>
       {children}
     </motion.button>
   );
 }
 
+/** Painel chanfrado com fio de 1px — substitui o antigo card arredondado com sombra. */
 export function GlowCard({
   children,
   className = ""
@@ -90,10 +116,7 @@ export function GlowCard({
   className?: string;
 }) {
   return (
-    <motion.div
-      className={`rounded-lg border border-white/[.07] bg-[#111111] shadow-[0_18px_60px_rgba(0,0,0,.28)] transition duration-300 hover:border-[#FFD400]/25 hover:shadow-[0_18px_70px_rgba(0,0,0,.35),0_0_30px_rgba(255,212,0,.08)] ${className}`}
-      whileHover={{ y: -6 }}
-    >
+    <motion.div className={`core-chamfer-outline ${className}`} whileHover={{ y: -4 }}>
       {children}
     </motion.div>
   );
@@ -115,13 +138,13 @@ export function Metric({
   decimals?: number;
 }) {
   return (
-    <div className="min-w-0 border-l border-white/10 px-4 first:border-l-0 sm:px-6">
+    <div className="min-w-0 border-l border-[var(--rule-soft)] px-4 first:border-l-0 sm:px-6">
       {typeof numericValue === "number" ? (
-        <CountUp className="truncate text-2xl font-black text-white sm:text-3xl" decimals={decimals} prefix={prefix} suffix={suffix} value={numericValue} />
+        <CountUp className="core-mono truncate text-2xl font-bold text-white sm:text-[2rem]" decimals={decimals} prefix={prefix} suffix={suffix} value={numericValue} />
       ) : (
-        <p className="truncate text-2xl font-black text-white sm:text-3xl">{value}</p>
+        <p className="core-mono truncate text-2xl font-bold text-white sm:text-[2rem]">{value}</p>
       )}
-      <p className="mt-1 truncate text-xs font-bold uppercase text-[#999999]">{label}</p>
+      <p className="core-voice-rail mt-2.5 truncate text-[#8a8a8a]">{label}</p>
     </div>
   );
 }
@@ -183,10 +206,10 @@ export function FaqItem({ answer, question }: { answer: string; question: string
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border-b border-white/10">
+    <div className="border-b border-[var(--rule-soft)] last:border-b-0">
       <button
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-4 py-5 text-left text-base font-bold text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD400]/30"
+        className="flex w-full items-center justify-between gap-4 py-5 text-left text-base font-semibold text-white transition-colors hover:text-[#FFD400] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD400]/50"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
@@ -204,7 +227,7 @@ export function FaqItem({ answer, question }: { answer: string; question: string
             style={{ overflow: "hidden" }}
             transition={{ duration: 0.25, ease: "easeInOut" }}
           >
-            <p className="pb-5 text-sm leading-7 text-[#A3A3A3]">{answer}</p>
+            <p className="core-voice-body pb-5 text-sm text-[#9b9b9b]">{answer}</p>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -213,8 +236,8 @@ export function FaqItem({ answer, question }: { answer: string; question: string
 }
 
 const revealVariants: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } }
+  hidden: { opacity: 0, y: 18 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.62, ease: [0.16, 1, 0.3, 1] } }
 };
 
 /** Fade + slide-up disparado quando o elemento entra na viewport (uma vez). */
@@ -253,7 +276,7 @@ const staggerContainerVariants: Variants = {
 };
 
 const staggerItemVariants: Variants = {
-  hidden: { opacity: 0, y: 22 },
+  hidden: { opacity: 0, y: 18 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } }
 };
 

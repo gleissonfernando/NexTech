@@ -1,0 +1,218 @@
+/* Sistema visual da home inspirado em prancha de impressão/blueprint:
+   papel quase-preto, uma unica tinta (amarelo NexTech), cantos chanfrados em
+   vez de arredondados, fios de 1px em vez de sombra, retícula de fundo e
+   tipografia de metadados em monoespaçada. Escopo isolado em .core-theme para
+   não vazar pro resto do app (dashboard etc. continuam com o tema atual). */
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+.core-theme {
+  --stock: #060606;
+  --stock-2: #0c0c0c;
+  --stock-3: #141414;
+  --ink: #ffd400;
+  --ink-hot: #ffe36a;
+  --ink-deep: #b8930a;
+  --rule: hsla(0, 0%, 100%, 0.13);
+  --rule-soft: hsla(0, 0%, 100%, 0.07);
+  --rule-ink: rgba(255, 212, 0, 0.42);
+  --core-margin: 20px;
+  font-family: "Archivo", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (min-width: 1024px) {
+  .core-theme {
+    --core-margin: 40px;
+  }
+}
+
+.core-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: -50;
+  pointer-events: none;
+  background-color: var(--stock);
+  background-image:
+    linear-gradient(hsla(0, 0%, 100%, 0.022) 1px, transparent 0),
+    linear-gradient(90deg, hsla(0, 0%, 100%, 0.022) 1px, transparent 0),
+    linear-gradient(rgba(255, 212, 0, 0.045) 1px, transparent 0),
+    linear-gradient(90deg, rgba(255, 212, 0, 0.045) 1px, transparent 0);
+  background-size: 32.5px 32.5px, 32.5px 32.5px, 260px 260px, 260px 260px;
+  background-position: 50%;
+  background-attachment: fixed;
+}
+
+.core-mesh:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(62% 46% at 84% 6%, rgba(255, 212, 0, 0.14), transparent 68%),
+    radial-gradient(58% 44% at 8% 92%, rgba(255, 212, 0, 0.09), transparent 66%),
+    radial-gradient(70% 55% at 50% 52%, rgba(0, 0, 0, 0.42), transparent 72%);
+}
+
+/* Corta os 4 cantos em ângulo de 45°, formando um octógono. */
+.core-chamfer-sm {
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+}
+
+.core-chamfer-md {
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+
+/*
+ * Borda de 1px que acompanha o corte chanfrado: como clip-path remove os
+ * cantos, um `border` comum ficaria quadrado. A técnica empilha dois
+ * octógonos via pseudo-elementos — :before (cor da borda, --cbo) por baixo,
+ * :after (preenchimento, --cbf) por cima, encolhido pela espessura do traço —
+ * criando o efeito de contorno chanfrado sem nenhuma sombra.
+ */
+.core-chamfer-outline {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  --chamfer-cut: 14px;
+  --chamfer-stroke: 1px;
+  --chamfer-inner-cut: calc(var(--chamfer-cut) - var(--chamfer-stroke) * 0.4142);
+  --cbo: hsla(0, 0%, 100%, 0.14);
+  --cbf: var(--stock-2);
+}
+
+.core-chamfer-outline:before,
+.core-chamfer-outline:after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  transition: background 0.25s ease;
+}
+
+.core-chamfer-outline:before {
+  inset: 0;
+  z-index: -2;
+  background: var(--cbo);
+  clip-path: polygon(
+    var(--chamfer-cut) 0,
+    100% 0,
+    100% calc(100% - var(--chamfer-cut)),
+    calc(100% - var(--chamfer-cut)) 100%,
+    0 100%,
+    0 var(--chamfer-cut)
+  );
+}
+
+.core-chamfer-outline:after {
+  inset: var(--chamfer-stroke);
+  z-index: -1;
+  background: var(--cbf);
+  clip-path: polygon(
+    var(--chamfer-inner-cut) 0,
+    100% 0,
+    100% calc(100% - var(--chamfer-inner-cut)),
+    calc(100% - var(--chamfer-inner-cut)) 100%,
+    0 100%,
+    0 var(--chamfer-inner-cut)
+  );
+}
+
+.core-chamfer-outline:hover {
+  --cbo: hsla(0, 0%, 100%, 0.32);
+}
+
+.core-chamfer-outline.is-brand {
+  --cbo: var(--ink);
+  --cbf: var(--ink);
+}
+
+.core-chamfer-outline.is-brand:hover {
+  --cbo: var(--ink-hot);
+  --cbf: var(--ink-hot);
+}
+
+.core-chamfer-outline.is-tab {
+  --chamfer-cut: 10px;
+  --chamfer-stroke: 1.25px;
+}
+
+/* Tipografia de "metadado de impressão": maiúscula, rastreada, peso alto. */
+.core-voice-rail {
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.19em;
+  line-height: 1;
+  text-transform: uppercase;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@media (min-width: 768px) {
+  .core-voice-rail {
+    font-size: 11px;
+    letter-spacing: 0.215em;
+  }
+}
+
+.core-voice-caption {
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.core-voice-body {
+  font-weight: 500;
+  letter-spacing: 0.002em;
+  line-height: 1.62;
+}
+
+.core-voice-poster {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 0.98;
+  text-transform: uppercase;
+}
+
+.core-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.core-ink {
+  color: var(--ink-hot);
+}
+
+/* Retícula de meio-tom (pontos a 45°) usada atrás de mockups/telas. */
+.core-screen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.core-screen:before {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  pointer-events: none;
+  transform: rotate(45deg);
+  background-image: radial-gradient(circle, var(--ink) 42%, transparent 46%);
+  background-size: 5px 5px;
+  opacity: 0.08;
+}
+
+.core-screen > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Botão "afunda" 1px ao clicar, como um carimbo de impressão. */
+.core-press:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .core-press:active {
+    transform: none;
+  }
+}
