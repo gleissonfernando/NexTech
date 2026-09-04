@@ -1,9 +1,10 @@
+import { motion } from "framer-motion";
 import { ArrowRight, Bot, Check, ExternalLink, Headphones, Loader2, LogIn, Menu, Rocket, Server, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { Plan } from "../../types";
 import { bentoFeatures, benefitItems, faqItems, integrationNodes, MONITORING_STATUS_URL, securityItems, SUPPORT_URL, workflowSteps } from "./data";
 import { DashboardMockup } from "./DashboardMockup";
-import { FaqItem, GlowCard, HomeButton, Metric, Section, SectionHeader } from "./HomeUi";
+import { FaqItem, GlowCard, HomeButton, Metric, Reveal, Section, SectionHeader, StaggerGroup, StaggerItem } from "./HomeUi";
 import type { PublicConnectedServer, PublicMarketingFeature, ServerState } from "./types";
 import { cycleSuffix, ensureThreeFeatures, formatPrice, formatStatNumber, iconForFeature, readablePlanFeature } from "./utils";
 
@@ -25,7 +26,12 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/[.07] bg-black/72 backdrop-blur-xl">
+    <motion.header
+      animate={{ y: 0, opacity: 1 }}
+      className="sticky top-0 z-50 w-full border-b border-white/[.07] bg-black/72 backdrop-blur-xl"
+      initial={{ y: -24, opacity: 0 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+    >
       <div className="mx-auto flex h-[76px] w-full max-w-[1480px] items-center justify-between gap-4 px-5 sm:px-6 lg:px-10 xl:px-12">
         <button className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD400]/30" onClick={() => onNavigate("inicio")} type="button">
           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FFD400] text-black">
@@ -73,7 +79,7 @@ export function Navbar({ onNavigate, onStart, startLabel, verifying }: ActionPro
           </div>
         </div>
       ) : null}
-    </header>
+    </motion.header>
   );
 }
 
@@ -82,18 +88,18 @@ export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying 
     <Section className="relative min-h-[calc(100dvh-76px)] overflow-hidden" id="inicio">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(rgba(255,212,0,.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,212,0,.035)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_92%)]" />
       <div className="grid min-h-[calc(100dvh-76px)] items-center gap-12 py-12 lg:grid-cols-[1.08fr_.92fr]">
-        <div className="min-w-0">
-          <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#FFD400]/20 bg-[#FFD400]/10 px-3 py-2 text-xs font-black uppercase text-[#FFD400]">
+        <StaggerGroup className="min-w-0">
+          <StaggerItem className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#FFD400]/20 bg-[#FFD400]/10 px-3 py-2 text-xs font-black uppercase text-[#FFD400]">
             <Sparkles className="h-4 w-4" />
             Plataforma NexTech
-          </div>
-          <h1 className="mt-7 max-w-[760px] text-balance text-[clamp(3rem,6vw,5.5rem)] font-black leading-[.98] text-white">
-            Gerencie tudo. Em um unico lugar.
-          </h1>
-          <p className="mt-6 max-w-[680px] text-pretty text-lg leading-8 text-[#D4D4D4] sm:text-xl">
-            Uma plataforma criada para simplificar gerenciamento, automacao e operacoes conectadas ao Discord.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          </StaggerItem>
+          <StaggerItem className="mt-7 max-w-[760px] text-balance text-[clamp(3rem,6vw,5.5rem)] font-black leading-[.98] text-white">
+            <h1>Gerencie tudo. Em um unico lugar.</h1>
+          </StaggerItem>
+          <StaggerItem className="mt-6 max-w-[680px] text-pretty text-lg leading-8 text-[#D4D4D4] sm:text-xl">
+            <p>Uma plataforma criada para simplificar gerenciamento, automacao e operacoes conectadas ao Discord.</p>
+          </StaggerItem>
+          <StaggerItem className="mt-8 flex flex-col gap-3 sm:flex-row">
             <HomeButton className="sm:min-w-48" onClick={onStart}>
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
               {startLabel}
@@ -102,21 +108,23 @@ export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying 
               Conhecer plataforma
               <ArrowRight className="h-4 w-4" />
             </HomeButton>
-          </div>
-          <div className="mt-8 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#A3A3A3]">
-            <span className="inline-flex items-center gap-2 text-[#D4D4D4]"><span className="h-2.5 w-2.5 rounded-full bg-[#FFD400]" />Online</span>
+          </StaggerItem>
+          <StaggerItem className="mt-8 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#A3A3A3]">
+            <span className="inline-flex items-center gap-2 text-[#D4D4D4]"><motion.span animate={{ opacity: [1, .3, 1] }} className="h-2.5 w-2.5 rounded-full bg-[#FFD400]" transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />Online</span>
             <span>Configuracao rapida</span>
             <span className="text-[#FFD400]/50">•</span>
             <span>Gestao centralizada</span>
-          </div>
+          </StaggerItem>
           {error ? (
-            <div className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
+            <StaggerItem className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
               <p className="whitespace-pre-line">{error}</p>
               <HomeButton className="mt-3" href={SUPPORT_URL} variant="secondary"><Headphones className="h-4 w-4" />Suporte</HomeButton>
-            </div>
+            </StaggerItem>
           ) : null}
-        </div>
-        <DashboardMockup />
+        </StaggerGroup>
+        <Reveal delay={0.15}>
+          <DashboardMockup />
+        </Reveal>
       </div>
       <MetricsStrip stats={stats} />
     </Section>
@@ -125,21 +133,35 @@ export function Hero({ error, onNavigate, onStart, startLabel, stats, verifying 
 
 export function MetricsStrip({ stats }: { stats: Array<{ displayOverride?: string; label: string; prefix?: string; suffix?: string; value: number }> }) {
   return (
-    <div className="grid gap-y-6 border-y border-white/[.07] bg-[#080808]/80 py-6 sm:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
-        <Metric key={stat.label} label={stat.label} value={stat.displayOverride ?? `${stat.prefix ?? ""}${formatStatNumber(stat.value, stat.value % 1 === 0 ? 0 : 1)}${stat.suffix ?? ""}`} />
-      ))}
-    </div>
+    <StaggerGroup className="grid gap-y-6 border-y border-white/[.07] bg-[#080808]/80 py-6 sm:grid-cols-2 lg:grid-cols-4">
+      {stats.map((stat) => {
+        const decimals = stat.value % 1 === 0 ? 0 : 1;
+        return (
+          <StaggerItem key={stat.label}>
+            <Metric
+              decimals={decimals}
+              label={stat.label}
+              numericValue={stat.displayOverride ? undefined : stat.value}
+              prefix={stat.prefix}
+              suffix={stat.suffix}
+              value={stat.displayOverride ?? `${stat.prefix ?? ""}${formatStatNumber(stat.value, decimals)}${stat.suffix ?? ""}`}
+            />
+          </StaggerItem>
+        );
+      })}
+    </StaggerGroup>
   );
 }
 
 export function PlatformShowcase() {
   return (
     <Section className="py-20 sm:py-24" id="produto">
-      <SectionHeader eyebrow="Plataforma" subtitle="Gerencie suas operacoes atraves de uma unica plataforma, com dados organizados e acoes claras." title="Tudo centralizado. Sem complicacao." />
-      <div className="mt-12">
+      <Reveal>
+        <SectionHeader eyebrow="Plataforma" subtitle="Gerencie suas operacoes atraves de uma unica plataforma, com dados organizados e acoes claras." title="Tudo centralizado. Sem complicacao." />
+      </Reveal>
+      <Reveal className="mt-12" delay={0.1}>
         <DashboardMockup large />
-      </div>
+      </Reveal>
     </Section>
   );
 }
@@ -148,29 +170,35 @@ export function FeatureBento({ features, loading }: { features: PublicMarketingF
   const marketing = ensureThreeFeatures(loading ? [] : features);
   return (
     <Section className="py-20 sm:py-24" id="recursos">
-      <SectionHeader eyebrow="Funcionalidades" subtitle="Cards com pesos diferentes para destacar o que realmente organiza a operacao." title="Recursos para operar com controle." />
-      <div className="mt-12 grid auto-rows-fr gap-4 lg:grid-cols-12">
+      <Reveal>
+        <SectionHeader eyebrow="Funcionalidades" subtitle="Cards com pesos diferentes para destacar o que realmente organiza a operacao." title="Recursos para operar com controle." />
+      </Reveal>
+      <StaggerGroup className="mt-12 grid auto-rows-fr gap-4 lg:grid-cols-12">
         {bentoFeatures.map((feature) => (
-          <GlowCard className={`min-h-56 p-6 ${feature.className}`} key={feature.title}>
-            <feature.icon className="h-7 w-7 text-[#FFD400]" />
-            <h3 className="mt-6 text-2xl font-black text-white">{feature.title}</h3>
-            <p className="mt-3 max-w-xl text-sm leading-7 text-[#A3A3A3]">{feature.description}</p>
-          </GlowCard>
+          <StaggerItem className={feature.className} key={feature.title}>
+            <GlowCard className="min-h-56 p-6">
+              <feature.icon className="h-7 w-7 text-[#FFD400]" />
+              <h3 className="mt-6 text-2xl font-black text-white">{feature.title}</h3>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-[#A3A3A3]">{feature.description}</p>
+            </GlowCard>
+          </StaggerItem>
         ))}
-      </div>
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      </StaggerGroup>
+      <StaggerGroup className="mt-5 grid gap-4 md:grid-cols-3">
         {marketing.map((feature) => {
           const Icon = iconForFeature(feature.icon);
           return (
-            <GlowCard className="p-5" key={feature.id}>
-              <Icon className="h-6 w-6 text-[#FFD400]" />
-              <p className="mt-4 text-xs font-black uppercase text-[#FFD400]">{feature.category}</p>
-              <h3 className="mt-2 text-lg font-black text-white">{feature.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-[#A3A3A3]">{feature.shortDescription}</p>
-            </GlowCard>
+            <StaggerItem key={feature.id}>
+              <GlowCard className="p-5">
+                <Icon className="h-6 w-6 text-[#FFD400]" />
+                <p className="mt-4 text-xs font-black uppercase text-[#FFD400]">{feature.category}</p>
+                <h3 className="mt-2 text-lg font-black text-white">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#A3A3A3]">{feature.shortDescription}</p>
+              </GlowCard>
+            </StaggerItem>
           );
         })}
-      </div>
+      </StaggerGroup>
     </Section>
   );
 }
@@ -178,19 +206,21 @@ export function FeatureBento({ features, loading }: { features: PublicMarketingF
 export function HowItWorks() {
   return (
     <Section className="py-20 sm:py-24" id="como-funciona">
-      <SectionHeader eyebrow="Como funciona" subtitle="Um fluxo curto para sair da configuracao inicial e chegar ao controle do ambiente." title="Tres etapas para colocar tudo em operacao." />
-      <div className="mt-14 grid gap-6 lg:grid-cols-3 lg:gap-0">
+      <Reveal>
+        <SectionHeader eyebrow="Como funciona" subtitle="Um fluxo curto para sair da configuracao inicial e chegar ao controle do ambiente." title="Tres etapas para colocar tudo em operacao." />
+      </Reveal>
+      <StaggerGroup className="mt-14 grid gap-6 lg:grid-cols-3 lg:gap-0">
         {workflowSteps.map((step, index) => (
-          <div className="relative min-w-0 lg:px-4" key={step.title}>
+          <StaggerItem className="relative min-w-0 lg:px-4" key={step.title}>
             {index < workflowSteps.length - 1 ? <div className="absolute left-[calc(50%+3rem)] right-[-3rem] top-8 hidden h-px bg-gradient-to-r from-[#FFD400]/60 to-white/10 lg:block" /> : null}
             <GlowCard className="relative p-6">
               <span className="text-5xl font-black text-[#FFD400]">0{index + 1}</span>
               <h3 className="mt-8 text-2xl font-black text-white">{step.title}</h3>
               <p className="mt-3 text-sm leading-7 text-[#A3A3A3]">{step.description}</p>
             </GlowCard>
-          </div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGroup>
     </Section>
   );
 }
@@ -199,15 +229,19 @@ export function Benefits() {
   return (
     <Section className="py-20 sm:py-24" id="solucoes">
       <div className="grid gap-10 lg:grid-cols-[.9fr_1.1fr] lg:items-center">
-        <SectionHeader align="left" eyebrow="Beneficios" subtitle="Menos telas soltas, menos configuracao manual e mais rastreabilidade para cada acao." title="Controle total para operacoes em crescimento." />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <Reveal>
+          <SectionHeader align="left" eyebrow="Beneficios" subtitle="Menos telas soltas, menos configuracao manual e mais rastreabilidade para cada acao." title="Controle total para operacoes em crescimento." />
+        </Reveal>
+        <StaggerGroup className="grid gap-3 sm:grid-cols-2">
           {benefitItems.map((item) => (
-            <GlowCard className="flex items-start gap-3 p-4" key={item}>
-              <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD400]" />
-              <p className="text-sm leading-6 text-[#D4D4D4]">{item}</p>
-            </GlowCard>
+            <StaggerItem key={item}>
+              <GlowCard className="flex h-full items-start gap-3 p-4">
+                <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD400]" />
+                <p className="text-sm leading-6 text-[#D4D4D4]">{item}</p>
+              </GlowCard>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerGroup>
       </div>
     </Section>
   );
@@ -217,20 +251,24 @@ export function ProductDemo() {
   return (
     <Section className="py-20 sm:py-24" id="demonstracao">
       <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:items-center">
-        <SectionHeader align="left" eyebrow="Controle total" subtitle="Monitoramento de servicos, atividade, usuarios e operacoes em uma interface desenhada para leitura rapida." title="Veja tudo acontecendo em tempo real." />
-        <GlowCard className="p-5">
-          <div className="grid gap-3">
-            {["Servico conectado", "Nova atividade registrada", "Usuario autenticado", "Sincronizacao concluida"].map((item) => (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-white/[.07] bg-black/25 p-4" key={item}>
-                <span className="flex min-w-0 items-center gap-3 text-sm font-bold text-white">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#FFD400]" />
-                  <span className="truncate">{item}</span>
-                </span>
-                <span className="text-xs font-semibold text-[#777777]">agora</span>
-              </div>
-            ))}
-          </div>
-        </GlowCard>
+        <Reveal>
+          <SectionHeader align="left" eyebrow="Controle total" subtitle="Monitoramento de servicos, atividade, usuarios e operacoes em uma interface desenhada para leitura rapida." title="Veja tudo acontecendo em tempo real." />
+        </Reveal>
+        <Reveal delay={0.1}>
+          <GlowCard className="p-5">
+            <StaggerGroup className="grid gap-3">
+              {["Servico conectado", "Nova atividade registrada", "Usuario autenticado", "Sincronizacao concluida"].map((item) => (
+                <StaggerItem className="flex items-center justify-between gap-3 rounded-md border border-white/[.07] bg-black/25 p-4" key={item}>
+                  <span className="flex min-w-0 items-center gap-3 text-sm font-bold text-white">
+                    <motion.span animate={{ opacity: [1, .35, 1] }} className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#FFD400]" transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }} />
+                    <span className="truncate">{item}</span>
+                  </span>
+                  <span className="text-xs font-semibold text-[#777777]">agora</span>
+                </StaggerItem>
+              ))}
+            </StaggerGroup>
+          </GlowCard>
+        </Reveal>
       </div>
     </Section>
   );
@@ -239,16 +277,26 @@ export function ProductDemo() {
 export function Integrations() {
   return (
     <Section className="py-20 sm:py-24" id="integracoes">
-      <SectionHeader eyebrow="Integracoes" subtitle="Somente tecnologias e areas existentes no projeto: API, bot Discord, pagamentos, status, logs e banco de dados." title="Conecte suas ferramentas." />
-      <div className="mx-auto mt-12 grid max-w-5xl gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
+      <Reveal>
+        <SectionHeader eyebrow="Integracoes" subtitle="Somente tecnologias e areas existentes no projeto: API, bot Discord, pagamentos, status, logs e banco de dados." title="Conecte suas ferramentas." />
+      </Reveal>
+      <StaggerGroup className="mx-auto mt-12 grid max-w-5xl gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
         <div className="grid gap-4 sm:grid-cols-2">
-          {integrationNodes.slice(0, 3).map((node) => <IntegrationNode key={node.label} {...node} />)}
+          {integrationNodes.slice(0, 3).map((node) => <StaggerItem key={node.label}><IntegrationNode {...node} /></StaggerItem>)}
         </div>
-        <div className="flex h-28 w-full items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#FFD400] px-8 text-center text-xl font-black text-black md:h-40 md:w-44">NEXTECH</div>
+        <StaggerItem>
+          <motion.div
+            animate={{ boxShadow: ["0 0 0 rgba(255,212,0,.35)", "0 0 32px rgba(255,212,0,.35)", "0 0 0 rgba(255,212,0,.35)"] }}
+            className="flex h-28 w-full items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#FFD400] px-8 text-center text-xl font-black text-black md:h-40 md:w-44"
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          >
+            NEXTECH
+          </motion.div>
+        </StaggerItem>
         <div className="grid gap-4 sm:grid-cols-2">
-          {integrationNodes.slice(3).map((node) => <IntegrationNode key={node.label} {...node} />)}
+          {integrationNodes.slice(3).map((node) => <StaggerItem key={node.label}><IntegrationNode {...node} /></StaggerItem>)}
         </div>
-      </div>
+      </StaggerGroup>
     </Section>
   );
 }
@@ -257,22 +305,26 @@ export function Security() {
   return (
     <Section className="py-20 sm:py-24" id="seguranca">
       <div className="grid gap-10 lg:grid-cols-[1fr_.9fr] lg:items-center">
-        <SectionHeader align="left" eyebrow="Seguranca" subtitle="Permissoes, logs e isolamento por servidor continuam no backend e no banco, sem depender apenas da interface." title="Sua operacao. Sob controle." />
-        <GlowCard className="p-6">
-          <div className="mx-auto flex aspect-square max-w-64 flex-col items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#0D0D0D] text-center">
-            <ShieldCheck className="h-16 w-16 text-[#FFD400]" />
-            <p className="mt-5 text-xs font-black uppercase text-[#777777]">Escudo</p>
-            <p className="text-2xl font-black text-white">Protegido</p>
-          </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {securityItems.map((item) => (
-              <p className="flex items-center gap-3 text-sm font-semibold text-[#D4D4D4]" key={item}>
-                <Check className="h-4 w-4 text-[#FFD400]" />
-                {item}
-              </p>
-            ))}
-          </div>
-        </GlowCard>
+        <Reveal>
+          <SectionHeader align="left" eyebrow="Seguranca" subtitle="Permissoes, logs e isolamento por servidor continuam no backend e no banco, sem depender apenas da interface." title="Sua operacao. Sob controle." />
+        </Reveal>
+        <Reveal delay={0.1}>
+          <GlowCard className="p-6">
+            <div className="mx-auto flex aspect-square max-w-64 flex-col items-center justify-center rounded-lg border border-[#FFD400]/25 bg-[#0D0D0D] text-center">
+              <ShieldCheck className="h-16 w-16 text-[#FFD400]" />
+              <p className="mt-5 text-xs font-black uppercase text-[#777777]">Escudo</p>
+              <p className="text-2xl font-black text-white">Protegido</p>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {securityItems.map((item) => (
+                <p className="flex items-center gap-3 text-sm font-semibold text-[#D4D4D4]" key={item}>
+                  <Check className="h-4 w-4 text-[#FFD400]" />
+                  {item}
+                </p>
+              ))}
+            </div>
+          </GlowCard>
+        </Reveal>
       </div>
     </Section>
   );
@@ -282,15 +334,19 @@ export function Pricing({ plans }: { onNavigate: (id: string) => void; plans: Pl
   const visiblePlans = plans.filter((plan) => plan.isPublic && plan.isActive).slice(0, 3);
   return (
     <Section className="py-20 sm:py-24" id="planos">
-      <SectionHeader eyebrow="Planos" subtitle="Os valores abaixo vêm dos planos públicos cadastrados no sistema." title="Escolha o plano correto para sua operacao." />
+      <Reveal>
+        <SectionHeader eyebrow="Planos" subtitle="Os valores abaixo vêm dos planos públicos cadastrados no sistema." title="Escolha o plano correto para sua operacao." />
+      </Reveal>
       {visiblePlans.length ? (
-        <div className="mt-12 grid gap-5 lg:grid-cols-3">
-          {visiblePlans.map((plan) => <PlanCard key={plan.id} plan={plan} />)}
-        </div>
+        <StaggerGroup className="mt-12 grid gap-5 lg:grid-cols-3">
+          {visiblePlans.map((plan) => <StaggerItem key={plan.id}><PlanCard plan={plan} /></StaggerItem>)}
+        </StaggerGroup>
       ) : (
-        <GlowCard className="mx-auto mt-12 max-w-2xl p-6 text-center">
-          <p className="text-sm leading-7 text-[#A3A3A3]">Nenhum plano publico ativo foi encontrado agora. A pagina de planos continua disponivel para consulta.</p>
-        </GlowCard>
+        <Reveal>
+          <GlowCard className="mx-auto mt-12 max-w-2xl p-6 text-center">
+            <p className="text-sm leading-7 text-[#A3A3A3]">Nenhum plano publico ativo foi encontrado agora. A pagina de planos continua disponivel para consulta.</p>
+          </GlowCard>
+        </Reveal>
       )}
       <div className="mt-8 text-center">
         <HomeButton href="/planos">Ver todos os planos <ArrowRight className="h-4 w-4" /></HomeButton>
@@ -302,10 +358,12 @@ export function Pricing({ plans }: { onNavigate: (id: string) => void; plans: Pl
 export function Faq() {
   return (
     <Section className="py-20 sm:py-24" id="faq">
-      <SectionHeader eyebrow="FAQ" subtitle="Respostas curtas sobre acesso, suporte e funcionamento geral." title="Perguntas frequentes." />
-      <div className="mx-auto mt-10 max-w-3xl rounded-lg border border-white/[.07] bg-[#101010] px-5 sm:px-7">
+      <Reveal>
+        <SectionHeader eyebrow="FAQ" subtitle="Respostas curtas sobre acesso, suporte e funcionamento geral." title="Perguntas frequentes." />
+      </Reveal>
+      <Reveal className="mx-auto mt-10 max-w-3xl rounded-lg border border-white/[.07] bg-[#101010] px-5 sm:px-7" delay={0.1}>
         {faqItems.map((item) => <FaqItem key={item.question} {...item} />)}
-      </div>
+      </Reveal>
     </Section>
   );
 }
@@ -313,13 +371,15 @@ export function Faq() {
 export function FinalCta({ onStart, startLabel, verifying }: Pick<ActionProps, "onStart" | "startLabel" | "verifying">) {
   return (
     <Section className="py-20 sm:py-24">
-      <div className="rounded-lg border border-[#FFD400]/20 bg-[radial-gradient(circle_at_50%_0%,rgba(255,212,0,.20),transparent_42%),#0A0A0A] px-6 py-14 text-center sm:px-10">
-        <p className="text-xs font-black uppercase text-[#FFD400]">Pronto para comecar?</p>
-        <h2 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-black leading-tight text-white sm:text-5xl">Centralize sua operacao com a NexTech.</h2>
-        <div className="mt-8">
-          <HomeButton onClick={onStart}>{verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}{startLabel}</HomeButton>
+      <Reveal>
+        <div className="rounded-lg border border-[#FFD400]/20 bg-[radial-gradient(circle_at_50%_0%,rgba(255,212,0,.20),transparent_42%),#0A0A0A] px-6 py-14 text-center sm:px-10">
+          <p className="text-xs font-black uppercase text-[#FFD400]">Pronto para comecar?</p>
+          <h2 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-black leading-tight text-white sm:text-5xl">Centralize sua operacao com a NexTech.</h2>
+          <div className="mt-8">
+            <HomeButton onClick={onStart}>{verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}{startLabel}</HomeButton>
+          </div>
         </div>
-      </div>
+      </Reveal>
     </Section>
   );
 }
@@ -354,9 +414,9 @@ export function ConnectedServers({ state }: { state: ServerState }) {
   }
   return (
     <Section className="border-y border-white/[.07] bg-[#080808] py-10">
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
-        {data.servers.slice(0, 8).map((server) => <ServerCard key={server.guildId} server={server} />)}
-      </div>
+      <StaggerGroup className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+        {data.servers.slice(0, 8).map((server) => <StaggerItem key={server.guildId}><ServerCard server={server} /></StaggerItem>)}
+      </StaggerGroup>
     </Section>
   );
 }

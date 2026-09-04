@@ -195,6 +195,7 @@ export async function getPublicConnectedServers(): Promise<PublicConnectedServer
     }
 
     const servers = [...uniqueServers.values()]
+      .filter(isShowcaseWorthyPublicServer)
       .sort((left, right) => Number(right.online) - Number(left.online) || right.connectedBots - left.connectedBots || right.lastSeenAt - left.lastSeenAt)
       .slice(0, MAX_PUBLIC_SERVERS)
       .map(({ botIds: _botIds, lastSeenAt: _lastSeenAt, ...server }) => server);
@@ -301,6 +302,22 @@ function addPublicServer(
   current.memberCount = Math.max(current.memberCount, clampNumber(input.memberCount, 0, 1_000_000));
   current.online = current.online || online || Date.now() - input.seenAt < RECENT_GUILD_WINDOW_MS;
   current.lastSeenAt = Math.max(current.lastSeenAt, input.seenAt);
+}
+
+// Sem filtro, a vitrine pública mostrava qualquer guild que um bot já tocou —
+// inclusive servidor de teste com 0 membros e sem ícone, ou com o avatar
+// padrão do Discord. Nada disso passa credibilidade numa landing page pública.
+// memberCount pode ficar 0 em guilds secundárias por limitação do modelo de
+// dados (só a guild principal do bot tem contagem real), por isso o critério
+// combina os dois sinais em OU: falta qualquer um já derruba do showcase.
+const MIN_PUBLIC_SERVER_MEMBERS = 5;
+
+function isShowcaseWorthyPublicServer(server: Pick<PublicConnectedServer, "iconUrl" | "memberCount">) {
+  if (!server.iconUrl || /\/embed\/avatars\//.test(server.iconUrl)) {
+    return false;
+  }
+
+  return server.memberCount >= MIN_PUBLIC_SERVER_MEMBERS;
 }
 
 function countModuleUsage(bots: Array<Pick<MongoDevBot, "enabledModules">>) {
