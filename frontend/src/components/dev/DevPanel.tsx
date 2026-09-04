@@ -223,7 +223,7 @@ const fallbackModules: DevModuleDefinition[] = [
   { id: "police-daf-roster", label: "Polícia - Escala Aerea" },
   { id: "police-courses", label: "Polícia - Cursos Políciais" },
   { id: "police-patrol-reports", label: "Polícia - Relatórios de Patrulhamento" },
-  { id: "police_reports", label: "Polícia - Relatórios Policiais" },
+  { id: "police_reports", label: "Polícia - Recrutamento Policial" },
   { id: "police-qru", label: "Polícia - Registro de QRU" },
   { id: "police-promotions", label: "Polícia - Promoções de Patente" },
   { id: "police-rank-up", label: "Polícia - Solicitação de UP" },

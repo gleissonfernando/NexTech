@@ -629,14 +629,14 @@ const moduleCatalog: ModuleDefinition[] = [
   },
   {
     id: "police-patrol-reports",
-    title: "Relatórios Políciais",
+    title: "Relatórios de Patrulhamento",
     description: "Relatórios de patrulhamento exclusivos para oficiais.",
     icon: ScrollText,
     view: "police-patrol-reports"
   },
   {
     id: "police_reports",
-    title: "Relatórios Policiais",
+    title: "Recrutamento Policial",
     description: "Recrutamento policial com perguntas configuráveis, fórum por responsável e histórico auditável.",
     icon: ShieldCheck,
     view: "police-reports"

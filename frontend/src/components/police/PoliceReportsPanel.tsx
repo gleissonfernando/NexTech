@@ -248,8 +248,8 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-blue-300" />Relatórios Policiais</CardTitle>
-              <CardDescription>Configuração do módulo, publicação do painel, perguntas e histórico.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-blue-300" />Recrutamento Policial</CardTitle>
+              <CardDescription>Configuração do módulo, publicação do painel, perguntas, responsáveis e histórico dos relatórios de recrutamento.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={currentDashboard.settings.enabled ? "success" : "muted"}>{currentDashboard.settings.enabled ? "Liberado" : "Bloqueado"}</Badge>
