@@ -171,10 +171,12 @@ async function selectRecruited(interaction: UserSelectMenuInteraction, context: 
 async function showAnswerModal(interaction: ButtonInteraction, context: BotContext, sessionId: string) {
   const [session, questions] = await Promise.all([context.api.getPoliceRecruitmentSession(sessionId), context.api.listPoliceRecruitmentQuestions(interaction.guildId!)]);
   const question = questions[session.currentQuestion];
-  if (!question || !["TEXT", "LONG_TEXT", "NUMBER"].includes(question.type)) return interaction.reply({ content: "Esta pergunta usa menu de seleção.", ephemeral: true });
+  // DATE e TIME também usam modal: o Discord não tem seletor nativo de data ou
+  // hora, então o recrutador digita e o backend valida o formato.
+  if (!question || !["TEXT", "LONG_TEXT", "NUMBER", "DATE", "TIME"].includes(question.type)) return interaction.reply({ content: "Esta pergunta usa menu de seleção.", ephemeral: true });
   const previous = answerValue(session, question.id);
   await interaction.showModal(new ModalBuilder().setCustomId(`${PREFIX}:answer:${sessionId}`).setTitle(question.title.slice(0, 45)).addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("value").setLabel(question.title.slice(0, 45)).setPlaceholder(question.description ?? "").setRequired(question.required).setStyle(question.type === "LONG_TEXT" ? TextInputStyle.Paragraph : TextInputStyle.Short).setMaxLength(question.type === "LONG_TEXT" ? 1800 : 200).setValue(typeof previous === "string" || typeof previous === "number" ? String(previous).slice(0, question.type === "LONG_TEXT" ? 1800 : 200) : ""))
+    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("value").setLabel(question.title.slice(0, 45)).setPlaceholder(modalPlaceholder(question)).setRequired(question.required).setStyle(question.type === "LONG_TEXT" ? TextInputStyle.Paragraph : TextInputStyle.Short).setMaxLength(question.type === "LONG_TEXT" ? 1800 : 200).setValue(typeof previous === "string" || typeof previous === "number" ? String(previous).slice(0, question.type === "LONG_TEXT" ? 1800 : 200) : ""))
   ));
 }
 
@@ -195,7 +197,11 @@ async function submitSelect(interaction: StringSelectMenuInteraction, context: B
   const questions = await context.api.listPoliceRecruitmentQuestions(interaction.guildId!);
   const question = questions[session.currentQuestion];
   if (!question) return;
-  const value = question.type === "BOOLEAN" ? interaction.values[0] === "Sim" : interaction.values[0] ?? null;
+  const value = question.type === "BOOLEAN"
+    ? interaction.values[0] === "Sim"
+    : question.type === "MULTI_SELECT"
+      ? interaction.values
+      : interaction.values[0] ?? null;
   const updated = await context.api.savePoliceRecruitmentAnswer(sessionId, { actorId: interaction.user.id, questionId: question.id, value, move: "next" });
   await updateControl(interaction.channel, updated, context, interaction.guild!);
 }
@@ -323,7 +329,7 @@ async function questionPayload(context: BotContext, guild: Guild, session: Polic
   const question = questions[session.currentQuestion];
   if (!question) return reviewPayload(session, guild);
   const components: unknown[] = [{ type: 10, content: questionText(session, question, questions.length, guild) }];
-  if (question.type === "SELECT" || question.type === "BOOLEAN") components.push(selectRow(session.id, question));
+  if (question.type === "SELECT" || question.type === "BOOLEAN" || question.type === "MULTI_SELECT") components.push(selectRow(session.id, question));
   else if (question.type === "USER_SELECT") components.push(new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(new UserSelectMenuBuilder().setCustomId(`${PREFIX}:user_answer:${session.id}`).setPlaceholder("Selecione um usuário").setMinValues(1).setMaxValues(1)));
   else if (question.type === "ROLE_SELECT") components.push(new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(new RoleSelectMenuBuilder().setCustomId(`${PREFIX}:role_answer:${session.id}`).setPlaceholder("Selecione um cargo").setMinValues(1).setMaxValues(1)));
   else components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`${PREFIX}:answer:${session.id}`).setLabel("Responder").setEmoji(systemComponentEmoji("prancheta_caneta", guild)).setStyle(ButtonStyle.Primary)));
@@ -403,7 +409,26 @@ async function sendLog(guild: Guild | null, settings: PoliceRecruitmentSettings 
 
 function selectRow(sessionId: string, question: PoliceRecruitmentQuestion) {
   const options = (question.type === "BOOLEAN" ? ["Sim", "Não"] : question.options).slice(0, 25).map((item) => ({ label: item.slice(0, 100), value: item.slice(0, 100) }));
-  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(`${PREFIX}:select:${sessionId}`).setPlaceholder("Selecione uma resposta").addOptions(options));
+  const multiple = question.type === "MULTI_SELECT";
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${PREFIX}:select:${sessionId}`)
+    .setPlaceholder(multiple ? "Marque todas as opções que se aplicam" : "Selecione uma resposta")
+    .addOptions(options);
+
+  if (multiple) {
+    // O Discord não tem checkbox: a lista de etapas vira um select de múltipla
+    // escolha, com o mínimo respeitando se a pergunta é obrigatória.
+    menu.setMinValues(question.required ? 1 : 0).setMaxValues(Math.max(1, options.length));
+  }
+
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
+}
+
+function modalPlaceholder(question: PoliceRecruitmentQuestion) {
+  if (question.description?.trim()) return question.description.trim().slice(0, 100);
+  if (question.type === "DATE") return "dd/mm/aaaa";
+  if (question.type === "TIME") return "HH:MM";
+  return "";
 }
 
 function navRow(sessionId: string, index: number, total: number) {

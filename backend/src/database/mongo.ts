@@ -3187,7 +3187,22 @@ export type MongoPolicePatrolAudit = {
 };
 export type MongoPolicePatrolFile = { _id: string; reportId: string; botId: string; guildId: string; discordAttachmentId: string; name: string; mimeType: string; size: number; buffer: Buffer; createdAt: Date };
 
-export type MongoPoliceRecruitmentQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "BOOLEAN";
+/**
+ * `DATE`, `TIME` e `MULTI_SELECT` existem para o relatório F.T.O., que pede data,
+ * horários de início/término e uma lista de etapas com várias marcações. Os tipos
+ * antigos continuam válidos: nenhuma pergunta já cadastrada muda.
+ */
+export type MongoPoliceRecruitmentQuestionType =
+  | "TEXT"
+  | "LONG_TEXT"
+  | "NUMBER"
+  | "DATE"
+  | "TIME"
+  | "USER_SELECT"
+  | "ROLE_SELECT"
+  | "SELECT"
+  | "MULTI_SELECT"
+  | "BOOLEAN";
 export type MongoPoliceRecruitmentResult = "APPROVED" | "REJECTED" | "PENDING";
 export type MongoPoliceRecruitmentSessionStatus = "IN_PROGRESS" | "PROCESSING" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "SUSPENDED";
 

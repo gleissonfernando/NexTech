@@ -4643,7 +4643,7 @@ export type FivemActionDashboard = { settings: FivemActionSettings; actions: Fiv
 export type PolicePatrolSettings = { id: string; botId: string; guildId: string; enabled: boolean; creatorRoleIds: string[]; viewerRoleIds: string[]; deleteRoleIds: string[]; supervisorRoleIds: string[]; logChannelId: string | null; temporaryCategoryId: string | null; deleteDelayMinutes: number; defaultExportFormat: "html" | "pdf" | "json"; createdAt: string; updatedAt: string };
 export type PolicePatrolReport = { id: string; officerId: string; officerName: string; authorId: string; authorName: string; patrolType: string | null; initialNotes: string | null; patrolStart: string | null; patrolEnd: string | null; durationMinutes: number | null; channelId: string | null; messageCount: number; attachmentCount: number; status: "draft" | "active" | "finished" | "cancelled"; createdAt: string; finishedAt: string | null };
 export type PolicePatrolDashboard = { settings: PolicePatrolSettings; reports: PolicePatrolReport[] };
-export type PoliceReportsQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "BOOLEAN";
+export type PoliceReportsQuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "DATE" | "TIME" | "USER_SELECT" | "ROLE_SELECT" | "SELECT" | "MULTI_SELECT" | "BOOLEAN";
 export type PoliceReportsQuestion = {
   id: string;
   botId: string;

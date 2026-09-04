@@ -68,7 +68,7 @@ const questionSchema = z.object({
   options: z.array(z.string().trim().min(1).max(200)).max(25).optional(),
   required: z.boolean().optional(),
   title: z.string().trim().min(1).max(120).optional(),
-  type: z.enum(["TEXT", "LONG_TEXT", "NUMBER", "USER_SELECT", "ROLE_SELECT", "SELECT", "BOOLEAN"]).optional()
+  type: z.enum(["TEXT", "LONG_TEXT", "NUMBER", "DATE", "TIME", "USER_SELECT", "ROLE_SELECT", "SELECT", "MULTI_SELECT", "BOOLEAN"]).optional()
 });
 const actorSchema = z.object({ actorId: snowflake });
 const userSnapshotSchema = z.object({ avatar: z.string().max(2048).nullable(), discordId: snowflake, displayName: z.string().max(100), username: z.string().max(100) });

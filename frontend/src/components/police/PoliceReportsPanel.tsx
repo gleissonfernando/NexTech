@@ -31,11 +31,17 @@ const QUESTION_TYPES: Array<{ id: PoliceReportsQuestionType; label: string }> = 
   { id: "TEXT", label: "Texto curto" },
   { id: "LONG_TEXT", label: "Texto longo" },
   { id: "NUMBER", label: "Número" },
+  { id: "DATE", label: "Data (dd/mm/aaaa)" },
+  { id: "TIME", label: "Horário (HH:MM)" },
   { id: "USER_SELECT", label: "Usuário" },
   { id: "ROLE_SELECT", label: "Cargo" },
-  { id: "SELECT", label: "Seleção" },
+  { id: "SELECT", label: "Seleção única" },
+  { id: "MULTI_SELECT", label: "Seleção múltipla" },
   { id: "BOOLEAN", label: "Sim/Não" }
 ];
+
+/** Tipos que usam a lista de opções — o campo só é habilitado para eles. */
+const OPTION_BASED_TYPES: PoliceReportsQuestionType[] = ["SELECT", "MULTI_SELECT"];
 
 const emptyQuestionDraft = (): Partial<PoliceReportsQuestion> => ({
   title: "Nova pergunta",
@@ -376,7 +382,7 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
               </label>
               <label className="grid gap-2 text-xs font-medium text-zinc-400">
                 <span>Opções</span>
-                <textarea className="min-h-24 rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/60" disabled={!canManage || !["SELECT"].includes(questionDraft.type ?? "TEXT")} placeholder="Uma opção por linha" value={(questionDraft.options ?? []).join("\n")} onChange={(event) => patchQuestion({ options: event.target.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) })} />
+                <textarea className="min-h-24 rounded-md border border-zinc-800 bg-black px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/60" disabled={!canManage || !OPTION_BASED_TYPES.includes((questionDraft.type ?? "TEXT") as PoliceReportsQuestionType)} placeholder="Uma opção por linha" value={(questionDraft.options ?? []).join("\n")} onChange={(event) => patchQuestion({ options: event.target.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) })} />
               </label>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="flex items-center gap-2 text-sm text-zinc-300">

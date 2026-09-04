@@ -6,6 +6,50 @@ export const POLICE_REPORTS_MODULE_ID = "police_reports";
 export const POLICE_RECRUITMENT_MODULE_ID = POLICE_REPORTS_MODULE_ID;
 export const POLICE_RECRUITMENT_LEGACY_MODULE_ID = "police-recruitment";
 
+/**
+ * Formulário padrão do relatório F.T.O., espelhando o formulário que a
+ * corporação usava fora do bot.
+ *
+ * Só é aplicado quando o servidor ainda não tem NENHUMA pergunta cadastrada
+ * (ver `ensureDefaultQuestions`): quem já configurou o próprio formulário não é
+ * afetado. Tudo aqui é editável pela dashboard — nenhuma pergunta é fixa no
+ * código.
+ */
+export const POLICE_RECRUITMENT_DEFAULT_QUESTIONS: Array<
+  Pick<MongoPoliceRecruitmentQuestion, "title" | "description" | "type" | "required" | "options">
+> = [
+  { title: "Data do recrutamento", description: "Use o formato dd/mm/aaaa.", type: "DATE", required: true, options: [] },
+  { title: "Horário de início", description: "Use o formato HH:MM.", type: "TIME", required: true, options: [] },
+  { title: "Horário de término", description: "Use o formato HH:MM.", type: "TIME", required: true, options: [] },
+  { title: "Recrutador responsável", description: "Exemplo: SO. Duckky Fahur", type: "TEXT", required: true, options: [] },
+  { title: "Recrutadores auxiliares", description: "Liste os recrutadores que participaram.", type: "LONG_TEXT", required: true, options: [] },
+  { title: "Quantidade total de candidatos", description: "Liste os candidatos que participaram.", type: "LONG_TEXT", required: true, options: [] },
+  { title: "Quantidade de aprovados, reprovados e desistentes", description: "Informe no formato A=9 R=7 D=1.", type: "TEXT", required: true, options: [] },
+  {
+    title: "Quais etapas foram realizadas?",
+    description: "Marque todas as etapas concluídas.",
+    type: "MULTI_SELECT",
+    required: true,
+    options: [
+      "Apresentação inicial",
+      "Formação",
+      "Revista e teste residual",
+      "Treinamento físico militar",
+      "Teste teórico e entrevista",
+      "Apresentação ao responsável e ao corpo de recrutadores",
+      "Apresentação ao Departamento de Polícia do Norte",
+      "Armá-los e Fardá-los",
+      "Juramento",
+      "Convidá-los para o intra da NPD",
+      "Apresentação do tablet policial e instruções básicas",
+      "Não houve conscritos (marcar somente no caso descrito)"
+    ]
+  },
+  { title: "O recrutamento seguiu o padrão estabelecido?", description: null, type: "SELECT", required: true, options: ["Sim", "Parcialmente", "Não"] },
+  { title: "Houve problemas durante o recrutamento?", description: "Se sim, descreva. Caso contrário, deixe em branco.", type: "LONG_TEXT", required: false, options: [] },
+  { title: "Preenchimento do relatório", description: "Cargo, data do preenchimento e por quem foi preenchido.", type: "TEXT", required: true, options: [] }
+];
+
 type SettingsInput = Partial<Pick<MongoPoliceRecruitmentSettings, "enabled" | "configured" | "corporationName" | "authorizedRoleIds" | "adminRoleIds" | "viewerRoleIds" | "deleteRoleIds" | "editorRoleIds" | "supervisorRoleIds" | "recruiterRoleIds" | "createReportRoleIds" | "editReportRoleIds" | "deleteReportRoleIds" | "viewAllReportsRoleIds" | "manageQuestionsRoleIds" | "manageConfigurationRoleIds" | "forumChannelId" | "reportsForumChannelId" | "temporaryCategoryId" | "logChannelId" | "sessionExpirationHours" | "sessionExpirationMinutes" | "deleteDelaySeconds" | "panelChannelId" | "panelMessageId" | "panelColor">>;
 type RecruiterInput = { avatar: string | null; displayName: string; discordId: string; policeId?: string | null; username: string };
 type RecruitedInput = { avatar: string | null; discordId: string; displayName: string; username: string };
@@ -409,24 +453,7 @@ async function ensureDefaultQuestions(botId: string, guildId: string) {
   const { policeRecruitmentQuestions } = await getMongoCollections();
   if (await policeRecruitmentQuestions.findOne({ botId, guildId })) return;
   const now = new Date();
-  const baseQuestions: Array<Pick<MongoPoliceRecruitmentQuestion, "title" | "description" | "type" | "required" | "options">> = [
-    { title: "Nome do personagem.", description: "Informe nome e sobrenome do personagem.", type: "TEXT", required: true, options: [] },
-    { title: "ID do personagem.", description: "ID policial/RP do recrutado.", type: "TEXT", required: true, options: [] },
-    { title: "Discord do recrutado.", description: "Confirme o Discord do recrutado.", type: "TEXT", required: true, options: [] },
-    { title: "Idade do personagem.", description: null, type: "NUMBER", required: true, options: [] },
-    { title: "Experiência anterior na polícia.", description: null, type: "LONG_TEXT", required: false, options: [] },
-    { title: "Nota da prova teórica.", description: "Use 0 a 10.", type: "NUMBER", required: true, options: [] },
-    { title: "Nota da prova prática.", description: "Use 0 a 10.", type: "NUMBER", required: true, options: [] },
-    { title: "Comportamento durante o recrutamento.", description: null, type: "LONG_TEXT", required: true, options: [] },
-    { title: "Conhecimento dos códigos da corporação.", description: null, type: "LONG_TEXT", required: true, options: [] },
-    { title: "Conhecimento sobre procedimentos policiais.", description: null, type: "LONG_TEXT", required: true, options: [] },
-    { title: "Comunicação.", description: null, type: "TEXT", required: true, options: [] },
-    { title: "Disciplina.", description: null, type: "TEXT", required: true, options: [] },
-    { title: "Trabalho em equipe.", description: null, type: "TEXT", required: true, options: [] },
-    { title: "Houve alguma advertência durante o recrutamento?", description: null, type: "BOOLEAN", required: true, options: ["Sim", "Não"] },
-    { title: "Observações gerais.", description: null, type: "LONG_TEXT", required: false, options: [] },
-    { title: "Resultado final.", description: null, type: "SELECT", required: true, options: ["Aprovado", "Reprovado", "Pendente"] }
-  ];
+  const baseQuestions = POLICE_RECRUITMENT_DEFAULT_QUESTIONS;
   const defaults: MongoPoliceRecruitmentQuestion[] = baseQuestions.map((question, index) => ({ _id: randomUUID(), botId, guildId, ...question, order: index + 1, enabled: true, createdAt: now, updatedAt: now, updatedBy: null }));
   await policeRecruitmentQuestions.insertMany(defaults);
 }
@@ -468,15 +495,63 @@ async function audit(botId: string, guildId: string, sessionId: string | null, r
   await policeRecruitmentAudits.insertOne({ _id: randomUUID(), action, actorId, botId, createdAt: new Date(), guildId, metadata, reportId, sessionId });
 }
 
-function normalizeAnswer(type: string, value: unknown) {
+export function normalizeAnswer(type: string, value: unknown) {
   if (type === "NUMBER") {
     const parsed = Number(String(value).replace(",", "."));
     if (!Number.isFinite(parsed)) throw serviceError("Informe um número válido.", 400);
     return parsed;
   }
   if (type === "BOOLEAN") return value === true || String(value).toLowerCase() === "sim" || String(value).toLowerCase() === "true";
+  if (type === "DATE") return normalizeDateAnswer(value);
+  if (type === "TIME") return normalizeTimeAnswer(value);
   if (Array.isArray(value)) return value.map(String);
   return value === null || value === undefined ? null : String(value).trim().slice(0, 1800);
+}
+
+/**
+ * Aceita o que o recrutador digita no Discord (não há seletor de data nativo):
+ * dd/mm/aaaa, dd-mm-aaaa ou aaaa-mm-dd. Guarda sempre em dd/mm/aaaa.
+ */
+export function normalizeDateAnswer(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const brMatch = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(text);
+
+  const [day, month, year] = isoMatch
+    ? [Number(isoMatch[3]), Number(isoMatch[2]), Number(isoMatch[1])]
+    : brMatch
+      ? [Number(brMatch[1]), Number(brMatch[2]), Number(brMatch[3]!.length === 2 ? `20${brMatch[3]}` : brMatch[3])]
+      : [Number.NaN, Number.NaN, Number.NaN];
+
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
+    throw serviceError("Informe a data no formato dd/mm/aaaa.", 400);
+  }
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month, year)) {
+    throw serviceError("Data inexistente. Confira dia e mês.", 400);
+  }
+
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+}
+
+/** Aceita HH:MM ou HH:MM:SS (com `:` ou `h`) e guarda em HH:MM. */
+export function normalizeTimeAnswer(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  const match = /^(\d{1,2})\s*[:h]\s*(\d{2})(?:\s*[:m]\s*\d{2})?$/i.exec(text);
+  if (!match) throw serviceError("Informe o horário no formato HH:MM.", 400);
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) throw serviceError("Horário inválido. Use de 00:00 até 23:59.", 400);
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function daysInMonth(month: number, year: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 function numericAnswer(answers: MongoPoliceRecruitmentAnswer[], pattern: RegExp) {
