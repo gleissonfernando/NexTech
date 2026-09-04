@@ -322,7 +322,14 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
             )}
           </div>
           <FivemResourceSelect compact disabled={!canManage} label="Canal de logs" options={channelOptions} prefix="#" value={currentDashboard.settings.logChannelId ?? null} onChange={(logChannelId) => patchSettings({ logChannelId })} />
-          <FivemResourceSelect compact disabled={!canManage} label="Categoria temporária" options={categories} value={currentDashboard.settings.temporaryCategoryId ?? null} onChange={(temporaryCategoryId) => patchSettings({ temporaryCategoryId })} />
+          <div className="grid gap-1">
+            <FivemResourceSelect compact disabled={!canManage} label="Categoria temporária" options={categories} value={currentDashboard.settings.temporaryCategoryId ?? null} onChange={(temporaryCategoryId) => patchSettings({ temporaryCategoryId })} />
+            <span className="text-xs text-zinc-500">
+              {categories.length
+                ? "Categoria onde os canais de recrutamento serão criados."
+                : "Nenhuma categoria encontrada no servidor. Crie uma categoria no Discord e recarregue esta página."}
+            </span>
+          </div>
           <label className="grid gap-2 text-xs font-medium text-zinc-400">
             <span>Tempo máximo da sessão (minutos)</span>
             <input className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-emerald-500/60" disabled={!canManage} min={1} type="number" value={currentDashboard.settings.sessionExpirationMinutes} onChange={(event) => patchSettings({ sessionExpirationMinutes: Math.max(1, Number(event.target.value || 0)) })} />
@@ -333,10 +340,19 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
               <Switch checked={currentDashboard.settings.enabled} disabled={!canManage} onCheckedChange={(enabled) => patchSettings({ enabled })} />
             </label>
           </div>
-          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos de recrutador" options={roleOptions} prefix="@" values={currentDashboard.settings.recruiterRoleIds} onChange={(recruiterRoleIds) => patchSettings({ recruiterRoleIds })} />
-          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que configuram" options={roleOptions} prefix="@" values={currentDashboard.settings.manageConfigurationRoleIds} onChange={(manageConfigurationRoleIds) => patchSettings({ manageConfigurationRoleIds })} />
+          <div className="lg:col-span-2 mt-2 border-t border-zinc-800 pt-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">Permissões por cargo</p>
+            <p className="mt-1 text-xs text-zinc-500">Cada permissão é independente: um cargo pode registrar sem poder excluir.</p>
+          </div>
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos de recrutador (podem registrar)" options={roleOptions} prefix="@" values={currentDashboard.settings.recruiterRoleIds} onChange={(recruiterRoleIds) => patchSettings({ recruiterRoleIds })} />
+          {/* Campo que faltava: sem ele a validação acusava "Cargo supervisor"
+              pendente e não havia onde preencher pela dashboard. */}
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos supervisores (veem os canais temporários)" options={roleOptions} prefix="@" values={currentDashboard.settings.supervisorRoleIds} onChange={(supervisorRoleIds) => patchSettings({ supervisorRoleIds })} />
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que editam relatórios" options={roleOptions} prefix="@" values={currentDashboard.settings.editReportRoleIds} onChange={(editReportRoleIds) => patchSettings({ editReportRoleIds })} />
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que excluem relatórios" options={roleOptions} prefix="@" values={currentDashboard.settings.deleteReportRoleIds} onChange={(deleteReportRoleIds) => patchSettings({ deleteReportRoleIds })} />
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que veem todos os relatórios" options={roleOptions} prefix="@" values={currentDashboard.settings.viewAllReportsRoleIds} onChange={(viewAllReportsRoleIds) => patchSettings({ viewAllReportsRoleIds })} />
           <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que gerenciam perguntas" options={roleOptions} prefix="@" values={currentDashboard.settings.manageQuestionsRoleIds} onChange={(manageQuestionsRoleIds) => patchSettings({ manageQuestionsRoleIds })} />
-          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que veem tudo" options={roleOptions} prefix="@" values={currentDashboard.settings.viewAllReportsRoleIds} onChange={(viewAllReportsRoleIds) => patchSettings({ viewAllReportsRoleIds })} />
+          <FivemResourceMultiSelect compact disabled={!canManage} label="Cargos que administram o módulo" options={roleOptions} prefix="@" values={currentDashboard.settings.manageConfigurationRoleIds} onChange={(manageConfigurationRoleIds) => patchSettings({ manageConfigurationRoleIds })} />
         </CardContent>
       </Card>
 
