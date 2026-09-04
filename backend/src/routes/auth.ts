@@ -241,6 +241,23 @@ function saveSession(req: Request) {
   });
 }
 
+// Troca o ID do cookie de sessão no momento do login: sem isso, um cookie de
+// sessão fixado (pré-existente) no navegador da vítima antes da autenticação
+// continuaria válido depois do login, permitindo sequestro de sessão por
+// fixação. Deve ser chamado antes de popular req.session.user.
+function regenerateSession(req: Request) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 function destroySession(req: Request) {
   return new Promise<void>((resolve, reject) => {
     req.session.destroy((error) => {
@@ -589,6 +606,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
         userAgent: req.get("user-agent") ?? null
       }));
 
+      await regenerateSession(req);
       req.session.user = {
         ...customerUser,
         sessionId,
@@ -712,6 +730,7 @@ authRouter.get("/discord/callback", async (req, res, next) => {
       );
     }
 
+    await regenerateSession(req);
     req.session.user = validatedUser;
     req.session.verified = true;
     req.session.oauth2VerifiedAt = new Date().toISOString();

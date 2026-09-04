@@ -23,6 +23,22 @@ export async function canAccessDevDashboard(userId: string | null | undefined) {
   return Boolean(await devPermissions.findOne({ userId }));
 }
 
+// As flags canCreateBot/canEditBot/canDeleteBot/canManageModules ficavam gravadas
+// no devPermissions mas nenhuma rota as consultava: qualquer usuário com acesso
+// DEV (canAccessDevDashboard) conseguia criar/editar/excluir bot e gerenciar
+// módulos independente do que estava configurado para ele. Use este helper nas
+// rotas correspondentes em routes/dev.ts para aplicar a flag de fato.
+export async function hasDevPermissionFlag(
+  userId: string | null | undefined,
+  flag: "canCreateBot" | "canEditBot" | "canDeleteBot" | "canManageModules"
+) {
+  if (!userId) return false;
+  if (isDashboardDevUserId(userId)) return true;
+
+  const permission = await getDevPermission(userId);
+  return Boolean(permission?.[flag]);
+}
+
 export async function canManageDevPermissions(userId: string | null | undefined) {
   if (!userId) return false;
   if (isDashboardDevUserId(userId)) return true;

@@ -34,7 +34,12 @@ const MODULE_ID = "safe-bot";
 const SELF_BOT_ROLE_NAME = "Self Bot";
 const FILTER_CHANNEL_NAME = "♻・filter";
 const LOG_CHANNEL_NAME = "📋・selfbot-logs";
-const SETUP_CACHE_MS = 30_000;
+// O reconcile periódico do runtime module (ready.ts) roda a cada 45s; um cache
+// de 30s nunca é reaproveitado nesse ritmo (a próxima rodada sempre encontra a
+// entrada expirada) e o reconcile completo — inclusive os PATCH de permissão
+// dos canais filter/log — repete a cada tick mesmo sem nada ter mudado. 90s dá
+// margem para pelo menos uma rodada em dois bater no cache.
+const SETUP_CACHE_MS = 90_000;
 const SELF_BOT_COLOR = 0x7f1d1d;
 const FILTER_WARNING_COLOR = 0xf59e0b;
 const FILTER_WARNING_IMAGE_NAME = "safe-bot-warning.png";
@@ -1195,7 +1200,9 @@ async function findOrCreateFilterChannel(guild: Guild, configuredChannelId?: str
   const overwrites = baseFilterOverwrites(guild);
 
   if (channel) {
-    await channel.permissionOverwrites.set(overwrites, "SafeBot: padronizar canal filter").catch(() => undefined);
+    if (!overwritesMatchChannel(channel, overwrites)) {
+      await channel.permissionOverwrites.set(overwrites, "SafeBot: padronizar canal filter").catch(() => undefined);
+    }
     return channel;
   }
 
@@ -1227,7 +1234,9 @@ async function findOrCreateLogChannel(guild: Guild, configuredChannelId?: string
   const overwrites = await logChannelOverwrites(guild);
 
   if (channel) {
-    await channel.permissionOverwrites.set(overwrites, "SafeBot: padronizar canal de logs").catch(() => undefined);
+    if (!overwritesMatchChannel(channel, overwrites)) {
+      await channel.permissionOverwrites.set(overwrites, "SafeBot: padronizar canal de logs").catch(() => undefined);
+    }
     return channel;
   }
 
@@ -1247,6 +1256,30 @@ async function findOrCreateLogChannel(guild: Guild, configuredChannelId?: string
     console.warn(`[safe-bot] não foi possível criar canal de logs em ${guild.name}:`, errorMessage(error));
     return null;
   });
+}
+
+// `permissionOverwrites.set()` sempre dispara um PATCH na API do Discord,
+// mesmo quando o resultado seria idêntico ao estado atual. Como o reconcile do
+// SafeBot roda por guild a cada tick (ver SETUP_CACHE_MS acima), pular a
+// chamada quando nada mudou evita 2 PATCH incondicionais por guild em cada
+// rodada.
+function overwritesMatchChannel(channel: TextChannel, overwrites: Array<{ allow?: bigint[]; deny?: bigint[]; id: string }>) {
+  const current = channel.permissionOverwrites.cache;
+
+  if (current.size !== overwrites.length) {
+    return false;
+  }
+
+  return overwrites.every((entry) => {
+    const existing = current.get(entry.id);
+    if (!existing) return false;
+    return existing.allow.bitfield === combineBits(entry.allow)
+      && existing.deny.bitfield === combineBits(entry.deny);
+  });
+}
+
+function combineBits(bits?: bigint[]) {
+  return (bits ?? []).reduce((acc, bit) => acc | bit, 0n);
 }
 
 async function findTextChannel(guild: Guild, name: string): Promise<TextChannel | null> {

@@ -147,8 +147,10 @@ async function readConfig(context: BotContext, guildId: string) {
   }
 }
 
+const AUDIT_ENTRY_LOOKUP_ATTEMPTS = 2;
+
 async function findAuditEntry(input: DetectionInput): Promise<GuildAuditLogsEntry | null> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < AUDIT_ENTRY_LOOKUP_ATTEMPTS; attempt += 1) {
     try {
       const logs = await input.guild.fetchAuditLogs({ type: input.auditType, limit: 6 });
       const now = Date.now();
@@ -159,7 +161,7 @@ async function findAuditEntry(input: DetectionInput): Promise<GuildAuditLogsEntr
         return entry.targetId === input.targetId;
       }) ?? null;
       if (found) return found;
-      if (attempt < 2) await wait(450 * (attempt + 1));
+      if (attempt < AUDIT_ENTRY_LOOKUP_ATTEMPTS - 1) await wait(450 * (attempt + 1));
     } catch (error) {
       console.warn(`[anti-ban:${input.guild.id}] não foi possível consultar Audit Log:`, errorText(error));
       return null;

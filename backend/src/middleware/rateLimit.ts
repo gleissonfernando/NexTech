@@ -115,9 +115,23 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   return next();
 }
 
+// Só os endpoints de liveness/readiness (sondados com frequência por infra como
+// Discloud/orquestradores) ficam de fora do rate limit. O restante de /health —
+// em especial /servers e /bots/:botId, que enumeram bots e guilds de todos os
+// tenants — precisa do limite padrão como qualquer outra rota pública.
+const UNLIMITED_HEALTH_PATHS = new Set([
+  "/health",
+  "/health/",
+  "/health/live",
+  "/health/ready",
+  "/api/health",
+  "/api/health/",
+  "/api/health/live",
+  "/api/health/ready"
+]);
+
 function shouldSkipRateLimit(req: Request) {
-  return req.path.startsWith("/health")
-    || req.path.startsWith("/api/health");
+  return UNLIMITED_HEALTH_PATHS.has(req.path);
 }
 
 export function policyForRequest(req: Request): RateLimitPolicy {

@@ -6295,6 +6295,8 @@ export type MongoDisplayPanelPublication = {
 const globalForMongo = globalThis as unknown as {
   mongoClient?: MongoClient;
   mongoIndexes?: Promise<void>;
+  mongoCollections?: unknown;
+  mongoCollectionsClient?: MongoClient;
 };
 
 function databaseNameFromUri(uri: string) {
@@ -6432,10 +6434,30 @@ export async function getBotMongoCollections(botId: string) {
   };
 }
 
+// getMongoDb() devolve um wrapper Db novo a cada chamada (client.db() é
+// barato, mas não é cacheado pelo driver), e este objeto monta ~248 handles
+// de collection() a cada invocação — com ~1000 call sites no backend, isso é
+// muita alocação repetida à toa. O client (globalForMongo.mongoClient) e o
+// nome do banco (fixo, vindo de env.MONGODB_URI) são estáveis durante a vida
+// do processo, então os 248 handles também são: eles só carregam nome da
+// collection + referência ao Db, não estado de conexão. Cacheamos o objeto
+// inteiro e só reconstruímos se o client mudar (ex.: reset em teste).
 export async function getMongoCollections() {
   const db = await getMongoDb();
   await ensureMongoIndexes(db);
 
+  const client = getMongoClient();
+  if (globalForMongo.mongoCollections && globalForMongo.mongoCollectionsClient === client) {
+    return globalForMongo.mongoCollections as ReturnType<typeof buildMongoCollections>;
+  }
+
+  const collections = buildMongoCollections(db);
+  globalForMongo.mongoCollections = collections;
+  globalForMongo.mongoCollectionsClient = client;
+  return collections;
+}
+
+function buildMongoCollections(db: Db) {
   return {
     users: db.collection<MongoUser>("User"),
     guilds: db.collection<MongoGuild>("Guild"),

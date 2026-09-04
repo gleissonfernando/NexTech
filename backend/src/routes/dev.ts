@@ -65,6 +65,7 @@ import {
 import {
   canManageDevPermissions,
   deleteDevPermission,
+  hasDevPermissionFlag,
   listDevPermissions,
   upsertDevPermission
 } from "../services/devPermissionService";
@@ -1289,8 +1290,15 @@ devRouter.post("/nextech-notices/send", async (req, res, next) => {
 
 devRouter.post("/bots/create", async (req, res, next) => {
   try {
-    const input = createBotSchema.parse(req.body);
     const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await hasDevPermissionFlag(auth.user.discordId, "canCreateBot"))) {
+      return res.status(403).json({
+        message: "Você não tem permissão para criar bots."
+      });
+    }
+
+    const input = createBotSchema.parse(req.body);
     const ownerId = input.ownerId?.trim() || auth.user.discordId;
     const ownerName = ownerId === auth.user.discordId
       ? auth.user.globalName || auth.user.username
@@ -1325,8 +1333,15 @@ devRouter.post("/bots/create", async (req, res, next) => {
 
 devRouter.post("/bots/register-primary", async (req, res, next) => {
   try {
-    const input = registerPrimaryBotSchema.parse(req.body);
     const auth = res.locals.dashboardAuth as DashboardAuth;
+
+    if (!(await hasDevPermissionFlag(auth.user.discordId, "canCreateBot"))) {
+      return res.status(403).json({
+        message: "Você não tem permissão para criar bots."
+      });
+    }
+
+    const input = registerPrimaryBotSchema.parse(req.body);
     const result = await registerPrimaryDevBot({
       ...input,
       name: input.name || null,
@@ -1689,6 +1704,12 @@ devRouter.patch("/bots/:botId", async (req, res, next) => {
       });
     }
 
+    if (!(await hasDevPermissionFlag(auth.user.discordId, "canEditBot"))) {
+      return res.status(403).json({
+        message: "Você não tem permissão para editar bots."
+      });
+    }
+
     const input = updateBotSchema.parse(req.body);
 
     const updatedBot = await updateDevBot(req.params.botId, {
@@ -1733,6 +1754,12 @@ devRouter.delete("/bots/:botId", async (req, res, next) => {
     if (!(await canManageDevBot(auth.user, req.params.botId))) {
       return res.status(403).json({
         message: "Você não tem acesso a este bot."
+      });
+    }
+
+    if (!(await hasDevPermissionFlag(auth.user.discordId, "canDeleteBot"))) {
+      return res.status(403).json({
+        message: "Você não tem permissão para excluir bots."
       });
     }
 
@@ -1880,6 +1907,12 @@ devRouter.patch("/bots/:botId/modules", async (req, res, next) => {
     if (!(await canManageDevBot(auth.user, req.params.botId))) {
       return res.status(403).json({
         message: "Você não tem acesso a este bot."
+      });
+    }
+
+    if (!(await hasDevPermissionFlag(auth.user.discordId, "canManageModules"))) {
+      return res.status(403).json({
+        message: "Você não tem permissão para gerenciar módulos."
       });
     }
 

@@ -140,14 +140,24 @@ export function registerEvents(client: Client, context: BotContext) {
             const removedRoleIds = oldResolved.roles.cache.filter((role) => !newResolved.roles.cache.has(role.id)).map((role) => role.id);
             const addedRoleIds = newResolved.roles.cache.filter((role) => !oldResolved.roles.cache.has(role.id)).map((role) => role.id);
             const rolesChanged = removedRoleIds.length > 0 || addedRoleIds.length > 0;
-            await handleAntiBanDetection(context, {
-              actionType: rolesChanged ? "member_role_update" : "member_update",
-              auditType: rolesChanged ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate,
-              guild: newResolved.guild,
-              targetId: newResolved.id,
-              affectedRoleIds: [...removedRoleIds, ...addedRoleIds],
-              recovery: removedRoleIds.length ? (config) => recoverMemberProtectedRoles(newResolved, removedRoleIds, config) : undefined
-            });
+            // GuildMemberUpdate dispara para qualquer alteração do membro (avatar,
+            // decoração de perfil, flags, boost...), mas o audit log MemberUpdate só
+            // registra apelido e timeout. Sem este filtro, toda alteração irrelevante
+            // do membro acionava o retry de até 3 fetchAuditLogs em findAuditEntry à
+            // toa — a maioria nunca tinha uma entrada correspondente para achar.
+            const nicknameChanged = oldResolved.nickname !== newResolved.nickname;
+            const timeoutChanged = oldResolved.communicationDisabledUntilTimestamp !== newResolved.communicationDisabledUntilTimestamp;
+
+            if (rolesChanged || nicknameChanged || timeoutChanged) {
+              await handleAntiBanDetection(context, {
+                actionType: rolesChanged ? "member_role_update" : "member_update",
+                auditType: rolesChanged ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate,
+                guild: newResolved.guild,
+                targetId: newResolved.id,
+                affectedRoleIds: [...removedRoleIds, ...addedRoleIds],
+                recovery: removedRoleIds.length ? (config) => recoverMemberProtectedRoles(newResolved, removedRoleIds, config) : undefined
+              });
+            }
           }
         }
       });

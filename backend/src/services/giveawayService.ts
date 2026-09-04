@@ -695,19 +695,28 @@ export async function recordGiveawayChatEvent(giveawayId: string, input: Giveawa
     return toGiveawayDto(giveaway);
   }
 
-  const participantsById = new Map((giveaway.participants ?? []).map((item) => [item.id, item]));
-  const existed = participantsById.has(participant.id);
-  participantsById.set(participant.id, participant);
-
+  // Antes isso lia giveaway.participants inteiro, atualizava em memória e
+  // reescrevia o array completo com $set — em chat de sorteio concorrido, duas
+  // mensagens processadas em paralelo liam o mesmo snapshot e a segunda escrita
+  // apagava a entrada da primeira (corrida real, não só custo). Os updates
+  // abaixo são atômicos no Mongo: o operador posicional $ substitui só o
+  // elemento existente e o $push só é tentado quando o id ainda não está no
+  // array, então concorrência entre participantes DIFERENTES nunca mais se
+  // pisa, e o payload enviado ao Mongo é O(1) em vez de O(participantes).
   const { giveaways } = await getMongoCollections();
-  const updated = await giveaways.findOneAndUpdate(
+  const giveawayFilter = {
+    _id: giveaway._id,
+    ...botScopeQuery(normalizedBotId)
+  };
+
+  let updated = await giveaways.findOneAndUpdate(
     {
-      _id: giveaway._id,
-      ...botScopeQuery(normalizedBotId)
+      ...giveawayFilter,
+      "participants.id": participant.id
     },
     {
       $set: {
-        participants: [...participantsById.values()],
+        "participants.$": participant,
         updatedAt: new Date()
       }
     },
@@ -715,6 +724,23 @@ export async function recordGiveawayChatEvent(giveawayId: string, input: Giveawa
       returnDocument: "after"
     }
   );
+  const existed = Boolean(updated);
+
+  if (!updated) {
+    updated = await giveaways.findOneAndUpdate(
+      {
+        ...giveawayFilter,
+        "participants.id": { $ne: participant.id }
+      },
+      {
+        $push: { participants: participant },
+        $set: { updatedAt: new Date() }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+  }
 
   if (!updated) {
     throw createGiveawayError("Sorteio não encontrado ao adicionar participante.", 404);

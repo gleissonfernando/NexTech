@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { getPaymentGatewayHealth } from "../config/payments";
 import { getMongoDb } from "../database/mongo";
 import { getRedisClient } from "../database/redis";
+import { requireBot } from "../middleware/auth";
 import { metricsSnapshot } from "../services/monitoringService";
 import { getBotStatus } from "../services/statsService";
 import { backgroundJobHealth } from "../services/backgroundJobService";
@@ -103,7 +104,9 @@ healthRouter.get("/bots", (_req, res) => {
   });
 });
 
-healthRouter.get("/bots/:botId", async (req, res, next) => {
+// Enumera bot + status de um tenant específico; exige o token do bot para não
+// ficar aberto a qualquer visitante anônimo da internet.
+healthRouter.get("/bots/:botId", requireBot, async (req, res, next) => {
   try {
     const bots = await listDevBotSummaries();
     const bot = bots.find((item) => item.id === req.params.botId || item.clientId === req.params.botId);
@@ -144,7 +147,10 @@ healthRouter.get("/payments", (_req, res) => {
   return res.status(payments.ok || !payments.enabled ? 200 : 503).json(payments);
 });
 
-healthRouter.get("/servers", async (_req, res, next) => {
+// Lista bots/guilds de TODOS os tenants (nome, ícone, contagem de membros,
+// status) — dado sensível de negócio, não uma checagem de saúde pública.
+// Exige o token do bot pelo mesmo motivo do endpoint acima.
+healthRouter.get("/servers", requireBot, async (_req, res, next) => {
   try {
     const bots = await listDevBotSummaries();
     const servers = buildServerHealth(bots, getBotStatus());

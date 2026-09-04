@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { env } from "../config/env";
@@ -46,16 +47,32 @@ export function createSocketServer(httpServer: HttpServer) {
     const clientId = typeof socket.handshake.auth?.clientId === "string" && socket.handshake.auth.clientId.trim()
       ? socket.handshake.auth.clientId.trim()
       : null;
-    const isBot = Boolean(env.BOT_API_TOKEN && token === env.BOT_API_TOKEN);
-    const botId = configuredBotId
-      ?? (isBot && clientId ? await findDevBotIdByClientId(clientId).catch(() => null) : null);
+    const isBot = isValidBotToken(token);
+
+    // A sala dev-bot:{botId} é o canal de comando/config de cada tenant (settings,
+    // execução de registro manual, exclusão de canais etc). Só o próprio worker do
+    // bot — autenticado pelo token do bot — pode entrar nela; um socket qualquer não
+    // pode mais escolher um botId arbitrário e ler/injetar respostas nesse canal.
+    // Quando o clientId do Discord está disponível, ele é a fonte da verdade: evita
+    // que um worker (de posse do token global, compartilhado entre todos os bots)
+    // se passe por outro tenant declarando um botId que não é o seu.
+    let botId: string | null = null;
+    if (isBot) {
+      const resolvedBotId = clientId ? await findDevBotIdByClientId(clientId).catch(() => null) : null;
+      if (resolvedBotId && configuredBotId && resolvedBotId !== configuredBotId) {
+        console.warn(`[socket] bot conectado com botId divergente do clientId; usando o resolvido por clientId. declarado=${configuredBotId} resolvido=${resolvedBotId}`);
+        botId = resolvedBotId;
+      } else {
+        botId = resolvedBotId ?? configuredBotId;
+      }
+    }
 
     socket.data.isBot = isBot;
     socket.data.botId = botId;
     if (isBot) {
       await socket.join(botRealtimeRoom());
     }
-    if (botId) {
+    if (isBot && botId) {
       clearPendingBotDisconnect(botId);
       await socket.join(devBotRealtimeRoom(botId));
     }
@@ -290,6 +307,16 @@ function scheduleBotDisconnectOffline(io: Server, botId: string) {
 
   timer.unref();
   pendingBotDisconnects.set(botId, timer);
+}
+
+function isValidBotToken(token: unknown) {
+  if (!env.BOT_API_TOKEN || typeof token !== "string" || !token) {
+    return false;
+  }
+
+  const expected = Buffer.from(env.BOT_API_TOKEN);
+  const actual = Buffer.from(token);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function clearPendingBotDisconnect(botId: string) {

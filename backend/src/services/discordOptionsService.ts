@@ -158,7 +158,7 @@ type GuildLiveOptionsCacheEntry = {
   value: GuildLiveOptionsDto;
 };
 
-class DiscordApiRequestError extends Error {
+export class DiscordApiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number
@@ -166,6 +166,63 @@ class DiscordApiRequestError extends Error {
     super(message);
     this.name = "DiscordApiRequestError";
   }
+}
+
+/**
+ * Chamada genérica à API do Discord com o mesmo tratamento de 429 (Retry-After)
+ * e 5xx que este arquivo já usa internamente em discordFetch/discordPost/
+ * discordDelete — só que exposta para outros services pararem de reimplementar
+ * (ou simplesmente ignorar) rate limit em chamadas cruas de axios/fetch.
+ * Retorna `null` para respostas 204/sem corpo.
+ */
+export async function discordApiRequest<TResponse = unknown>(
+  path: string,
+  token: string,
+  init: { method?: string; body?: unknown; reason?: string } = {},
+  attempt = 0
+): Promise<TResponse | null> {
+  const headers: Record<string, string> = {
+    Authorization: `Bot ${token}`
+  };
+
+  if (init.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (init.reason) {
+    headers["X-Audit-Log-Reason"] = encodeURIComponent(init.reason);
+  }
+
+  const response = await fetch(`${DISCORD_API_URL}${path}`, {
+    method: init.method ?? "GET",
+    headers,
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined
+  });
+
+  if (response.status === 429 || response.status >= 500) {
+    if (attempt < MAX_DISCORD_RATE_LIMIT_RETRIES) {
+      const delayMs = response.status === 429
+        ? Math.min(await readDiscordRetryAfterMs(response), MAX_DISCORD_RETRY_DELAY_MS)
+        : 1_000 * (attempt + 1);
+      await wait(delayMs);
+      return discordApiRequest<TResponse>(path, token, init, attempt + 1);
+    }
+
+    throw new DiscordApiRequestError(
+      "O Discord limitou ou falhou temporariamente nesta requisição. Aguarde alguns segundos e tente novamente.",
+      response.status
+    );
+  }
+
+  if (!response.ok) {
+    throw new DiscordApiRequestError(`Discord API respondeu ${response.status} em ${path}.`, response.status);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return (await response.json().catch(() => null)) as TResponse;
 }
 
 const guildLiveOptionsCache = new Map<string, GuildLiveOptionsCacheEntry>();

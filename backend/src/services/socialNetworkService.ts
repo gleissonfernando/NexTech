@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { ensureGuild, getMongoCollections, type MongoSocialMember, type MongoSocialPanel } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
+import { discordApiRequest, DiscordApiRequestError } from "./discordOptionsService";
 import { createLog } from "./logService";
 
-const DISCORD_API_URL = "https://discord.com/api/v10";
 const COMPONENT_TYPE = {
   ActionRow: 1,
   Button: 2
@@ -792,27 +792,25 @@ async function sendSocialPanelPreviewToDiscord({
     throw createServiceError("Selecione o canal da Network antes de testar.", 400);
   }
 
-  const response = await fetch(`${DISCORD_API_URL}/channels/${panel.channelId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bot ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      allowed_mentions: {
-        parse: []
-      },
-      components: buildSocialPanelComponents(members),
-      embeds: [buildSocialPanelEmbed(panel, members)]
-    })
-  });
+  try {
+    const data = await discordApiRequest<{ id?: string }>(`/channels/${panel.channelId}/messages`, token, {
+      method: "POST",
+      body: {
+        allowed_mentions: {
+          parse: []
+        },
+        components: buildSocialPanelComponents(members),
+        embeds: [buildSocialPanelEmbed(panel, members)]
+      }
+    });
+    return data?.id ?? null;
+  } catch (error) {
+    if (error instanceof DiscordApiRequestError) {
+      throw createServiceError(`Discord API respondeu ${error.status} ao testar a Network.`, 400);
+    }
 
-  if (!response.ok) {
-    throw createServiceError(`Discord API respondeu ${response.status} ao testar a Network.`, 400);
+    throw error;
   }
-
-  const data = await response.json().catch(() => null) as { id?: string } | null;
-  return data?.id ?? null;
 }
 
 function buildSocialPanelEmbed(panel: SocialPanelDto, members: SocialMemberDto[]) {

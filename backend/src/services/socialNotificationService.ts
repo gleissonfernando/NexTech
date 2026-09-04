@@ -3,7 +3,7 @@ import { MongoServerError } from "mongodb";
 import { env } from "../config/env";
 import { ensureGuild, getMongoCollections, type MongoSocialNotification } from "../database/mongo";
 import { createLog } from "./logService";
-import { isGuildTextChannel } from "./discordOptionsService";
+import { discordApiRequest, DiscordApiRequestError, isGuildTextChannel } from "./discordOptionsService";
 import { getTwitchStream, getTwitchUser, normalizeTwitchChannel } from "./twitchService";
 import type { LivePanelPreviewDto } from "./livePanelPreviewService";
 
@@ -1041,64 +1041,65 @@ async function sendDiscordLivePanel(input: {
 
   const mention = formatMention(input.notification);
   const content = mention.content ?? undefined;
-  const response = await fetch(`https://discord.com/api/v10/channels/${input.notification.discordChannelId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bot ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      content,
-      allowed_mentions: mention.allowedMentions,
-      embeds: [
-        {
-          color: parseEmbedColor(input.notification.embedColor),
-          author: {
-            name: `${input.streamerName} is now live on Twitch!`,
-            icon_url: input.notification.twitchAvatar ?? undefined,
-            url: input.channelUrl
-          },
-          title: formatLiveTitle(input.title),
-          url: input.channelUrl,
-          description: renderLiveDescription(input.notification, input.channelUrl),
-          fields: [
-            {
-              name: "Game",
-              value: input.gameName || "Sem categoria",
-              inline: true
-            },
-            {
-              name: "Viewers",
-              value: String(input.viewerCount || 0),
-              inline: true
-            }
-          ],
-          image: {
-            url: input.thumbnailUrl
-          },
-          footer: {
-            text: livePanelFooter(new Date())
-          }
-        }
-      ],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 5,
-              label: "Watch Stream",
-              url: input.channelUrl
-            }
-          ]
-        }
-      ]
-    })
-  });
 
-  if (!response.ok) {
-    throw createServiceError(`Discord API respondeu ${response.status} ao testar o painel Twitch.`, 400);
+  try {
+    await discordApiRequest(`/channels/${input.notification.discordChannelId}/messages`, token, {
+      method: "POST",
+      body: {
+        content,
+        allowed_mentions: mention.allowedMentions,
+        embeds: [
+          {
+            color: parseEmbedColor(input.notification.embedColor),
+            author: {
+              name: `${input.streamerName} is now live on Twitch!`,
+              icon_url: input.notification.twitchAvatar ?? undefined,
+              url: input.channelUrl
+            },
+            title: formatLiveTitle(input.title),
+            url: input.channelUrl,
+            description: renderLiveDescription(input.notification, input.channelUrl),
+            fields: [
+              {
+                name: "Game",
+                value: input.gameName || "Sem categoria",
+                inline: true
+              },
+              {
+                name: "Viewers",
+                value: String(input.viewerCount || 0),
+                inline: true
+              }
+            ],
+            image: {
+              url: input.thumbnailUrl
+            },
+            footer: {
+              text: livePanelFooter(new Date())
+            }
+          }
+        ],
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 5,
+                label: "Watch Stream",
+                url: input.channelUrl
+              }
+            ]
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    if (error instanceof DiscordApiRequestError) {
+      throw createServiceError(`Discord API respondeu ${error.status} ao testar o painel Twitch.`, 400);
+    }
+
+    throw error;
   }
 }
 
