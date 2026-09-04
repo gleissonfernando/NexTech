@@ -22,7 +22,8 @@ import {
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
-import { ensureOfficerForumThread, resolveForumChannel } from "./policeForumThreadService";
+import { ensureOfficerForumThread } from "./policeForumThreadService";
+import { ensureConfiguredReportsForum } from "./policeRecruitmentService";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PoliceQruMedia, PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./apiClient";
 import { buildQruRegistrationPanel } from "./qruPanelBuilder";
@@ -467,7 +468,7 @@ async function approveQru(interaction: ButtonInteraction<"cached">, context: Bot
 async function publishQruOnOfficerForum(guild: Guild, context: BotContext, record: PoliceQruRecord, settings: PoliceQruSettings) {
   try {
     const recruitment = await context.api.getPoliceRecruitmentSettings(guild.id);
-    const forum = await resolveForumChannel(guild, recruitment.reportsForumChannelId ?? recruitment.forumChannelId);
+    const forum = await ensureConfiguredReportsForum(guild, context, recruitment, record.authorId);
     const officer = await context.api.getPoliceRecruitmentRecruiter(guild.id, record.authorId).catch(() => null);
     const member = await guild.members.fetch(record.authorId).catch(() => null);
     const displayName = member?.displayName ?? record.authorName;

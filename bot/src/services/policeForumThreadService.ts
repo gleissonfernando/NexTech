@@ -22,15 +22,27 @@ export function officerThreadName(target: Pick<OfficerForumTarget, "discordId" |
   return `recrutamento-${target.displayName} | ${target.policeId ?? target.discordId}`.slice(0, 100);
 }
 
+/**
+ * "configuration" é problema de canal (nenhum, apagado ou do tipo errado) e o
+ * chamador pode resolver criando o fórum; "permissions" é um fórum válido em
+ * que o bot não escreve, e trocar de canal só esconderia o problema.
+ */
+export class ForumConfigError extends Error {
+  constructor(message: string, readonly problem: "configuration" | "permissions") {
+    super(message);
+    this.name = "ForumConfigError";
+  }
+}
+
 export async function resolveForumChannel(guild: Guild, forumChannelId: string | null | undefined) {
-  if (!forumChannelId) throw new Error("Nenhum fórum de relatórios está configurado para este servidor.");
+  if (!forumChannelId) throw new ForumConfigError("Nenhum fórum de relatórios está configurado para este servidor.", "configuration");
   const channel = await guild.channels.fetch(forumChannelId).catch(() => null);
-  if (!channel) throw new Error("O fórum configurado não existe mais neste servidor. Configure outro nas definições do módulo.");
-  if (channel.type !== ChannelType.GuildForum) throw new Error(`O canal <#${forumChannelId}> não é um fórum. Crie um canal do tipo Fórum e selecione-o na configuração.`);
+  if (!channel) throw new ForumConfigError("O fórum configurado não existe mais neste servidor.", "configuration");
+  if (channel.type !== ChannelType.GuildForum) throw new ForumConfigError(`O canal <#${forumChannelId}> não é um fórum.`, "configuration");
   const me = await guild.members.fetchMe().catch(() => null);
   const permissions = me ? channel.permissionsFor(me) : null;
   if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.SendMessages)) {
-    throw new Error(`O bot não tem permissão para publicar em <#${forumChannelId}>. Libere Ver Canal e Enviar Mensagens.`);
+    throw new ForumConfigError(`O bot não tem permissão para publicar em <#${forumChannelId}>. Libere Ver Canal e Enviar Mensagens.`, "permissions");
   }
   return channel;
 }

@@ -9,7 +9,7 @@ import {
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { PoliceRecruitmentQuestion, PoliceRecruitmentReport, PoliceRecruitmentSession, PoliceRecruitmentSettings } from "./apiClient";
-import { ensureOfficerForumThread, resolveForumChannel } from "./policeForumThreadService";
+import { ForumConfigError, ensureOfficerForumThread, resolveForumChannel } from "./policeForumThreadService";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "police_recruitment";
@@ -97,7 +97,9 @@ export function registerPoliceRecruitmentRealtimeHandlers(client: Client, contex
   context.socket.onPoliceRecruitmentForumEnsure((payload, ack) => {
     const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
     if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) return;
-    void ensureReportsForum(client, payload.guildId, payload.name ?? null)
+    void client.guilds.fetch(payload.guildId)
+      .catch(() => { throw new Error("Servidor não encontrado para este bot."); })
+      .then((guild) => ensureReportsForum(guild, payload.name ?? null))
       .then((result) => ack?.({ ok: true, ...result }))
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -112,10 +114,7 @@ export function registerPoliceRecruitmentRealtimeHandlers(client: Client, contex
  * (o configurado ou um criado por esta mesma função), reaproveita em vez de
  * encher o servidor de canais duplicados.
  */
-async function ensureReportsForum(client: Client, guildId: string, name: string | null) {
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-  if (!guild) throw new Error("Servidor não encontrado para este bot.");
-
+export async function ensureReportsForum(guild: Guild, name: string | null) {
   const me = await guild.members.fetchMe().catch(() => null);
   if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     throw new Error("O bot precisa da permissão Gerenciar Canais para criar o fórum de relatórios.");
@@ -257,7 +256,7 @@ async function finishSession(interaction: ButtonInteraction, context: BotContext
   // as respostas já preenchidas.
   let forum;
   try {
-    forum = await resolveForumChannel(interaction.guild!, settings.reportsForumChannelId ?? settings.forumChannelId);
+    forum = await ensureConfiguredReportsForum(interaction.guild!, context, settings, interaction.user.id);
   } catch (error) {
     await interaction.editReply(`❌ ${error instanceof Error ? error.message : "Configure o fórum de relatórios antes de finalizar."}`);
     return;
@@ -301,6 +300,24 @@ async function refreshSessionMessage(interaction: ButtonInteraction, context: Bo
   await interaction.deferUpdate();
   const session = await context.api.getPoliceRecruitmentSession(sessionId);
   await updateControl(interaction.channel, session, context, interaction.guild!);
+}
+
+/**
+ * Devolve o fórum de relatórios, criando um quando o configurado não serve
+ * (nenhum, apagado ou canal de texto escolhido por engano) e gravando o novo id
+ * na configuração. Falta de permissão no fórum atual continua sendo erro: criar
+ * outro canal só empurraria o problema para frente.
+ */
+export async function ensureConfiguredReportsForum(guild: Guild, context: BotContext, settings: PoliceRecruitmentSettings, actorId: string | null) {
+  try {
+    return await resolveForumChannel(guild, settings.reportsForumChannelId ?? settings.forumChannelId);
+  } catch (error) {
+    if (error instanceof ForumConfigError && error.problem === "permissions") throw error;
+    if (!(error instanceof ForumConfigError)) throw error;
+    const { forumChannelId } = await ensureReportsForum(guild, null);
+    await context.api.savePoliceRecruitmentSettings(guild.id, { forumChannelId, reportsForumChannelId: forumChannelId }, actorId).catch(() => null);
+    return resolveForumChannel(guild, forumChannelId);
+  }
 }
 
 async function publishReport(forum: ForumChannel, context: BotContext, report: PoliceRecruitmentReport) {
