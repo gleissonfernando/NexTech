@@ -10,6 +10,7 @@ import {
   ensurePoliceRecruitmentForum,
   finishPoliceRecruitmentSession,
   getPoliceRecruitmentRecruiter,
+  savePoliceRecruitmentRecruiterForumThread,
   getPoliceRecruitmentReport,
   getPoliceReportsDashboard,
   getPoliceRecruitmentSession,
@@ -244,6 +245,10 @@ policeRecruitmentRouter.get("/bot/sessions/expired/list", requireBot, async (req
 
 policeRecruitmentRouter.get("/bot/:guildId/recruiters/:discordId", requireBot, async (req, res, next) => {
   try { const botId = await botIdFor(req); await licensed(botId); res.json({ recruiter: await getPoliceRecruitmentRecruiter(botId, snowflake.parse(req.params.guildId), snowflake.parse(req.params.discordId)) }); } catch (error) { next(error); }
+});
+
+policeRecruitmentRouter.put("/bot/:guildId/recruiters/:discordId/forum-thread", requireBot, async (req, res, next) => {
+  try { const botId = await botIdFor(req); await licensed(botId); const input = z.object({ displayName: z.string().max(120).nullish(), forumThreadId: snowflake, policeId: z.string().max(40).nullish() }).parse(req.body); res.json({ recruiter: await savePoliceRecruitmentRecruiterForumThread(botId, snowflake.parse(req.params.guildId), snowflake.parse(req.params.discordId), input) }); } catch (error) { next(error); }
 });
 
 policeRecruitmentRouter.get("/bot/:guildId/reports", requireBot, async (req, res, next) => {

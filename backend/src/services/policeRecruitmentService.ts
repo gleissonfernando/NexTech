@@ -406,8 +406,11 @@ export async function finishPoliceRecruitmentSession(botId: string, sessionId: s
   const statPatch = statIncrement(result);
   const recruiterKey = { botId, guildId: session.guildId, discordId: session.recruiterDiscordId };
   await policeRecruiters.updateOne(recruiterKey, {
-    $set: { active: true, avatar: session.recruiterAvatar, displayName: session.recruiterDisplayName, forumThreadId: publish?.forumThreadId ?? null, lastRecruitment: now, policeId: session.recruiterPoliceId, updatedAt: now, username: session.recruiterUsername },
-    $setOnInsert: { _id: randomUUID(), approvalRate: 0, botId, createdAt: now, discordId: session.recruiterDiscordId, guildId: session.guildId, roleName: null, totalRecruitments: 0, approved: 0, rejected: 0, pending: 0 },
+    // forumThreadId só entra no $set quando a publicação trouxe um tópico novo:
+    // sobrescrever com null apagava a aba do recrutador e fazia o bot abrir um
+    // post de fórum a cada relatório.
+    $set: { active: true, avatar: session.recruiterAvatar, displayName: session.recruiterDisplayName, ...(publish?.forumThreadId ? { forumThreadId: publish.forumThreadId } : {}), lastRecruitment: now, policeId: session.recruiterPoliceId, updatedAt: now, username: session.recruiterUsername },
+    $setOnInsert: { _id: randomUUID(), approvalRate: 0, botId, createdAt: now, ...(publish?.forumThreadId ? {} : { forumThreadId: null }), discordId: session.recruiterDiscordId, guildId: session.guildId, roleName: null, totalRecruitments: 0, approved: 0, rejected: 0, pending: 0 },
     $inc: { totalRecruitments: 1, ...statPatch }
   }, { upsert: true });
   await refreshRecruiterApprovalRate(botId, session.guildId, session.recruiterDiscordId);
@@ -466,6 +469,25 @@ export async function getPoliceRecruitmentRecruiter(botId: string, guildId: stri
   const { policeRecruiters } = await getMongoCollections();
   const recruiter = await policeRecruiters.findOne({ botId, guildId, discordId });
   return recruiter ? recruiterDto(recruiter) : null;
+}
+
+/**
+ * Guarda a aba do policial no fórum. Serve para os módulos que escrevem no
+ * mesmo histórico sem passar por um relatório de recrutamento — a QRU, por
+ * exemplo, cria a ficha do policial na primeira ocorrência aprovada.
+ */
+export async function savePoliceRecruitmentRecruiterForumThread(botId: string, guildId: string, discordId: string, input: { forumThreadId: string; displayName?: string | null; policeId?: string | null }) {
+  const { policeRecruiters } = await getMongoCollections();
+  const now = new Date();
+  await policeRecruiters.updateOne({ botId, discordId, guildId }, {
+    $set: { forumThreadId: input.forumThreadId, updatedAt: now, ...(input.displayName ? { displayName: input.displayName } : {}), ...(input.policeId ? { policeId: input.policeId } : {}) },
+    $setOnInsert: {
+      _id: randomUUID(), active: true, approvalRate: 0, approved: 0, avatar: null, botId, createdAt: now, discordId, guildId,
+      lastRecruitment: null, pending: 0, rejected: 0, roleName: null, totalRecruitments: 0, username: "",
+      ...(input.displayName ? {} : { displayName: discordId }), ...(input.policeId ? {} : { policeId: null })
+    }
+  }, { upsert: true });
+  return getPoliceRecruitmentRecruiter(botId, guildId, discordId);
 }
 
 async function ensureDefaultQuestions(botId: string, guildId: string) {

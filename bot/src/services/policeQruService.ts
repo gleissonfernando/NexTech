@@ -22,6 +22,7 @@ import {
 } from "discord.js";
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
+import { ensureOfficerForumThread, resolveForumChannel } from "./policeForumThreadService";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 import type { PoliceQruMedia, PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./apiClient";
 import { buildQruRegistrationPanel } from "./qruPanelBuilder";
@@ -452,8 +453,43 @@ async function approveQru(interaction: ButtonInteraction<"cached">, context: Bot
   await context.api.updatePoliceQruRecordMessage(record.id, { recordChannelId: recordChannel.id, recordMessageId: sent.id }).catch(() => null);
 
   await interaction.message.edit(approvalPayload(record, settings, "approved", interaction.guild, context.client) as any).catch(() => null);
+  await publishQruOnOfficerForum(interaction.guild, context, record, settings);
   await updateOfficialRankingPanel(context, interaction.guild.id, settings);
   await closeTemporaryQruChannel(interaction, record, settings);
+}
+
+/**
+ * Espelha a QRU aprovada na aba que o policial já tem no fórum de relatórios —
+ * a mesma usada pelo recrutamento. Se o fórum não estiver configurado (ou o
+ * módulo de relatórios não estiver liberado para este bot), a aprovação segue
+ * normalmente: o espelho é um extra, nunca um bloqueio.
+ */
+async function publishQruOnOfficerForum(guild: Guild, context: BotContext, record: PoliceQruRecord, settings: PoliceQruSettings) {
+  try {
+    const recruitment = await context.api.getPoliceRecruitmentSettings(guild.id);
+    const forum = await resolveForumChannel(guild, recruitment.reportsForumChannelId ?? recruitment.forumChannelId);
+    const officer = await context.api.getPoliceRecruitmentRecruiter(guild.id, record.authorId).catch(() => null);
+    const member = await guild.members.fetch(record.authorId).catch(() => null);
+    const displayName = member?.displayName ?? record.authorName;
+    const policeId = officer?.policeId ?? displayName.match(/\b\d{2,8}\b/)?.[0] ?? null;
+    const thread = await ensureOfficerForumThread(forum, {
+      discordId: record.authorId,
+      displayName,
+      existingThreadId: officer?.forumThreadId ?? null,
+      header: qruOfficerHeaderPayload(record.authorId, displayName),
+      policeId
+    });
+    await thread.send(recordPayload(record, settings, guild, context.client) as any);
+    if (officer?.forumThreadId !== thread.id) {
+      await context.api.savePoliceRecruitmentRecruiterForumThread(guild.id, record.authorId, { displayName, forumThreadId: thread.id, policeId }).catch(() => null);
+    }
+  } catch (error) {
+    console.warn("[police-qru] QRU aprovada sem espelho no fórum do policial:", error instanceof Error ? error.message : error);
+  }
+}
+
+function qruOfficerHeaderPayload(discordId: string, displayName: string): MessageCreateOptions {
+  return { allowedMentions: { parse: [] }, components: [{ type: 17, accent_color: 0x22c55e, components: [{ type: 10, content: `# 👮 HISTÓRICO DO POLICIAL\n**Policial:** <@${discordId}> | ${displayName}\n\nEsta postagem reúne os registros deste membro: recrutamentos e QRUs aprovadas.` }] }], flags: MessageFlags.IsComponentsV2 } as unknown as MessageCreateOptions;
 }
 
 async function openRejectModal(interaction: ButtonInteraction<"cached">) {

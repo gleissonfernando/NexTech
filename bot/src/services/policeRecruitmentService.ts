@@ -3,11 +3,13 @@ import {
   PermissionFlagsBits,
   RoleSelectMenuBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, UserSelectMenuBuilder,
   type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type Interaction,
+  type ForumChannel, type MessageCreateOptions,
   type ModalSubmitInteraction, type RoleSelectMenuInteraction, type StringSelectMenuInteraction, type TextBasedChannel, type TextChannel, type UserSelectMenuInteraction
 } from "discord.js";
 import { currentRuntimeBotId, env, isBotModuleEnabled } from "../config/env";
 import type { BotContext } from "../types";
 import type { PoliceRecruitmentQuestion, PoliceRecruitmentReport, PoliceRecruitmentSession, PoliceRecruitmentSettings } from "./apiClient";
+import { ensureOfficerForumThread, resolveForumChannel } from "./policeForumThreadService";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
 
 const PREFIX = "police_recruitment";
@@ -250,13 +252,32 @@ async function editAnswers(interaction: ButtonInteraction, context: BotContext, 
 async function finishSession(interaction: ButtonInteraction, context: BotContext, sessionId: string) {
   await interaction.deferReply({ ephemeral: true });
   const settings = await context.api.getPoliceRecruitmentSettings(interaction.guildId!);
-  if (!(settings.reportsForumChannelId ?? settings.forumChannelId)) return interaction.editReply("Configure o fórum de relatórios antes de finalizar.");
+  // O fórum é conferido antes de encerrar a sessão: se ele estiver errado, o
+  // recrutador corrige a configuração e clica em Finalizar de novo, sem perder
+  // as respostas já preenchidas.
+  let forum;
+  try {
+    forum = await resolveForumChannel(interaction.guild!, settings.reportsForumChannelId ?? settings.forumChannelId);
+  } catch (error) {
+    await interaction.editReply(`❌ ${error instanceof Error ? error.message : "Configure o fórum de relatórios antes de finalizar."}`);
+    return;
+  }
+
   const report = await context.api.finishPoliceRecruitmentSession(sessionId, interaction.user.id);
   if (report.forumThreadId && report.forumMessageId) {
     await interaction.editReply(`✅ Relatório ${report.reportCode} já estava publicado em <#${report.forumThreadId}>.`);
     return;
   }
-  const published = await publishReport(interaction.guild!, context, settings, report);
+
+  let published: { forumMessageId: string; forumThreadId: string };
+  try {
+    published = await publishReport(forum, context, report);
+  } catch (error) {
+    // O relatório já está salvo; avisamos o motivo real e mantemos o canal vivo
+    // para o recrutador tentar publicar de novo depois de ajustar o fórum.
+    await interaction.editReply(`⚠️ Relatório ${report.reportCode} foi salvo, mas não foi publicado no fórum: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   await context.api.updatePoliceRecruitmentReportPublication(report.id, published);
   await sendLog(interaction.guild!, settings, "relatório finalizado", interaction.user.id, report.reportCode);
   await interaction.editReply(`✅ Relatório ${report.reportCode} publicado em <#${published.forumThreadId}>.`);
@@ -282,18 +303,21 @@ async function refreshSessionMessage(interaction: ButtonInteraction, context: Bo
   await updateControl(interaction.channel, session, context, interaction.guild!);
 }
 
-async function publishReport(guild: Guild, context: BotContext, settings: PoliceRecruitmentSettings, report: PoliceRecruitmentReport) {
-  const forumChannelId = settings.reportsForumChannelId ?? settings.forumChannelId;
-  const forum = await guild.channels.fetch(forumChannelId!).catch(() => null);
-  if (!forum || forum.type !== ChannelType.GuildForum) throw new Error("Fórum de recrutamento inválido.");
+async function publishReport(forum: ForumChannel, context: BotContext, report: PoliceRecruitmentReport) {
+  const guild = forum.guild;
   const recruiter = await context.api.getPoliceRecruitmentRecruiter(guild.id, report.recruiterDiscordId);
-  let thread = recruiter?.forumThreadId ? await guild.channels.fetch(recruiter.forumThreadId).catch(() => null) : null;
-  if (!thread || !thread.isThread()) {
-    const created = await forum.threads.create({ name: `✅・${report.recruiterName} | ${report.recruiterPoliceId ?? report.recruiterDiscordId}`.slice(0, 100), message: recruiterHeaderPayload(report, recruiter), reason: `Histórico de recrutamentos ${report.recruiterDiscordId}` });
-    thread = created;
-  }
+  const created = !recruiter?.forumThreadId;
+  const thread = await ensureOfficerForumThread(forum, {
+    discordId: report.recruiterDiscordId,
+    displayName: report.recruiterName,
+    existingThreadId: recruiter?.forumThreadId ?? null,
+    header: recruiterHeaderPayload(report, recruiter) as MessageCreateOptions,
+    policeId: report.recruiterPoliceId
+  });
   const message = await thread.send(reportPayload(report, guild));
-  await thread.send(recruiterControlsPayload(report.recruiterDiscordId, guild)).catch(() => null);
+  // Os botões de administração acompanham a abertura da aba; em um tópico que
+  // já existe eles só poluiriam o histórico a cada relatório.
+  if (created) await thread.send(recruiterControlsPayload(report.recruiterDiscordId, guild)).catch(() => null);
   return { forumMessageId: message.id, forumThreadId: thread.id };
 }
 
