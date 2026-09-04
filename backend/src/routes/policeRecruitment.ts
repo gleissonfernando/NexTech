@@ -7,6 +7,7 @@ import {
   cancelPoliceRecruitmentSession,
   createPoliceRecruitmentSession,
   deletePoliceRecruitmentQuestion,
+  ensurePoliceRecruitmentForum,
   finishPoliceRecruitmentSession,
   getPoliceRecruitmentRecruiter,
   getPoliceRecruitmentReport,
@@ -107,6 +108,16 @@ policeRecruitmentRouter.post("/:guildId/panel", requireAuth, async (req, res, ne
     const botId = await botIdFor(req);
     await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
     res.json(await requestPoliceRecruitmentPanelPublish(botId, guildId, res.locals.dashboardAuth.user.discordId));
+  } catch (error) { next(error); }
+});
+
+// Refazer a criação do fórum quando a ativação aconteceu com o bot offline.
+policeRecruitmentRouter.post("/:guildId/forum", requireAuth, async (req, res, next) => {
+  try {
+    const guildId = snowflake.parse(req.params.guildId);
+    const botId = await botIdFor(req);
+    await authorize(res.locals.dashboardAuth.user, botId, guildId, true);
+    res.json(await ensurePoliceRecruitmentForum(botId, guildId, res.locals.dashboardAuth.user.discordId));
   } catch (error) { next(error); }
 });
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Plus, Save, Send, ShieldCheck, Trash2, XCircle, ArrowDown, ArrowUp } from "lucide-react";
 import {
   createPoliceReportsQuestion,
+  ensurePoliceReportsForum,
   getGuildLiveOptions,
   getPoliceReportsDashboard,
   movePoliceReportsQuestion,
@@ -94,11 +95,13 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
     [dashboard?.questions, selectedQuestionId]
   );
   const disabled = !canManage || saving || publishing;
+  const roleOptions = useMemo(() => roles.map((role) => ({ disabled: role.managed, id: role.id, name: role.name })), [roles]);
+  const channelOptions = useMemo(() => channels.map((channel) => ({ id: channel.id, name: channel.name })), [channels]);
 
   useEffect(() => {
     setQuestionDraft(selectedQuestion ? {
       ...selectedQuestion,
-      options: [...selectedQuestion.options]
+      options: [...(selectedQuestion.options ?? [])]
     } : emptyQuestionDraft());
   }, [selectedQuestion]);
 
@@ -117,6 +120,21 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
       settingsRef.current = settings;
       setDashboard((current) => current ? { ...current, settings } : current);
       setMessage("Configurações salvas.");
+    } catch (error) {
+      setMessage(readMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function ensureForum() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result = await ensurePoliceReportsForum(currentGuildId, currentBotId);
+      settingsRef.current = result.settings;
+      setDashboard((current) => current ? { ...current, settings: result.settings } : current);
+      setMessage(result.created ? "Fórum de relatórios criado no servidor." : "Fórum de relatórios já existente vinculado ao módulo.");
     } catch (error) {
       setMessage(readMessage(error));
     } finally {
@@ -212,8 +230,6 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
     }
   }
 
-  const roleOptions = useMemo(() => roles.map((role) => ({ disabled: role.managed, id: role.id, name: role.name })), [roles]);
-  const channelOptions = useMemo(() => channels.map((channel) => ({ id: channel.id, name: channel.name })), [channels]);
   const ready = currentDashboard.validation.ready;
 
   function patchSettings(next: Partial<PoliceReportsSettings>) {
@@ -278,7 +294,18 @@ export function PoliceReportsPanel({ botId, canManage, guild }: { botId?: string
               {channelOptions.map((option) => <option key={option.id} value={option.id}># {option.name}</option>)}
             </select>
           </label>
-          <FivemResourceSelect compact disabled={!canManage} label="Fórum de relatórios" options={channelOptions} prefix="#" value={currentDashboard.settings.reportsForumChannelId ?? null} onChange={(reportsForumChannelId) => patchSettings({ reportsForumChannelId })} />
+          <div className="grid gap-2">
+            <FivemResourceSelect compact disabled={!canManage} label="Fórum de relatórios" options={channelOptions} prefix="#" value={currentDashboard.settings.reportsForumChannelId ?? null} onChange={(reportsForumChannelId) => patchSettings({ reportsForumChannelId })} />
+            {currentDashboard.settings.reportsForumChannelId ? null : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={disabled} onClick={() => void ensureForum()} size="sm" type="button" variant="outline">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Criar fórum automaticamente
+                </Button>
+                <span className="text-xs text-zinc-500">O fórum é criado sozinho ao ativar o módulo; use este botão se o bot estava offline.</span>
+              </div>
+            )}
+          </div>
           <FivemResourceSelect compact disabled={!canManage} label="Canal de logs" options={channelOptions} prefix="#" value={currentDashboard.settings.logChannelId ?? null} onChange={(logChannelId) => patchSettings({ logChannelId })} />
           <FivemResourceSelect compact disabled={!canManage} label="Categoria temporária" options={categories} value={currentDashboard.settings.temporaryCategoryId ?? null} onChange={(temporaryCategoryId) => patchSettings({ temporaryCategoryId })} />
           <label className="grid gap-2 text-xs font-medium text-zinc-400">

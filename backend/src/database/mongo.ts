@@ -3349,6 +3349,24 @@ export type MongoPoliceQruOfficer = {
   mention: string;
 };
 
+/**
+ * Cópia permanente de uma evidência importada. `originalUrl` fica só como
+ * referência de origem: o painel usa `storedUrl`, que não expira.
+ */
+export type MongoPoliceQruMedia = {
+  originalUrl: string;
+  resolvedUrl?: string | null;
+  storedUrl?: string | null;
+  mediaId?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  sha256?: string | null;
+  status: "processing" | "ready" | "failed";
+  error?: string | null;
+  createdAt?: Date;
+};
+
 export type MongoPoliceQruRecord = {
   _id: string;
   botId: string;
@@ -3356,7 +3374,10 @@ export type MongoPoliceQruRecord = {
   boNumber: string;
   qruType: string;
   occurrenceDate: string;
+  /** Legado: lista de URLs originais separadas por quebra de linha. Mantido para registros antigos. */
   evidenceUrl: string;
+  /** Cópias permanentes das evidências. Ausente em registros anteriores à importação de mídia. */
+  media?: MongoPoliceQruMedia[];
   seizures?: string | null;
   notes?: string | null;
   vehicle?: string | null;

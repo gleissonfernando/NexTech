@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Filter } from "mongodb";
-import { getMongoCollections, type MongoPoliceQruOfficer, type MongoPoliceQruRecord, type MongoPoliceQruSettings } from "../database/mongo";
+import { getMongoCollections, type MongoPoliceQruMedia, type MongoPoliceQruOfficer, type MongoPoliceQruRecord, type MongoPoliceQruSettings } from "../database/mongo";
 import { emitRealtime } from "../realtime/events";
+import { ingestRemoteMedia } from "./remoteMediaIngestionService";
 
 export const POLICE_QRU_MODULE_ID = "police-qru";
 
@@ -153,9 +154,77 @@ export async function savePoliceQruSettings(botId: string, guildId: string, inpu
   return dto;
 }
 
+const MAX_QRU_MEDIA_ITEMS = 4;
+
+/** Extrai as URLs de evidência do campo legado, que guarda uma por linha. */
+export function parseEvidenceUrlList(value: string | null | undefined) {
+  return (value ?? "")
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => /^https?:\/\//i.test(item))
+    .slice(0, MAX_QRU_MEDIA_ITEMS);
+}
+
+/**
+ * Importa as evidências para o storage permanente. A URL do usuário serve só
+ * como origem: o painel passa a usar a cópia interna, que não expira junto com
+ * os parâmetros assinados do CDN do Discord.
+ */
+async function ingestEvidence(botId: string, guildId: string, actorId: string | null, evidenceUrl: string): Promise<MongoPoliceQruMedia[]> {
+  const urls = parseEvidenceUrlList(evidenceUrl);
+  if (!urls.length) return [];
+
+  const results = await Promise.all(urls.map((url) => ingestRemoteMedia({
+    actorId,
+    botId,
+    guildId,
+    imageType: "qru-evidence",
+    moduleId: POLICE_QRU_MODULE_ID,
+    url
+  })));
+
+  return results.map((result) => ({
+    createdAt: new Date(),
+    error: result.error,
+    fileName: result.fileName,
+    fileSize: result.fileSize,
+    mediaId: result.mediaId,
+    mimeType: result.mimeType,
+    originalUrl: result.originalUrl,
+    resolvedUrl: result.resolvedUrl,
+    sha256: result.sha256,
+    status: result.status,
+    storedUrl: result.storedUrl
+  }));
+}
+
+/**
+ * Garante cópia permanente para um registro já existente.
+ *
+ * Cobre dois casos: registro antigo que só tem `evidenceUrl`, e registro cuja
+ * importação falhou na criação (link fora do ar naquele momento).
+ */
+export async function ensurePoliceQruRecordMedia(botId: string, recordId: string) {
+  const { policeQruRecords } = await getMongoCollections();
+  const record = await policeQruRecords.findOne({ _id: recordId, botId });
+  if (!record) return null;
+
+  const alreadyStored = (record.media ?? []).some((item) => item.status === "ready" && item.storedUrl);
+  if (alreadyStored) return recordDto(record);
+
+  const media = await ingestEvidence(botId, record.guildId, record.authorId, record.evidenceUrl);
+  if (!media.length) return recordDto(record);
+
+  await policeQruRecords.updateOne({ _id: recordId, botId }, { $set: { media, updatedAt: new Date() } });
+  return recordDto({ ...record, media });
+}
+
 export async function createPoliceQruRecord(botId: string, input: CreatePoliceQruRecordInput) {
   const { policeQruRecords } = await getMongoCollections();
   const now = new Date();
+  // Importa antes de gravar: o painel nunca é publicado apontando para a URL
+  // temporária do usuário.
+  const media = await ingestEvidence(botId, input.guildId, input.authorId, input.evidenceUrl);
   const row: MongoPoliceQruRecord = {
     _id: randomUUID(),
     approvalChannelId: input.approvalChannelId ?? null,
@@ -170,6 +239,7 @@ export async function createPoliceQruRecord(botId: string, input: CreatePoliceQr
     createdAt: now,
     evidenceUrl: input.evidenceUrl,
     guildId: input.guildId,
+    media,
     notes: normalizeText(input.notes ?? "", 1000) || null,
     occurrenceDate: normalizeText(input.occurrenceDate, 20),
     officers: uniqueOfficers(input.officers),
@@ -456,29 +526,35 @@ async function getPoliceQruStats(botId: string, guildId: string) {
   };
 }
 
-export function startOfPoliceQruWeek(now = new Date()) {
-  const local = new Date(now.getTime() + SAO_PAULO_OFFSET_MS);
-  const localDay = local.getUTCDay();
-  const daysSinceMonday = (localDay + 6) % 7;
-  const mondayLocalReset = Date.UTC(
-    local.getUTCFullYear(),
-    local.getUTCMonth(),
-    local.getUTCDate() - daysSinceMonday,
-    POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO,
-    0,
-    0,
-    0
-  );
-  const resetAt = new Date(mondayLocalReset - SAO_PAULO_OFFSET_MS);
-  return resetAt.getTime() > now.getTime()
-    ? new Date(resetAt.getTime() - 7 * 86_400_000)
-    : resetAt;
+export const POLICE_QRU_RANKING_CYCLE_DAYS = 15;
+const POLICE_QRU_RANKING_CYCLE_MS = POLICE_QRU_RANKING_CYCLE_DAYS * 86_400_000;
+
+/**
+ * Âncora dos ciclos de ranking: segunda-feira 01/01/2026, no horário de reset de
+ * São Paulo. Todo ciclo de 15 dias é contado a partir daqui, então o corte é o
+ * mesmo em qualquer servidor e não depende de quando o bot subiu.
+ */
+const POLICE_QRU_RANKING_ANCHOR_MS = Date.UTC(2026, 0, 1, POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO, 0, 0, 0) - SAO_PAULO_OFFSET_MS;
+
+/** Início do ciclo de 15 dias vigente. O ranking zera sozinho a cada virada. */
+export function startOfPoliceQruRankingCycle(now = new Date()) {
+  const elapsed = now.getTime() - POLICE_QRU_RANKING_ANCHOR_MS;
+  const cycles = Math.floor(elapsed / POLICE_QRU_RANKING_CYCLE_MS);
+  return new Date(POLICE_QRU_RANKING_ANCHOR_MS + cycles * POLICE_QRU_RANKING_CYCLE_MS);
 }
 
+export function endOfPoliceQruRankingCycle(now = new Date()) {
+  return new Date(startOfPoliceQruRankingCycle(now).getTime() + POLICE_QRU_RANKING_CYCLE_MS - 1);
+}
+
+/**
+ * Corte do ranking: o início do ciclo de 15 dias, ou o reset manual quando ele
+ * for mais recente que o início do ciclo.
+ */
 export function policeQruRankingCutoff(settings?: Pick<MongoPoliceQruSettings, "rankingResetAt"> | null, now = new Date()) {
-  const weekStart = startOfPoliceQruWeek(now);
+  const cycleStart = startOfPoliceQruRankingCycle(now);
   const resetAt = settings?.rankingResetAt instanceof Date ? settings.rankingResetAt : null;
-  return resetAt && resetAt > weekStart ? resetAt : weekStart;
+  return resetAt && resetAt > cycleStart ? resetAt : cycleStart;
 }
 
 async function listPoliceQruLogs(botId: string, guildId: string, limit = 50) {

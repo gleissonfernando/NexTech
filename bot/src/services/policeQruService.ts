@@ -23,7 +23,8 @@ import {
 import { isBotModuleEnabled } from "../config/env";
 import type { BotCommand, BotContext } from "../types";
 import { systemComponentEmoji, systemEmojiText } from "./systemEmojiService";
-import type { PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./apiClient";
+import type { PoliceQruMedia, PoliceQruOfficer, PoliceQruRecord, PoliceQruSettings } from "./apiClient";
+import { buildQruRegistrationPanel } from "./qruPanelBuilder";
 
 const MODULE_ID = "police-qru";
 const PREFIX = "police_qru";
@@ -34,7 +35,10 @@ const PDF_EXTENSIONS = new Set(["pdf"]);
 const MAX_EVIDENCE_FILES = 10;
 const QRU_DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━";
 const POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO = 14;
+const POLICE_QRU_RANKING_CYCLE_DAYS = 15;
+const POLICE_QRU_RANKING_CYCLE_MS = POLICE_QRU_RANKING_CYCLE_DAYS * 86_400_000;
 const SAO_PAULO_OFFSET_MS = -3 * 60 * 60 * 1000;
+const POLICE_QRU_RANKING_ANCHOR_MS = Date.UTC(2026, 0, 1, POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO, 0, 0, 0) - SAO_PAULO_OFFSET_MS;
 
 type QruStep = "officers" | "date" | "bo" | "type" | "vehicle" | "evidence" | "seizures" | "notes" | "confirm";
 
@@ -60,7 +64,7 @@ type QruSession = {
 const settingsCache = new Map<string, { expiresAt: number; settings: PoliceQruSettings }>();
 const sessions = new Map<string, QruSession>();
 let rankingServiceStarted = false;
-let lastRankingWeekKey = policeQruWeekKey();
+let lastRankingCycleKey = policeQruCycleKey();
 
 export const qruCommand: BotCommand = {
   data: new SlashCommandBuilder()
@@ -129,10 +133,10 @@ export function startPoliceQruRankingService(client: BotContext["client"], conte
 
   void refreshAllOfficialRankingPanels(client, context, "startup");
   const interval = setInterval(() => {
-    const currentWeekKey = policeQruWeekKey();
-    if (currentWeekKey === lastRankingWeekKey) return;
-    lastRankingWeekKey = currentWeekKey;
-    void refreshAllOfficialRankingPanels(client, context, "weekly_reset");
+    const currentCycleKey = policeQruCycleKey();
+    if (currentCycleKey === lastRankingCycleKey) return;
+    lastRankingCycleKey = currentCycleKey;
+    void refreshAllOfficialRankingPanels(client, context, "cycle_reset");
   }, RANKING_WEEK_CHECK_INTERVAL_MS);
   interval.unref();
 }
@@ -727,7 +731,7 @@ function isRankingPanelMessage(message: Message) {
  */
 const RANKING_REFRESH_CONCURRENCY = 2;
 
-async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "weekly_reset") {
+async function refreshAllOfficialRankingPanels(client: BotContext["client"], context: BotContext, reason: "startup" | "cycle_reset") {
   const stats = { checked: 0, resetMarkers: 0, skippedPanels: 0, updatedPanels: 0 };
   const guilds = [...client.guilds.cache.values()];
   let cursor = 0;
@@ -891,7 +895,7 @@ function approvalPayload(
     ]) },
     { type: 14, divider: true, spacing: 1 },
     { type: 10, content: evidenceTextBlock(record.evidenceUrl, icons) },
-    ...evidenceMediaComponents(record.evidenceUrl)
+    ...evidenceMediaComponents(record.evidenceUrl, record.media)
   ];
 
   components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -921,66 +925,19 @@ function submittedPayload(record: PoliceQruRecord): MessageCreateOptions {
   };
 }
 
-function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings, guild?: Guild | null, client?: BotContext["client"] | null): MessageCreateOptions {
-  const icons = qruIcons(guild, client);
-  const mentionUserIds = [...new Set([record.authorId, ...record.officers.map((officer) => officer.id)].filter(Boolean))];
-  const approvedAt = record.approvedAt ? formatDate(record.approvedAt) : formatDate(record.createdAt);
-  const headerContent = [
-    `# ${icons.police} REGISTRO DE QRU`,
-    QRU_DIVIDER,
-    `${icons.police} QRU`,
-    escapeMarkdown(record.qruType),
-    "",
-    `${icons.document} BOLETIM`,
-    `\`${escapeInlineCode(record.boNumber)}\``,
-    "",
-    `${icons.officer} REGISTRADO POR`,
-    `<@${record.authorId}>`,
-    "",
-    `${icons.clock} HORÁRIO`,
-    formatDate(record.createdAt)
-  ].join("\n");
-  const thumbnailUrl = guild?.iconURL({ size: 128 }) ?? null;
-  const headerComponent = thumbnailUrl
-    ? { type: 9, components: [{ type: 10, content: headerContent }], accessory: { type: 11, media: { url: thumbnailUrl }, description: "Ícone do servidor" } }
-    : { type: 10, content: headerContent };
-  const components: any[] = [
-    ...(settings.panelImageUrl ? [{ type: 12, items: [{ media: { url: settings.panelImageUrl }, description: "Banner do registro de QRU" }] }] : []),
-    headerComponent,
-    { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: qruInfoBlock([
-      [`${icons.calendar} DATA DA OCORRÊNCIA`, safeDisplay(record.occurrenceDate)],
-      [`${icons.police} QRU`, safeDisplay(record.qruType)],
-      [`${icons.vehicle} VEÍCULO`, safeDisplay(record.vehicle)],
-      [`${icons.box} APREENSÕES`, formatSeizuresList(record.seizures, icons)],
-      [`${icons.notes} OBSERVAÇÕES`, formatNotesBlock(record.notes)],
-      [`${icons.officer} OFICIAIS ENVOLVIDOS`, formatOfficerList(record.officers)]
-    ]) },
-    { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: evidenceTextBlock(record.evidenceUrl, icons) },
-    ...evidenceMediaComponents(record.evidenceUrl),
-    { type: 14, divider: true, spacing: 1 },
-    { type: 10, content: [
-      `${icons.id} ID DO REGISTRO`,
-      `\`${escapeInlineCode(record.id)}\``,
-      "",
-      `${icons.status} APROVADO POR`,
-      record.approvedById ? `<@${record.approvedById}>` : "Supervisor",
-      "",
-      `${icons.clock} HORÁRIO DA APROVAÇÃO`,
-      approvedAt
-    ].join("\n") }
-  ];
+function recordPayload(record: PoliceQruRecord, settings: PoliceQruSettings, guild?: Guild | null, _client?: BotContext["client"] | null): MessageCreateOptions {
+  // O visual vive em qruPanelBuilder: aqui só resolvemos as URLs de fallback dos
+  // registros antigos, que ainda não possuem cópia permanente da evidência.
+  const fallbackImageUrls = policeQruEvidenceFiles(record.evidenceUrl)
+    .filter((file) => file.kind === "image")
+    .map((file) => file.url);
 
-  return {
-    allowedMentions: { users: mentionUserIds },
-    components: [{
-      type: 17,
-      accent_color: parseColor(settings.color),
-      components
-    }],
-    flags: MessageFlags.IsComponentsV2
-  };
+  return buildQruRegistrationPanel({
+    fallbackImageUrls,
+    guild,
+    record,
+    settings
+  });
 }
 
 function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPoliceQruRanking"]>>, settings: PoliceQruSettings, full: boolean, guild?: NonNullable<ButtonInteraction<"cached">["guild"]> | null, client?: BotContext["client"] | null): MessageCreateOptions {
@@ -994,7 +951,7 @@ function rankingPayload(ranking: Awaited<ReturnType<BotContext["api"]["getPolice
   const others = visibleRanking.slice(3).map((entry) => `${systemEmojiText("VORTEX1505360210200049", guild, client)} **${entry.position}º** <@${entry.officerId}> — **${entry.total} QRUs**`).join("\n");
   const totalVisible = visibleRanking.reduce((total, entry) => total + entry.total, 0);
   const updatedAt = Math.floor(Date.now() / 1000);
-  const period = policeQruWeekPeriodLabel(settings);
+  const period = policeQruCyclePeriodLabel(settings);
   return {
     allowedMentions: { parse: [] },
     components: [{
@@ -1171,7 +1128,25 @@ function evidenceTextBlock(value: string, icons = qruIcons()) {
   return [`### ${icons.files} COMPROVANTES`, rows].join("\n");
 }
 
-function evidenceMediaComponents(value: string) {
+/**
+ * Fonte da imagem do painel, em ordem de preferência:
+ *
+ * 1. cópia permanente no storage do NexTech (`storedUrl`), que não expira;
+ * 2. URL original, só para registros antigos ou cuja importação falhou.
+ *
+ * Sem isso o painel perde a imagem assim que o link assinado do CDN do Discord
+ * caduca.
+ */
+function evidenceMediaComponents(value: string, media?: PoliceQruMedia[] | null) {
+  const stored = (media ?? [])
+    .filter((item) => item.status === "ready" && item.storedUrl)
+    .slice(0, MAX_EVIDENCE_FILES)
+    .map((item) => ({ media: { url: item.storedUrl! }, description: item.fileName ?? "Evidência do QRU" }));
+
+  if (stored.length) {
+    return [{ type: 12, items: stored }];
+  }
+
   const imageItems = policeQruEvidenceFiles(value)
     .filter((file) => file.kind === "image")
     .slice(0, MAX_EVIDENCE_FILES)
@@ -1304,41 +1279,33 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
 }
 
-function policeQruWeekKey(now = new Date()) {
-  return startOfPoliceQruWeek(now).toISOString().slice(0, 10);
+function policeQruCycleKey(now = new Date()) {
+  return startOfPoliceQruRankingCycle(now).toISOString().slice(0, 10);
 }
 
-function policeQruWeekPeriodLabel(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
+function policeQruCyclePeriodLabel(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
   const start = policeQruRankingPeriodStart(settings, now);
-  const end = new Date(start.getTime() + 7 * 86_400_000 - 1);
+  const end = new Date(start.getTime() + POLICE_QRU_RANKING_CYCLE_MS - 1);
   const formatter = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
   return `${formatter.format(start)} até ${formatter.format(end)}`;
 }
 
 function policeQruRankingPeriodStart(settings: Pick<PoliceQruSettings, "rankingResetAt">, now = new Date()) {
-  const weekStart = startOfPoliceQruWeek(now);
+  const weekStart = startOfPoliceQruRankingCycle(now);
   if (!settings.rankingResetAt) return weekStart;
   const resetAt = new Date(settings.rankingResetAt);
   return !Number.isNaN(resetAt.getTime()) && resetAt > weekStart ? resetAt : weekStart;
 }
 
-function startOfPoliceQruWeek(now = new Date()) {
-  const local = new Date(now.getTime() + SAO_PAULO_OFFSET_MS);
-  const localDay = local.getUTCDay();
-  const daysSinceMonday = (localDay + 6) % 7;
-  const mondayLocalReset = Date.UTC(
-    local.getUTCFullYear(),
-    local.getUTCMonth(),
-    local.getUTCDate() - daysSinceMonday,
-    POLICE_QRU_WEEKLY_RESET_HOUR_SAO_PAULO,
-    0,
-    0,
-    0
-  );
-  const resetAt = new Date(mondayLocalReset - SAO_PAULO_OFFSET_MS);
-  return resetAt.getTime() > now.getTime()
-    ? new Date(resetAt.getTime() - 7 * 86_400_000)
-    : resetAt;
+/**
+ * Mesmo cálculo do backend (`startOfPoliceQruRankingCycle`): ciclos fixos de 15
+ * dias contados a partir de 01/01/2026 às 14:00 de Brasília. As duas pontas
+ * precisam concordar, senão o painel mostra um período e o corte usa outro.
+ */
+function startOfPoliceQruRankingCycle(now = new Date()) {
+  const elapsed = now.getTime() - POLICE_QRU_RANKING_ANCHOR_MS;
+  const cycles = Math.floor(elapsed / POLICE_QRU_RANKING_CYCLE_MS);
+  return new Date(POLICE_QRU_RANKING_ANCHOR_MS + cycles * POLICE_QRU_RANKING_CYCLE_MS);
 }
 
 function parseColor(value: string) {

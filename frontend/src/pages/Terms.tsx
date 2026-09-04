@@ -106,6 +106,9 @@ export function TermsPage() {
           <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
             Esta página poderá ser atualizada sempre que necessário para refletir mudanças nos serviços, processos internos ou políticas da NexTech. Esta página é apenas informativa e não possui aceite, checkbox, assinatura eletrônica ou confirmação de leitura.
           </p>
+          <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+            As responsabilidades de uso da plataforma estão detalhadas no <a className="font-semibold text-[#FFEA70] underline-offset-4 hover:underline" href="/termo-de-responsabilidade">Termo de Responsabilidade</a>.
+          </p>
         </div>
       </section>
     </main>

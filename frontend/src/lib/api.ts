@@ -318,6 +318,16 @@ api.interceptors.response.use(
       }));
     }
 
+    // Plano inativo é bloqueio de acesso, não erro de operação: cai na mesma
+    // tela de acesso negado, com a mensagem que o backend enviou.
+    if (responseStatus === 402 && responseCode === "PLAN_REQUIRED" && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dashboard:access-denied", {
+        detail: {
+          message: responseMessage || "Você não possui um plano ativo para acessar esta dashboard."
+        }
+      }));
+    }
+
     if (!originalRequest || responseStatus !== 401 || originalRequest._retry) {
       throw error;
     }
@@ -1907,6 +1917,7 @@ export async function savePolicePatrolSettings(guildId: string, botId: string, p
 export async function deletePolicePatrolReport(guildId: string, botId: string, reportId: string) { await api.delete(`/police-patrol-reports/${guildId}/reports/${reportId}`, { params: botParams(botId) }); }
 export async function getPoliceReportsDashboard(guildId: string, botId: string) { const { data } = await api.get<import("../types").PoliceReportsDashboard>(`/police-recruitment/${guildId}`, { params: botParams(botId) }); return data; }
 export async function savePoliceReportsSettings(guildId: string, botId: string, payload: Partial<import("../types").PoliceReportsSettings>) { const { data } = await api.patch<{ settings: import("../types").PoliceReportsSettings }>(`/police-recruitment/${guildId}/settings`, payload, { params: botParams(botId) }); return data.settings; }
+export async function ensurePoliceReportsForum(guildId: string, botId: string) { const { data } = await api.post<{ created: boolean; forumChannelId: string; settings: import("../types").PoliceReportsSettings }>(`/police-recruitment/${guildId}/forum`, undefined, { params: botParams(botId) }); return data; }
 export async function publishPoliceReportsPanel(guildId: string, botId: string) { const { data } = await api.post<{ messageId: string | null; settings: import("../types").PoliceReportsSettings }>(`/police-recruitment/${guildId}/panel`, undefined, { params: botParams(botId) }); return data; }
 export async function createPoliceReportsQuestion(guildId: string, botId: string, payload: Partial<import("../types").PoliceReportsQuestion>) { const { data } = await api.post<{ question: import("../types").PoliceReportsQuestion }>(`/police-recruitment/${guildId}/questions`, payload, { params: botParams(botId) }); return data.question; }
 export async function updatePoliceReportsQuestion(guildId: string, botId: string, questionId: string, payload: Partial<import("../types").PoliceReportsQuestion>) { const { data } = await api.patch<{ question: import("../types").PoliceReportsQuestion }>(`/police-recruitment/${guildId}/questions/${questionId}`, payload, { params: botParams(botId) }); return data.question; }

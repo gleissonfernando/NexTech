@@ -14,6 +14,8 @@ const DEFAULT_RELEASE_MODE = "immediate";
 const EXAM_TOTAL_SCORE = 10;
 const DEFAULT_MIN_SCORE = COURSE_PASSING_GRADE;
 const MAX_QUESTION_SCORE = 1;
+/** Tolerância para comparar notas decimais (0.1 + 0.2 !== 0.3 em ponto flutuante). */
+const SCORE_COMPARISON_EPSILON = 1e-9;
 const MAX_EXAM_ALTERNATIVES = 25;
 
 type StudentRank = "CADET" | "OFFICER" | "SENIOR_OFFICER";
@@ -882,8 +884,52 @@ function correctIds(question: Pick<MongoCourseExamQuestion, "alternatives" | "co
   return question.correctAlternativeId ? [question.correctAlternativeId] : [];
 }
 
+/**
+ * Múltipla escolha com desconto por alternativa errada.
+ *
+ * Antes só as corretas selecionadas somavam e as erradas valiam 0, então marcar
+ * TODAS as alternativas entregava a nota cheia da questão. Agora cada alternativa
+ * errada marcada desconta o valor de uma correta, e o resultado nunca fica
+ * negativo — quem acerta parcialmente continua levando os pontos proporcionais.
+ */
 export function calculateMultipleChoiceScore(question: MongoCourseExamQuestion, selectedAlternativeIds: string[]) {
-  return capQuestionScore(question, decimalSum(selectedAlternativeIds.map((id) => selectedAlternativeScore(question, question.alternatives.find((item) => item.id === id)))));
+  const expected = new Set(correctIds(question));
+  const uniqueSelected = [...new Set(selectedAlternativeIds)];
+  const earned = decimalSum(uniqueSelected.map((id) => selectedAlternativeScore(question, question.alternatives.find((item) => item.id === id))));
+  const wrongSelectedCount = uniqueSelected.filter((id) => !expected.has(id) && question.alternatives.some((item) => item.id === id)).length;
+  const penalty = wrongSelectedCount * wrongSelectionUnitValue(question);
+
+  return capQuestionScore(question, earned - penalty);
+}
+
+/**
+ * Peso de uma alternativa errada: o valor médio de uma alternativa correta da
+ * mesma questão. Mantém o desconto proporcional mesmo quando as corretas têm
+ * pontuações explícitas diferentes entre si.
+ */
+function wrongSelectionUnitValue(question: MongoCourseExamQuestion) {
+  const expectedAlternatives = correctIds(question)
+    .map((id) => question.alternatives.find((item) => item.id === id))
+    .filter((item): item is MongoCourseExamQuestion["alternatives"][number] => Boolean(item));
+
+  if (!expectedAlternatives.length) return 0;
+
+  const total = decimalSum(expectedAlternatives.map((item) => expectedAlternativePointValue(question, item)));
+  return total / expectedAlternatives.length;
+}
+
+/**
+ * Nota de uma resposta perfeita: exatamente as alternativas esperadas, sem
+ * nenhuma errada. É o parâmetro para decidir se a questão conta como acerto.
+ */
+export function perfectAnswerScore(question: MongoCourseExamQuestion) {
+  const expectedAlternatives = correctIds(question)
+    .map((id) => question.alternatives.find((item) => item.id === id))
+    .filter((item): item is MongoCourseExamQuestion["alternatives"][number] => Boolean(item));
+
+  if (!expectedAlternatives.length) return questionMaxScore(question);
+
+  return capQuestionScore(question, decimalSum(expectedAlternatives.map((item) => expectedAlternativePointValue(question, item))));
 }
 
 export function calculateSelectionScore(question: MongoCourseExamQuestion, selectedAlternative: MongoCourseExamQuestion["alternatives"][number] | undefined) {
@@ -957,9 +1003,19 @@ function capExamScore(score: number) {
   return Math.min(EXAM_TOTAL_SCORE, Math.max(0, score));
 }
 
-function isObjectiveAnswerFullyScored(question: MongoCourseExamQuestion, pointsEarned: number) {
-  const maxScore = questionMaxScore(question);
-  return maxScore > 0 && pointsEarned > 0;
+/**
+ * Conta como ACERTO só a resposta completa.
+ *
+ * Antes bastava `pointsEarned > 0`, apesar do nome da função: numa múltipla
+ * escolha de 3 corretas, marcar 1 já era contabilizado como acerto no total de
+ * acertos do aluno. Agora a resposta precisa alcançar a nota de uma resposta
+ * perfeita — os pontos parciais continuam valendo na soma, só não viram acerto.
+ */
+export function isObjectiveAnswerFullyScored(question: MongoCourseExamQuestion, pointsEarned: number) {
+  const perfect = perfectAnswerScore(question);
+  if (perfect <= 0) return false;
+
+  return pointsEarned >= perfect - SCORE_COMPARISON_EPSILON;
 }
 
 export function decideCourseExamResult(score: unknown): CourseGradeResult {

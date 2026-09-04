@@ -404,7 +404,10 @@ export function Footer({ currentYear, onNavigate }: { currentYear: number; onNav
       </div>
       <div className="core-voice-rail mx-auto mt-12 flex w-full max-w-[1560px] flex-col gap-3 border-t border-[var(--rule-soft)] px-[var(--core-margin)] pt-7 text-[#6f6f6f] md:flex-row md:items-center md:justify-between">
         <span>© {currentYear} NexTech. Todos os direitos reservados.</span>
-        <button className="w-fit text-left text-[#8a8a8a] transition-colors hover:text-[#FFD400]" onClick={() => onNavigate("termos")} type="button">Termos e privacidade</button>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <button className="w-fit text-left text-[#8a8a8a] transition-colors hover:text-[#FFD400]" onClick={() => onNavigate("termos")} type="button">Termos e privacidade</button>
+          <button className="w-fit text-left text-[#8a8a8a] transition-colors hover:text-[#FFD400]" onClick={() => onNavigate("termo-responsabilidade")} type="button">Termo de responsabilidade</button>
+        </div>
       </div>
     </footer>
   );

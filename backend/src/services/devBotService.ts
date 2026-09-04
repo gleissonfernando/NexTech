@@ -22,6 +22,7 @@ import {
     type DashboardPermissionFlags,
     type SessionAccessLevel
 } from "./dashboardPermissionService";
+import { isBotPresentInGuild } from "./dashboardAccessPolicyService";
 import { canAccessDevDashboard } from "./devPermissionService";
 import { getDiscordAvatarUrl, getGuildIconUrl } from "./discordAssetService";
 import { fetchDiscordCurrentUserGuildMember, refreshDiscordTokens } from "./discordOAuthService";
@@ -611,7 +612,11 @@ export async function scanAccessibleDevBots(user: AuthSessionUser, options: Acce
   const guildIdsByBot = groupGuildIdsByBot(configs);
   const scans = await Promise.all(bots.map(async (bot) => {
     const allGuildIds = allBotGuildIds(bot, guildIdsByBot.get(bot._id));
-    const candidateGuildIds = allGuildIds;
+    // Só entram na varredura os servidores onde o bot realmente está: um
+    // servidor que ficou registrado no banco depois que o bot foi removido não
+    // pode continuar liberando dashboard.
+    const presence = await Promise.all(allGuildIds.map((guildId) => isBotPresentInGuild(bot._id, guildId)));
+    const candidateGuildIds = allGuildIds.filter((_, index) => presence[index]);
 
     if (!candidateGuildIds.length) {
       return {
@@ -631,7 +636,9 @@ export async function scanAccessibleDevBots(user: AuthSessionUser, options: Acce
           memberRoleIds: [],
           requiredRoleIds: [],
           requiredUserIds: [],
-          reason: "Sua conta Discord não aparece como membro do servidor deste painel."
+          reason: allGuildIds.length
+            ? "O bot cadastrado não está presente em nenhum servidor vinculado a esta dashboard."
+            : "Sua conta Discord não aparece como membro do servidor deste painel."
         }]
       };
     }
@@ -791,6 +798,16 @@ export async function getDevBotGuildAccess(
   ));
 
   if (!botUsesGuild) {
+    return {
+      allowed: false,
+      accessLevel: "viewer" as SessionAccessLevel,
+      permissions: dashboardPermissionsForLevel("viewer")
+    };
+  }
+
+  // O vínculo no banco não prova nada: o bot precisa continuar dentro do
+  // servidor para que a dashboard daquele servidor seja liberada.
+  if (!(await isBotPresentInGuild(botId, guildId))) {
     return {
       allowed: false,
       accessLevel: "viewer" as SessionAccessLevel,

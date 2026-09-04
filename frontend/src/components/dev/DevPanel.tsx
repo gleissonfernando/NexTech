@@ -3037,26 +3037,27 @@ function BotModuleWorkspace({
   const quickGroupOpen = expandedGroupIds.includes("quick") || activeGroupId === "quick";
 
   return (
-    <Card className="overflow-hidden border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(18,18,22,0.94),rgba(7,7,10,0.98))] shadow-[0_0_54px_rgba(255,213,0,0.12)] hover:translate-y-0" id="dev-bot-module-settings">
-      <CardHeader className="border-b border-[#FFD500]/15 p-5 sm:p-6">
+    <Card className="overflow-hidden hover:translate-y-0" id="dev-bot-module-settings">
+      <CardHeader className="border-b border-[var(--dev-rule)] p-5 sm:p-6">
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)] xl:items-start">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="border-[#FFD500]/30 bg-[#FFD500]/10 text-[#FFEA70]" variant="muted">Bot Menu</Badge>
+            <p className="dev-section-title">Bot Menu</p>
+            <CardTitle className="mt-3 text-2xl font-bold tracking-tight text-white">Módulos de {bot.name}</CardTitle>
+            <CardDescription className="mt-2 text-zinc-400">
+              Gerencie todos os módulos em categorias, cards e ações rápidas.
+            </CardDescription>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Badge variant={isBotReadyStatus(bot.status) ? "warning" : isBotErrorStatus(bot.status) ? "danger" : bot.status === "degraded" ? "warning" : "muted"}>
                 {statusLabel(bot.status)}
               </Badge>
+              <Badge variant="muted">{activeModules.length} de {modules.length} módulos ativos</Badge>
             </div>
-            <CardTitle className="mt-3 text-2xl font-bold text-white">Bot Menu</CardTitle>
-            <CardDescription className="mt-2 font-medium text-zinc-300">
-              Gerencie todos os módulos de {bot.name} em categorias, cards e ações rápidas.
-            </CardDescription>
           </div>
           <div className="space-y-3">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
               <input
-                className="h-12 w-full rounded-lg border border-[#FFD500]/20 bg-black/45 pl-10 pr-3 text-sm font-medium text-white outline-none transition placeholder:text-zinc-600 focus:border-[#FFEA70] focus:shadow-[0_0_24px_rgba(255,213,0,0.18)]"
+                className="h-11 w-full rounded-lg border pl-10 pr-3 text-sm font-medium outline-none"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Pesquisar módulo..."
                 value={query}

@@ -394,6 +394,12 @@ export type PoliceRecruitmentPanelPublishEvent = {
   settings?: unknown;
 };
 export type PoliceRecruitmentPanelPublishAck = (response: { error?: string; messageId?: string | null; ok: boolean }) => void;
+export type PoliceRecruitmentForumEnsureEvent = {
+  botId?: string | null;
+  guildId: string;
+  name?: string | null;
+};
+export type PoliceRecruitmentForumEnsureAck = (response: { created?: boolean; error?: string; forumChannelId?: string | null; ok: boolean }) => void;
 export type PoliceRankUpSettingsEvent = {
   botId?: string | null;
   guildId: string;
@@ -577,6 +583,7 @@ export class BotSocketClient {
   private policePromotionSettingsHandler: ((payload: PolicePromotionSettingsEvent) => void) | null = null;
   private policePromotionPanelPublishHandler: ((payload: PolicePromotionPanelPublishEvent, ack?: PolicePromotionPanelPublishAck) => void) | null = null;
   private policeRecruitmentPanelPublishHandler: ((payload: PoliceRecruitmentPanelPublishEvent, ack?: PoliceRecruitmentPanelPublishAck) => void) | null = null;
+  private policeRecruitmentForumEnsureHandler: ((payload: PoliceRecruitmentForumEnsureEvent, ack?: PoliceRecruitmentForumEnsureAck) => void) | null = null;
   private policeRankUpSettingsHandler: ((payload: PoliceRankUpSettingsEvent) => void) | null = null;
   private policeRankUpPanelPublishHandler: ((payload: PoliceRankUpPanelPublishEvent, ack?: PoliceRankUpPanelPublishAck) => void) | null = null;
   private visibleMessageUsersHandler: ((payload: VisibleMessageUsersEvent) => void) | null = null;
@@ -752,6 +759,9 @@ export class BotSocketClient {
     }
     if (this.policeRecruitmentPanelPublishHandler) {
       this.socket.on("police-recruitment:panel_publish", this.policeRecruitmentPanelPublishHandler);
+    }
+    if (this.policeRecruitmentForumEnsureHandler) {
+      this.socket.on("police-recruitment:forum_ensure", this.policeRecruitmentForumEnsureHandler);
     }
     if (this.policeRankUpSettingsHandler) {
       this.socket.on("police-rank-up:settings_updated", this.policeRankUpSettingsHandler);
@@ -1141,6 +1151,12 @@ export class BotSocketClient {
     this.policeRecruitmentPanelPublishHandler = handler;
     this.socket?.off("police-recruitment:panel_publish");
     this.socket?.on("police-recruitment:panel_publish", handler);
+  }
+
+  onPoliceRecruitmentForumEnsure(handler: (payload: PoliceRecruitmentForumEnsureEvent, ack?: PoliceRecruitmentForumEnsureAck) => void) {
+    this.policeRecruitmentForumEnsureHandler = handler;
+    this.socket?.off("police-recruitment:forum_ensure");
+    this.socket?.on("police-recruitment:forum_ensure", handler);
   }
 
   onPoliceRankUpSettingsUpdated(handler: (payload: PoliceRankUpSettingsEvent) => void) {

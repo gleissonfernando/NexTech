@@ -1,0 +1,303 @@
+/*
+ * Tema visual da área DEV.
+ *
+ * Tudo aqui vive sob `.dev-theme`, então nenhuma regra vaza para a dashboard do
+ * cliente — que continua exatamente como está. A ideia é trocar o visual
+ * "vidro brilhante com glow em tudo" por uma superfície de painel de operação:
+ * fundo em camadas com retícula discreta, fios de 1px em vez de sombras
+ * pesadas, hierarquia clara de título/subtítulo e densidade de dados legível.
+ */
+
+.dev-theme {
+  --dev-stock: #060608;
+  --dev-surface: #0d0d10;
+  --dev-surface-2: #121216;
+  --dev-surface-3: #17171c;
+  --dev-ink: #ffd400;
+  --dev-ink-soft: #ffea70;
+  --dev-rule: hsla(0, 0%, 100%, 0.08);
+  --dev-rule-strong: hsla(0, 0%, 100%, 0.14);
+  --dev-rule-ink: rgba(255, 212, 0, 0.32);
+  --dev-text: #f4f4f5;
+  --dev-text-dim: #a1a1aa;
+  --dev-text-faint: #71717a;
+  background-color: var(--dev-stock);
+}
+
+/* Fundo: retícula fina + halo suave, no lugar do gradiente radial forte. */
+.dev-theme::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(hsla(0, 0%, 100%, 0.018) 1px, transparent 0),
+    linear-gradient(90deg, hsla(0, 0%, 100%, 0.018) 1px, transparent 0),
+    radial-gradient(58% 42% at 82% -4%, rgba(255, 212, 0, 0.1), transparent 68%),
+    radial-gradient(52% 40% at 4% 96%, rgba(255, 212, 0, 0.055), transparent 66%);
+  background-size: 34px 34px, 34px 34px, 100% 100%, 100% 100%;
+  background-attachment: fixed;
+}
+
+/*
+ * Cards: o hover global levanta o card 4px e acende um glow amarelo. Numa tela
+ * densa como a do DEV isso faz a página inteira tremer ao passar o mouse. Aqui
+ * o card fica estável e só a borda responde.
+ */
+.dev-theme .glass-panel {
+  background: linear-gradient(180deg, var(--dev-surface-2), var(--dev-surface));
+  border-color: var(--dev-rule);
+  backdrop-filter: none;
+  box-shadow: 0 1px 0 hsla(0, 0%, 100%, 0.03) inset, 0 10px 30px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dev-theme .glass-panel:hover {
+  transform: none;
+  border-color: var(--dev-rule-ink);
+  box-shadow: 0 1px 0 hsla(0, 0%, 100%, 0.05) inset, 0 12px 34px rgba(0, 0, 0, 0.5);
+}
+
+/* Cabeçalho do card com fio de separação e título com mais presença. */
+.dev-theme .glass-panel > div:first-child > h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--dev-text);
+}
+
+.dev-theme .glass-panel > div:first-child > p {
+  color: var(--dev-text-dim);
+  line-height: 1.55;
+}
+
+/* Números e IDs alinhados: dígitos de largura fixa. */
+.dev-theme code,
+.dev-theme .tabular,
+.dev-theme [class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Campos de formulário com altura e foco consistentes em toda a área. */
+.dev-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dev-theme select,
+.dev-theme textarea {
+  background-color: var(--dev-surface);
+  border-color: var(--dev-rule-strong);
+  color: var(--dev-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dev-theme input::placeholder,
+.dev-theme textarea::placeholder {
+  color: var(--dev-text-faint);
+}
+
+.dev-theme input:focus,
+.dev-theme select:focus,
+.dev-theme textarea:focus {
+  outline: none;
+  border-color: var(--dev-ink);
+  box-shadow: 0 0 0 3px rgba(255, 212, 0, 0.14);
+}
+
+.dev-theme input:disabled,
+.dev-theme select:disabled,
+.dev-theme textarea:disabled {
+  opacity: 0.55;
+}
+
+/* Foco visível por teclado — antes só havia estado de hover. */
+.dev-theme button:focus-visible,
+.dev-theme a:focus-visible,
+.dev-theme [role="button"]:focus-visible {
+  outline: 2px solid rgba(255, 212, 0, 0.6);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Tabelas e listas densas: cabeçalho fixo, linhas zebradas, sem bordas duplas. */
+.dev-theme table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.dev-theme thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dev-surface-2);
+  border-bottom: 1px solid var(--dev-rule-strong);
+  color: var(--dev-text-faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dev-theme tbody td {
+  border-bottom: 1px solid var(--dev-rule);
+  padding: 0.625rem 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--dev-text-dim);
+}
+
+.dev-theme tbody tr:nth-child(even) td {
+  background: hsla(0, 0%, 100%, 0.016);
+}
+
+.dev-theme tbody tr:hover td {
+  background: rgba(255, 212, 0, 0.05);
+  color: var(--dev-text);
+}
+
+.dev-theme tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Barra de rolagem discreta, coerente com o resto do painel. */
+.dev-theme .discord-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dev-theme .discord-scrollbar::-webkit-scrollbar-thumb {
+  background: hsla(0, 0%, 100%, 0.14);
+  border-radius: 999px;
+}
+
+.dev-theme .discord-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 212, 0, 0.34);
+}
+
+.dev-theme ::selection {
+  background: rgba(255, 212, 0, 0.28);
+  color: #fff;
+}
+
+/* Rail de metadados: rótulos curtos em caixa alta acima de um valor. */
+.dev-rail {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--dev-text-faint);
+}
+
+/* Cabeçalho de seção com fio, para separar blocos sem empilhar cards. */
+.dev-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dev-ink-soft);
+}
+
+.dev-section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--dev-rule-ink), transparent);
+}
+
+/* Item de navegação com indicador lateral no estado ativo. */
+.dev-nav-item {
+  position: relative;
+}
+
+.dev-nav-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -0.75rem;
+  top: 50%;
+  height: 18px;
+  width: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--dev-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dev-theme *,
+  .dev-theme *::before,
+  .dev-theme *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Harmonização das superfícies internas.
+ *
+ * O DevPanel tem ~7 mil linhas com dezenas de tons ad hoc (zinc-800/900/950,
+ * black/20 até black/55). Em vez de reescrever cada um deles — o que geraria um
+ * diff enorme e arriscado num arquivo desse tamanho —, as utilidades mais usadas
+ * são reancoradas na paleta do tema. Só cor de fundo e de borda mudam: nenhum
+ * espaçamento, tamanho ou layout é afetado.
+ */
+.dev-theme .border-zinc-800 {
+  border-color: var(--dev-rule);
+}
+
+.dev-theme .border-zinc-700 {
+  border-color: var(--dev-rule-strong);
+}
+
+.dev-theme .bg-zinc-900,
+.dev-theme .bg-zinc-950,
+.dev-theme .bg-zinc-950\/55,
+.dev-theme .bg-zinc-950\/60,
+.dev-theme .bg-zinc-950\/70,
+.dev-theme .bg-zinc-950\/80 {
+  background-color: var(--dev-surface);
+}
+
+/*
+ * Só os pretos translúcidos usados como SUPERFÍCIE são reancorados. As opacidades
+ * altas (/75, /80) são as cortinas de modal — se virassem superfície opaca, o
+ * escurecimento do fundo atrás do diálogo seria perdido.
+ */
+.dev-theme .bg-black\/20,
+.dev-theme .bg-black\/25,
+.dev-theme .bg-black\/30,
+.dev-theme .bg-black\/35,
+.dev-theme .bg-black\/40,
+.dev-theme .bg-black\/45,
+.dev-theme .bg-black\/55 {
+  background-color: var(--dev-surface-2);
+}
+
+/* Blocos internos aninhados ganham um degrau a mais de contraste. */
+.dev-theme .glass-panel .bg-black\/20,
+.dev-theme .glass-panel .bg-black\/25,
+.dev-theme .glass-panel .bg-black\/30,
+.dev-theme .glass-panel .bg-black\/35,
+.dev-theme .glass-panel .bg-black\/40,
+.dev-theme .glass-panel .bg-black\/45,
+.dev-theme .glass-panel .bg-black\/55,
+.dev-theme .glass-panel .bg-zinc-950 {
+  background-color: hsla(0, 0%, 100%, 0.022);
+}
+
+/* Divisores finos em vez de linhas cinza fortes. */
+.dev-theme .divide-zinc-800 > * + * {
+  border-color: var(--dev-rule);
+}
+
+/* Texto auxiliar com contraste um pouco melhor que zinc-500 puro. */
+.dev-theme .text-zinc-500 {
+  color: var(--dev-text-faint);
+}
+
+.dev-theme .text-zinc-400 {
+  color: var(--dev-text-dim);
+}

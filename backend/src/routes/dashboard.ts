@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { ACCESS_DENIED_MESSAGE, SUPPORT_DISCORD_URL, requireAuth } from "../middleware/auth";
+import { isDashboardDevUserId } from "../config/devOwner";
 import { recordAccessAttempt } from "../services/accessAuditService";
+import { getBotPlanAccess, PLAN_REQUIRED_MESSAGE } from "../services/dashboardAccessPolicyService";
 import { canManageDashboardGuild } from "../services/dashboardGuildAccessService";
 import { fetchBotProfile } from "../services/botProfileService";
 import { canAccessDevPanel } from "../services/devAccessService";
@@ -198,6 +200,33 @@ dashboardRouter.get("/:slug", async (req, res, next) => {
         message: ACCESS_DENIED_MESSAGE,
         supportUrl: SUPPORT_DISCORD_URL
       });
+    }
+
+    // Entrada da dashboard: assinatura vencida ou suspensa barra o acesso.
+    //
+    // Bots sem NENHUM registro de plano (criados direto no painel dev, sem
+    // passar por checkout) continuam liberados de propósito: tratá-los como
+    // inadimplentes bloquearia a operação inteira, inclusive a publicação de
+    // painéis de cada módulo.
+    if (!isDashboardDevUserId(auth.user.discordId)) {
+      const plan = await getBotPlanAccess(bot.id);
+
+      if (plan.hasPlanRecord && !plan.active) {
+        await recordAccessAttempt(req, {
+          userId: auth.user.discordId,
+          username: auth.user.username,
+          dashboardSlug: input.slug,
+          botId: bot.id,
+          result: "denied",
+          reason: plan.reason ?? "Plano inativo."
+        });
+        return res.status(402).json({
+          code: "PLAN_REQUIRED",
+          message: PLAN_REQUIRED_MESSAGE,
+          plan,
+          supportUrl: SUPPORT_DISCORD_URL
+        });
+      }
     }
 
     const scopedGuilds = scopedBotDashboardGuilds(auth.user, bot);

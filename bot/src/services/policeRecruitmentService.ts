@@ -92,6 +92,49 @@ export function registerPoliceRecruitmentRealtimeHandlers(client: Client, contex
         ack?.({ ok: false, error: message });
       });
   });
+  context.socket.onPoliceRecruitmentForumEnsure((payload, ack) => {
+    const runtimeBotId = (currentRuntimeBotId() ?? env.DASHBOARD_BOT_ID) || null;
+    if (payload.botId && runtimeBotId && payload.botId !== runtimeBotId) return;
+    void ensureReportsForum(client, payload.guildId, payload.name ?? null)
+      .then((result) => ack?.({ ok: true, ...result }))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        ack?.({ ok: false, error: message });
+      });
+  });
+}
+
+/**
+ * Cria o fórum de relatórios na ativação do módulo, para o cliente não precisar
+ * preparar o canal à mão antes de configurar. Se já existir um fórum utilizável
+ * (o configurado ou um criado por esta mesma função), reaproveita em vez de
+ * encher o servidor de canais duplicados.
+ */
+async function ensureReportsForum(client: Client, guildId: string, name: string | null) {
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) throw new Error("Servidor não encontrado para este bot.");
+
+  const me = await guild.members.fetchMe().catch(() => null);
+  if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+    throw new Error("O bot precisa da permissão Gerenciar Canais para criar o fórum de relatórios.");
+  }
+
+  const forumName = slug(name?.trim() || "relatorios-policiais").slice(0, 90) || "relatorios-policiais";
+  const channels = await guild.channels.fetch().catch(() => null);
+  const existing = channels?.find((channel) => channel?.type === ChannelType.GuildForum && channel.name === forumName);
+
+  if (existing) {
+    return { created: false, forumChannelId: existing.id };
+  }
+
+  const forum = await guild.channels.create({
+    name: forumName,
+    type: ChannelType.GuildForum,
+    topic: "Histórico individual de relatórios por responsável.",
+    reason: "Ativação do módulo de Relatórios Policiais"
+  });
+
+  return { created: true, forumChannelId: forum.id };
 }
 
 async function startSession(interaction: ButtonInteraction, context: BotContext) {

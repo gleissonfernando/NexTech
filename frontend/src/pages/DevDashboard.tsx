@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
+import "../components/dev/dev-theme.css";
 import {
   Activity,
   BadgeCheck,
@@ -214,7 +215,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#050505]">
+      <main className="dev-theme flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
       </main>
     );
@@ -222,7 +223,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
   if (loadError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
+      <main className="dev-theme flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -247,7 +248,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
 
   if (!profile?.canViewDev) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
+      <main className="dev-theme flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -273,7 +274,7 @@ export function DevDashboard({ auth, initialView = "bots", onLogout }: DevDashbo
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,213,0,0.14),transparent_34%),linear-gradient(180deg,#050506,#08080b_48%,#050505)] text-white lg:pl-72">
+    <main className="dev-theme min-h-screen overflow-x-hidden text-white lg:pl-72">
       <DevMobileHeader
         activeView={activeView}
         onChangeView={handleChangeView}
@@ -431,36 +432,41 @@ function DevSidebar({
   onChangeView: (view: DevView) => void;
 }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-[#FFD500]/15 bg-[#08080b]/96 px-4 py-4 shadow-[22px_0_70px_rgba(0,0,0,0.48)] backdrop-blur-xl lg:flex">
-      <div className="mb-5 flex h-12 items-center gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#FFEA70]/40 bg-[#FFD500]/15 text-[#FFEA70] shadow-[0_0_30px_rgba(255,213,0,0.24)]">
-          <Code2 className="h-5 w-5" />
+    <aside className="dev-theme fixed inset-y-0 left-0 z-30 hidden w-72 flex-col border-r border-[var(--dev-rule)] bg-[var(--dev-surface)] px-4 py-5 lg:flex">
+      <div className="mb-6 flex items-center gap-3 border-b border-[var(--dev-rule)] pb-5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#FFD400]/35 bg-[#FFD400]/10 text-[#FFEA70]">
+          <Code2 className="h-4.5 w-4.5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-white">Painel DEV</p>
-          <p className="truncate text-xs font-medium text-zinc-300">Menu principal</p>
+          <p className="truncate text-sm font-bold tracking-tight text-white">Painel DEV</p>
+          <p className="dev-rail mt-1 truncate">NexTech · interno</p>
         </div>
       </div>
-      <nav className="discord-scrollbar flex-1 space-y-1 overflow-y-auto pb-2">
+      <nav className="discord-scrollbar -mr-2 flex-1 space-y-6 overflow-y-auto pr-2 pb-2">
         {DEV_NAV_GROUPS.map((group) => (
           <div className="space-y-1" key={group.label}>
-            <p className="px-3 pt-3 text-[11px] font-black uppercase tracking-[0.22em] text-[#FFEA70]/70">{group.label}</p>
-            {group.items.map((item) => (
-              <button
-                className={[
-                  "group flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition duration-300",
-                  activeView === item.id
-                    ? "bg-[#FFD500]/20 text-white ring-1 ring-[#FFEA70]/35 shadow-[0_0_24px_rgba(255,213,0,0.16)]"
-                    : "text-zinc-300 hover:bg-[#FFD500]/10 hover:text-white hover:shadow-[0_0_22px_rgba(255,213,0,0.12)]"
-                ].join(" ")}
-                key={item.id}
-                onClick={() => onChangeView(item.id)}
-                type="button"
-              >
-                <item.icon className="h-4 w-4 text-[#FFEA70] transition group-hover:text-white" />
-                {item.label}
-              </button>
-            ))}
+            <p className="dev-section-title mb-2 px-3">{group.label}</p>
+            {group.items.map((item) => {
+              const active = activeView === item.id;
+
+              return (
+                <button
+                  className={[
+                    "dev-nav-item group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors duration-150",
+                    active
+                      ? "bg-[#FFD400]/12 font-semibold text-white"
+                      : "font-medium text-zinc-400 hover:bg-white/[0.045] hover:text-white"
+                  ].join(" ")}
+                  data-active={active}
+                  key={item.id}
+                  onClick={() => onChangeView(item.id)}
+                  type="button"
+                >
+                  <item.icon className={`h-4 w-4 shrink-0 transition-colors ${active ? "text-[#FFD400]" : "text-zinc-500 group-hover:text-[#FFEA70]"}`} />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -480,14 +486,14 @@ function DevMobileHeader({
   const activeItem = DEV_NAV_ITEMS.find((item) => item.id === activeView) ?? DEV_NAV_ITEMS[0]!;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#FFD500]/15 bg-[#07070a]/95 px-3 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.36)] backdrop-blur-xl lg:hidden">
+    <header className="sticky top-0 z-30 border-b border-[var(--dev-rule)] bg-[#08080b]/92 px-3 py-3 backdrop-blur-xl lg:hidden">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#FFEA70]/35 bg-[#FFD500]/15 text-[#FFEA70]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#FFD400]/35 bg-[#FFD400]/10 text-[#FFEA70]">
           <Code2 className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-white">Painel DEV</p>
-          <p className="truncate text-xs font-medium text-zinc-400">{activeItem.label}</p>
+          <p className="truncate text-sm font-bold tracking-tight text-white">Painel DEV</p>
+          <p className="dev-rail mt-1 truncate">{activeItem.label}</p>
         </div>
         <Button aria-label="Sair" className="h-10 w-10 shrink-0 p-0" onClick={onLogout} type="button" variant="outline">
           <PowerOff className="h-4 w-4" />
@@ -495,7 +501,7 @@ function DevMobileHeader({
       </div>
       <select
         aria-label="Selecionar seção DEV"
-        className="mt-3 h-11 w-full rounded-lg border border-[#FFD500]/20 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 outline-none transition focus:border-[#FFEA70]/60"
+        className="mt-3 h-11 w-full rounded-lg border border-[var(--dev-rule-strong)] bg-[var(--dev-surface)] px-3 text-sm font-semibold text-zinc-100 outline-none"
         onChange={(event) => onChangeView(event.target.value as DevView)}
         value={activeView}
       >
@@ -515,9 +521,9 @@ function DevUserCard({ canViewDev, user }: { canViewDev: boolean; user: AuthResp
   const banner = (user as AuthResponse["user"] & { bannerUrl?: string | null }).bannerUrl;
 
   return (
-    <Card className="overflow-hidden border-[#FFD500]/20 bg-[linear-gradient(135deg,rgba(24,24,27,0.92),rgba(12,12,16,0.96))] shadow-[0_0_45px_rgba(255,213,0,0.10)] hover:translate-y-0">
+    <Card className="overflow-hidden hover:translate-y-0">
       <div
-        className="h-16 border-b border-[#FFD500]/15 bg-[radial-gradient(circle_at_20%_10%,rgba(255,213,0,0.42),transparent_34%),linear-gradient(135deg,rgba(88,101,242,0.38),rgba(9,9,11,0.2))]"
+        className="h-20 border-b border-[var(--dev-rule)] bg-[radial-gradient(circle_at_18%_0%,rgba(255,212,0,0.28),transparent_42%),linear-gradient(135deg,rgba(88,101,242,0.22),rgba(9,9,11,0.35))] bg-cover bg-center"
         style={banner ? { backgroundImage: `url(${banner})` } : undefined}
       />
       <CardContent className="-mt-8 flex flex-col gap-4 p-4 pt-0 sm:flex-row sm:items-end sm:justify-between">

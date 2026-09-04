@@ -4618,7 +4618,13 @@ function formatAnswerSummary(question: CourseExamQuestion, answer: CourseExamAns
   const expectedIds = question.correctAlternativeIds?.length ? question.correctAlternativeIds : question.alternatives.filter((alternative) => isExpectedAlternative(question, alternative)).map((alternative) => alternative.id);
   const selectedTexts = alternatives.filter((alternative) => selectedIds.includes(alternative.id)).map((alternative) => alternative.text);
   const expectedTexts = alternatives.filter((alternative) => expectedIds.includes(alternative.id)).map((alternative) => `${alternative.id} (${formatScore(alternativeScoreValue(question, alternative))}) ${alternative.text}`);
-  const status = answer?.correct || pointsEarned > 0 ? "✅ Correta" : "❌ Incorreta";
+  // Resposta parcial some pontos mas nao e acerto: mostrar "Correta" so porque
+  // sobrou algum ponto escondia o erro do aluno na correcao.
+  const status = answer?.correct === true
+    ? "✅ Correta"
+    : pointsEarned > 0
+      ? "🟡 Parcialmente correta"
+      : "❌ Incorreta";
   return [
     `QUESTÃO ${String(index).padStart(2, "0")}`,
     questionScoreLine(question),

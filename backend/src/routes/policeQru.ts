@@ -6,6 +6,7 @@ import {
   approvePoliceQruRecord,
   createPoliceQruLog,
   createPoliceQruRecord,
+  ensurePoliceQruRecordMedia,
   getPoliceQruDashboard,
   getPoliceQruProfile,
   getPoliceQruRanking,
@@ -186,6 +187,18 @@ policeQruRouter.patch("/bot/records/:recordId/approval-message", requireBot, asy
     const botId = await botIdFor(req);
     await licensed(botId);
     res.json({ record: await updatePoliceQruApprovalMessage(botId, id.parse(req.params.recordId), approvalMessageSchema.parse(req.body)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Importa a evidência de um registro que ainda não tem cópia permanente
+// (registro antigo, ou importação que falhou quando o link estava fora do ar).
+policeQruRouter.post("/bot/records/:recordId/media", requireBot, async (req, res, next) => {
+  try {
+    const botId = await botIdFor(req);
+    await licensed(botId);
+    res.json({ record: await ensurePoliceQruRecordMedia(botId, id.parse(req.params.recordId)) });
   } catch (error) {
     next(error);
   }

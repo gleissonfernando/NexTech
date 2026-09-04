@@ -44,7 +44,67 @@ export async function savePoliceRecruitmentSettings(botId: string, guildId: stri
     await policeRecruitmentSessions.updateMany({ botId, guildId, status: "IN_PROGRESS" }, { $set: { status: "SUSPENDED", updatedAt: now }, $unset: { openKey: "" } });
   }
   await audit(botId, guildId, null, null, actorId, "configuration_changed", diffSettings(before, normalizedInput));
+
+  // Ativou o módulo e ainda não há fórum escolhido: o bot cria um automaticamente.
+  // Falha aqui (bot offline, sem permissão) não pode derrubar o salvamento — o
+  // cliente continua podendo selecionar o fórum à mão.
+  if (normalizedInput.enabled === true && before.enabled !== true) {
+    await ensurePoliceRecruitmentForum(botId, guildId, actorId).catch((error) => {
+      console.warn(
+        `[police-reports] não foi possível criar o fórum automaticamente para o bot ${botId} no servidor ${guildId}:`,
+        error instanceof Error ? error.message : error
+      );
+      return null;
+    });
+  }
+
   return settingsDto((await policeRecruitmentSettings.findOne({ botId, guildId }))!);
+}
+
+/**
+ * Garante o fórum de relatórios do módulo. Só age quando ainda não existe um
+ * fórum configurado, para nunca sobrescrever a escolha do cliente.
+ */
+export async function ensurePoliceRecruitmentForum(botId: string, guildId: string, actorId: string | null) {
+  const settings = await getPoliceRecruitmentSettings(botId, guildId);
+  const currentForumId = settings.reportsForumChannelId ?? settings.forumChannelId ?? null;
+
+  if (currentForumId) {
+    return { created: false, forumChannelId: currentForumId, settings };
+  }
+
+  const responses = await emitRealtimeToRoomWithAck<
+    { botId: string; guildId: string; name: string | null },
+    { created?: boolean; error?: string; forumChannelId?: string | null; ok: boolean }
+  >(
+    devBotRealtimeRoom(botId),
+    "police-recruitment:forum_ensure",
+    { botId, guildId, name: "relatorios-policiais" },
+    20_000
+  );
+  const response = responses.find((item) => item?.ok);
+
+  if (!response?.ok || !response.forumChannelId) {
+    throw serviceError(response?.error ?? "Não foi possível criar o fórum de relatórios.", 409);
+  }
+
+  const { policeRecruitmentSettings } = await getMongoCollections();
+  await policeRecruitmentSettings.updateOne(
+    { botId, guildId },
+    { $set: { forumChannelId: response.forumChannelId, reportsForumChannelId: response.forumChannelId, updatedAt: new Date(), updatedBy: actorId } }
+  );
+  await audit(botId, guildId, null, null, actorId, "configuration_changed", {
+    changedKeys: ["reportsForumChannelId"],
+    previousValue: { reportsForumChannelId: null },
+    newValue: { reportsForumChannelId: response.forumChannelId },
+    source: response.created ? "forum_auto_created" : "forum_auto_reused"
+  });
+
+  return {
+    created: response.created === true,
+    forumChannelId: response.forumChannelId,
+    settings: settingsDto((await policeRecruitmentSettings.findOne({ botId, guildId }))!)
+  };
 }
 
 export async function requestPoliceRecruitmentPanelPublish(botId: string, guildId: string, actorId: string | null) {

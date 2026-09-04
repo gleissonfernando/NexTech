@@ -161,6 +161,10 @@ export function HomePage({
       window.location.assign("/termos");
       return;
     }
+    if (id === "termo-responsabilidade") {
+      window.location.assign("/termo-de-responsabilidade");
+      return;
+    }
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

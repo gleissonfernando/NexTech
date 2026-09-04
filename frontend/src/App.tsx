@@ -14,6 +14,7 @@ const PaymentReturnPage = lazy(() => import("./pages/PaymentReturn").then((modul
 const PixPaymentPage = lazy(() => import("./pages/PixPayment").then((module) => ({ default: module.PixPaymentPage })));
 const PublicInvitePage = lazy(() => import("./pages/PublicInvitePage").then((module) => ({ default: module.PublicInvitePage })));
 const PublicPlansPage = lazy(() => import("./pages/Plans").then((module) => ({ default: module.PublicPlansPage })));
+const ResponsibilityTermPage = lazy(() => import("./pages/ResponsibilityTerm").then((module) => ({ default: module.ResponsibilityTermPage })));
 const TermsPage = lazy(() => import("./pages/Terms").then((module) => ({ default: module.TermsPage })));
 const MONITORING_STATUS_URL = "https://nextech-status.discloud.app";
 const ACCESS_DENIED_MESSAGE = [
@@ -46,6 +47,7 @@ export function App() {
   const plansPath = path === "/planos" || path.startsWith("/planos/");
   const statusPath = path === "/status";
   const termsPath = path === "/termos" || path === "/terms";
+  const responsibilityTermPath = path === "/termo-de-responsabilidade" || path === "/termo" || path === "/responsibility-term";
   const botRegistrationPath = path === "/cadastrar-bot" || path.startsWith("/cadastrar-bot/");
   const publicInviteCode = inviteCodeFromPath(path);
   const paymentReturnStatus = paymentReturnStatusFromPath(path);
@@ -78,17 +80,17 @@ export function App() {
   }, [statusPath]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || responsibilityTermPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
       return;
     }
 
     if (auth?.access.verified && !protectedPanelPath && !publicLandingPath) {
       window.location.replace(dashboardUrl(auth.user.dashboardBotSlug));
     }
-  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicInviteCode, publicLandingPath, rouletteToken, statusPath, termsPath]);
+  }, [auth, botRegistrationPath, docsPath, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, protectedPanelPath, publicInviteCode, publicLandingPath, responsibilityTermPath, rouletteToken, statusPath, termsPath]);
 
   useEffect(() => {
-    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
+    if (rouletteToken || productRoute || docsPath || plansPath || statusPath || termsPath || responsibilityTermPath || paymentReturnStatus || pixPaymentOrderId || botRegistrationPath || publicInviteCode) {
       return;
     }
 
@@ -97,7 +99,7 @@ export function App() {
     }
 
     loginDiscord();
-  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, publicInviteCode, routeError, rouletteToken, statusPath, termsPath]);
+  }, [accessDeniedError, auth, protectedPanelPath, botRegistrationPath, docsPath, error, loading, loginDiscord, paymentReturnStatus, pixPaymentOrderId, plansPath, productRoute, publicInviteCode, responsibilityTermPath, routeError, rouletteToken, statusPath, termsPath]);
 
   if (docsPath) {
     return <LazyPage><DocsPage /></LazyPage>;
@@ -113,6 +115,10 @@ export function App() {
 
   if (termsPath) {
     return <LazyPage><TermsPage /></LazyPage>;
+  }
+
+  if (responsibilityTermPath) {
+    return <LazyPage><ResponsibilityTermPage /></LazyPage>;
   }
 
   if (paymentReturnStatus) {
